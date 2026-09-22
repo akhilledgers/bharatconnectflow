@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { X } from "lucide-react";
 
 export function Modal({
   title,
@@ -27,7 +28,7 @@ export function Modal({
         <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button onClick={onClose} className="text-faint hover:text-body">
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
         <div className="p-5">{children}</div>

@@ -30,7 +30,10 @@ function defaultConnectFlow(business: Business): ConnectFlowState {
     otpCode: "",
     otpVerified: business.ownershipVerified,
     otpError: null,
-    consentChecked: false,
+    // Pre-agreed so the only action left on the connect screen is the submit
+    // button itself — the checkbox still shows what was agreed to, it's just
+    // not an extra click the user has to make.
+    consentChecked: true,
     submitPhase: "idle",
   };
 }
@@ -217,11 +220,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
     const { delay } = await import("../mock/api");
     setPhase("sending");
-    await delay(undefined, 500, 800);
+    await delay(undefined, 900, 1100);
     setPhase("creating_id");
-    await delay(undefined, 600, 900);
+    await delay(undefined, 900, 1100);
     setPhase("waiting_confirmation");
-    await delay(undefined, 700, 1000);
+    await delay(undefined, 1000, 1200);
 
     const newId: BharatConnectId = {
       id: baseId(business, flow.basedOn),

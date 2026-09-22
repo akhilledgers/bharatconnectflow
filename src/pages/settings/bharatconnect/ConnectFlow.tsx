@@ -1,8 +1,58 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import { baseId, breakdown } from "../../../lib/id-standard";
 import { BharatConnectLogo } from "../../../components/layout/BharatConnectLogo";
-import type { Business } from "../../../types";
+import { CircularSpinner } from "../../../components/layout/CircularSpinner";
+import type { Business, ConnectSubmitPhase } from "../../../types";
+
+const SUCCESS_HOLD_MS = 1500;
+
+const PHASE_LABEL: Partial<Record<ConnectSubmitPhase, string>> = {
+  sending: "Sending your details…",
+  creating_id: "Creating your BharatConnect ID…",
+  waiting_confirmation: "Confirming…",
+};
+
+/** Blurs the form in place and shows one continuous status, ending in a brief
+ * success beat before handing off to the connected overview — no separate
+ * progress page, no second countdown. */
+function ConnectingOverlay({ business }: { business: Business }) {
+  const flow = useStore((s) => s.getConnectFlow(business.id));
+  const resetConnectFlow = useStore((s) => s.resetConnectFlow);
+  const pushToast = useStore((s) => s.pushToast);
+
+  useEffect(() => {
+    if (flow.submitPhase !== "success") return;
+    const timer = setTimeout(() => {
+      const id = business.bharatConnectIds[0];
+      pushToast(id ? `Connected to BharatConnect. Your ID is ${id.id}.` : "Connected to BharatConnect.");
+      resetConnectFlow(business.id);
+    }, SUCCESS_HOLD_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.submitPhase]);
+
+  const success = flow.submitPhase === "success";
+
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm">
+      {success ? (
+        <>
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check className="h-5 w-5" strokeWidth={3} />
+          </div>
+          <div className="text-sm font-medium text-ink">Connected</div>
+        </>
+      ) : (
+        <>
+          <CircularSpinner size={32} className="mb-3" />
+          <div className="text-sm font-medium text-body">{PHASE_LABEL[flow.submitPhase]}</div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function BusinessSummary({ business }: { business: Business }) {
   const [expanded, setExpanded] = useState(false);
@@ -180,7 +230,9 @@ function OwnershipSection({ business }: { business: Business }) {
       <section className="border-b border-gray-100 px-6 py-5">
         <h2 className="mb-2 font-medium text-ink">Ownership</h2>
         <div className="flex items-center gap-2 text-sm text-emerald-700">
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px]">✓</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check className="h-2.5 w-2.5" strokeWidth={3} />
+          </span>
           Ownership already verified in LEDGERS. Nothing more to do here.
         </div>
       </section>
@@ -215,84 +267,8 @@ function OwnershipSection({ business }: { business: Business }) {
   );
 }
 
-function ProgressAndSuccess({ business }: { business: Business }) {
-  const flow = useStore((s) => s.getConnectFlow(business.id));
-
-  const steps = [
-    { key: "sending", label: "Sending your details" },
-    { key: "creating_id", label: "Creating your BharatConnect ID" },
-    { key: "waiting_confirmation", label: "Waiting for confirmation" },
-  ];
-  const order = ["sending", "creating_id", "waiting_confirmation", "success"];
-  const currentIdx = order.indexOf(flow.submitPhase);
-
-  if (flow.submitPhase === "success") {
-    const id = business.bharatConnectIds[0];
-    return (
-      <div className="px-6 py-8 text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-600">
-          ✓
-        </div>
-        <h2 className="text-lg font-medium text-ink">You're connected to BharatConnect</h2>
-        <div className="mx-auto mt-4 w-fit rounded-lg bg-gray-50 px-5 py-3 font-mono text-xl font-semibold text-ink">
-          {id?.id}
-        </div>
-        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-          Verified for invoicing
-        </div>
-        <div className="mt-6 flex justify-center gap-3">
-          <a
-            href="#/settings/bharatconnect/profile/settlement_accounts"
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-body hover:bg-gray-50"
-          >
-            Enable payments
-          </a>
-          <a
-            href="#/sales/counterparty-search"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Send your first invoice
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-6 py-8">
-      <p className="mb-5 text-sm text-faint">You can leave this page — we'll keep going in the background.</p>
-      <div className="space-y-4">
-        {steps.map((step, i) => {
-          const done = i < currentIdx || (i === currentIdx && flow.submitPhase !== step.key);
-          const active = order[currentIdx] === step.key;
-          return (
-            <div key={step.key} className="flex items-center gap-3">
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
-                  done
-                    ? "bg-emerald-100 text-emerald-600"
-                    : active
-                      ? "bg-primary-soft text-primary"
-                      : "bg-gray-100 text-faint"
-                }`}
-              >
-                {done ? "✓" : i + 1}
-              </span>
-              <span className={done || active ? "text-ink" : "text-faint"}>{step.label}</span>
-              {active && (
-                <span className="ml-1 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function ConnectFlow({ business }: { business: Business }) {
   const flow = useStore((s) => s.getConnectFlow(business.id));
-  const setConsent = useStore((s) => s.setConsent);
   const submitConnect = useStore((s) => s.submitConnect);
 
   const missing = useMemo(() => {
@@ -314,45 +290,38 @@ export function ConnectFlow({ business }: { business: Business }) {
         One check and one confirmation. Everything else is already filled in from your GST records.
       </p>
 
-      <div className="rounded-xl border border-gray-200 bg-white">
-        {!inProgress ? (
-          <>
-            <BusinessSummary business={business} />
-            <IdSection business={business} />
-            <OwnershipSection business={business} />
-            <div className="bg-gray-50/60 px-6 py-5">
-              <label className="flex items-start gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={flow.consentChecked}
-                  onChange={(e) => setConsent(business.id, e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                />
-                <span className="text-body">
-                  I am an authorised signatory or admin of this business, and I consent to LEDGERS sharing these
-                  details with BharatConnect to register my business and ID.{" "}
-                  <span className="text-faint">Your name, role and the time are logged.</span>
-                </span>
-              </label>
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  onClick={() => submitConnect(business.id)}
-                  disabled={missing.length > 0}
-                  className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-40"
-                >
-                  Connect to BharatConnect
-                </button>
-                {missing.length > 0 && (
-                  <span className="text-sm text-amber-700">
-                    {missing[0][0].toUpperCase() + missing[0].slice(1)} to continue.
-                  </span>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <ProgressAndSuccess business={business} />
-        )}
+      <div className="relative rounded-xl border border-gray-200 bg-white">
+        <BusinessSummary business={business} />
+        <IdSection business={business} />
+        <OwnershipSection business={business} />
+        <div className="bg-gray-50/60 px-6 py-5">
+          <div className="flex items-start gap-3 text-sm" title="Confirmed by signing in as an admin of this business">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary text-white">
+              <Check className="h-3 w-3" strokeWidth={3} />
+            </span>
+            <span className="text-body">
+              I am an authorised signatory or admin of this business, and I consent to LEDGERS sharing these
+              details with BharatConnect to register my business and ID.{" "}
+              <span className="text-faint">Your name, role and the time are logged.</span>
+            </span>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={() => submitConnect(business.id)}
+              disabled={missing.length > 0}
+              className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-40"
+            >
+              Connect to BharatConnect
+            </button>
+            {missing.length > 0 && (
+              <span className="text-sm text-amber-700">
+                {missing[0][0].toUpperCase() + missing[0].slice(1)} to continue.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {inProgress && <ConnectingOverlay business={business} />}
       </div>
     </div>
   );

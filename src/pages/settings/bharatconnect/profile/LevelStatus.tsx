@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import type { Business } from "../../../../types";
 
 const CHECK_GROUPS: { level: 1 | 2 | 3; title: string; eligibility: string; checks: string[] }[] = [
@@ -54,11 +55,11 @@ export function LevelStatus({ business }: { business: Business }) {
                   {group.checks.map((check) => (
                     <div key={check} className="flex items-center gap-2 text-sm">
                       <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
                           met ? "bg-emerald-100 text-emerald-600" : "bg-gray-100 text-faint"
                         }`}
                       >
-                        {met ? "✓" : ""}
+                        {met && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                       </span>
                       <span className={met ? "text-ink" : "text-faint"}>{check}</span>
                     </div>

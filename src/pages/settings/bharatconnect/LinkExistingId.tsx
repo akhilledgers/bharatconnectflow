@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link2, Loader2 } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import type { Business } from "../../../types";
 
@@ -34,8 +35,9 @@ export function LinkExistingId({ business }: { business: Business }) {
         <button
           onClick={handleLink}
           disabled={linking}
-          className="mt-5 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+          className="mt-5 flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
         >
+          {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
           {linking ? "Linking…" : "Link existing ID"}
         </button>
       </div>

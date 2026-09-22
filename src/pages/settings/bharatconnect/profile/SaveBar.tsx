@@ -1,3 +1,5 @@
+import { X, ArrowRight } from "lucide-react";
+import { CircularSpinner } from "../../../../components/layout/CircularSpinner";
 import type { Business } from "../../../../types";
 import type { useProfileForm } from "./useProfileForm";
 import { FIELD_CONFIG } from "./fieldConfig";
@@ -52,7 +54,7 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
             <div className="mb-2 flex items-center justify-between rounded-t-lg border border-b-0 border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
               {banner}
               <button onClick={dismissBanner} className="text-amber-700 hover:text-amber-900">
-                ✕
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -67,9 +69,10 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
               {diffRows(business, form).map((row) => (
                 <div key={row.id} className="grid grid-cols-[1fr_1.4fr] gap-4 py-2.5 text-sm">
                   <span className="text-faint">{row.label}</span>
-                  <span>
-                    <span className="text-faint line-through">{row.from}</span>{" "}
-                    <span className="text-ink">→ {row.to}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-faint line-through">{row.from}</span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-faint" />
+                    <span className="text-ink">{row.to}</span>
                   </span>
                 </div>
               ))}
@@ -120,7 +123,7 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
 
           {barState === "sending" && (
             <span className="flex items-center gap-2 text-sm text-body">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <CircularSpinner size={14} />
               Sending…
             </span>
           )}

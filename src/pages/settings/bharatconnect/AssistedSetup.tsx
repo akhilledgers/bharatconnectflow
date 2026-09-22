@@ -1,3 +1,4 @@
+import { MessageCircle } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import type { Business } from "../../../types";
 
@@ -18,8 +19,9 @@ export function AssistedSetup({ business }: { business: Business }) {
         </p>
         <button
           onClick={() => pushToast("Our team will reach out to help with setup.")}
-          className="mt-5 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+          className="mt-5 flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
         >
+          <MessageCircle className="h-4 w-4" />
           Contact us
         </button>
       </div>

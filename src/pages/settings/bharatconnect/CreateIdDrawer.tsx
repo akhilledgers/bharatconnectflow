@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import { baseIdWithoutSuffix, buildExtraId, checkEnding } from "../../../lib/id-standard";
 import { mockCheckEndingAvailability } from "../../../mock/api";
@@ -65,7 +66,7 @@ export function CreateIdDrawer({ business, onClose }: { business: Business; onCl
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-ink">Create BharatConnect ID</h2>
           <button onClick={onClose} className="text-faint hover:text-body">
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 

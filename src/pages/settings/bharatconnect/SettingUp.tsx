@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+import { CircularSpinner } from "../../../components/layout/CircularSpinner";
 import type { Business } from "../../../types";
 
 export function SettingUp({ business }: { business: Business }) {
@@ -18,12 +20,10 @@ export function SettingUp({ business }: { business: Business }) {
                   i < 2 ? "bg-emerald-100 text-emerald-600" : "bg-primary-soft text-primary"
                 }`}
               >
-                {i < 2 ? "✓" : 3}
+                {i < 2 ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : 3}
               </span>
               <span className="text-ink">{label}</span>
-              {i === 2 && (
-                <span className="ml-1 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              )}
+              {i === 2 && <CircularSpinner size={14} className="ml-1" />}
             </div>
           ))}
         </div>

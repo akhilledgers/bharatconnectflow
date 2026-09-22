@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronRight, Pencil, Plus, PowerOff, RotateCcw } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import { CreateIdDrawer } from "./CreateIdDrawer";
 import type { BharatConnectId } from "../../../types";
@@ -31,15 +32,16 @@ export function IdsPage() {
         <a href="#/settings/bharatconnect" className="hover:text-body">
           BharatConnect
         </a>
-        <span>/</span>
+        <ChevronRight className="h-3.5 w-3.5" />
         <span>IDs</span>
       </div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-ink">BharatConnect IDs</h1>
         <button
           onClick={() => setDrawerOpen(true)}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
         >
+          <Plus className="h-4 w-4" />
           Create ID
         </button>
       </div>
@@ -90,22 +92,27 @@ export function IdsPage() {
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <button className="text-sm font-medium text-primary hover:text-primary-hover">Edit</button>
+                    <button className="flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover">
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
                     {id.status === "active" ? (
                       <button
                         onClick={() => handleDeactivate(id)}
                         title={blockReason(id) ?? undefined}
-                        className={`text-sm font-medium ${
+                        className={`flex items-center gap-1 text-sm font-medium ${
                           blockReason(id) ? "cursor-not-allowed text-faint" : "text-red-600 hover:text-red-700"
                         }`}
                       >
+                        <PowerOff className="h-3.5 w-3.5" />
                         Deactivate
                       </button>
                     ) : (
                       <button
                         onClick={() => reactivateId(business.id, id.id)}
-                        className="text-sm font-medium text-primary hover:text-primary-hover"
+                        className="flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
                       >
+                        <RotateCcw className="h-3.5 w-3.5" />
                         Reactivate
                       </button>
                     )}

@@ -55,3 +55,33 @@ body {
   background: var(--color-border-strong);
   border-radius: 999px;
 }
+
+/* Material/Google-style circular spinner: the ring rotates continuously while
+   its own arc length grows and shrinks, rather than a static arc just spinning. */
+@keyframes spinner-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+@keyframes spinner-dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+.spinner-arc {
+  animation: spinner-rotate 1.6s linear infinite;
+  transform-origin: center;
+}
+.spinner-arc circle {
+  animation: spinner-dash 1.5s ease-in-out infinite;
+  stroke-linecap: round;
+}

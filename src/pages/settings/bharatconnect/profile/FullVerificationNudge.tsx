@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowRight } from "lucide-react";
 import type { Business } from "../../../../types";
 import { Modal } from "./Modal";
 import { DocumentsCard } from "./DocumentsCard";
@@ -18,7 +19,7 @@ export function FullVerificationNudge({ business }: { business: Business }) {
       >
         {requested && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
         Reach full verification to receive payments on-platform
-        <span aria-hidden>→</span>
+        <ArrowRight className="h-3.5 w-3.5" />
       </button>
 
       {open && (

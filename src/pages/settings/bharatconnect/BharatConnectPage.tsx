@@ -7,6 +7,16 @@ import { Overview } from "./Overview";
 
 export function BharatConnectPage() {
   const business = useStore((s) => s.currentBusiness());
+  const connectFlow = useStore((s) => s.connectFlow[s.currentBusinessId]);
+
+  // Keep showing the connect flow (its own progress/success screen) while a
+  // submission is in flight or was just confirmed — connectionState flips to
+  // "connected" the instant the mock webhook resolves, and without this check
+  // this switch would swap straight to Overview before the success screen
+  // (and its own timed auto-redirect) ever gets to render.
+  if (connectFlow && connectFlow.submitPhase !== "idle") {
+    return <ConnectFlow business={business} />;
+  }
 
   switch (business.connectionState) {
     case "connected":

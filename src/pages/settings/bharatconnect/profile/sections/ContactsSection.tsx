@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import type { Business } from "../../../../../types";
 import type { useProfileForm } from "../useProfileForm";
 import { FIELD_CONFIG } from "../fieldConfig";
@@ -26,7 +27,7 @@ function ChipList({
           >
             {item}
             <button onClick={() => onRemove(item)} className="text-faint hover:text-body">
-              ✕
+              <X className="h-3 w-3" />
             </button>
           </span>
         ))}

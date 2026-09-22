@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { AlertTriangle, Check, Copy, Pencil } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import type { Business } from "../../../types";
 
@@ -12,8 +13,9 @@ function CopyId({ id }: { id: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-body hover:bg-gray-50"
+      className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-body hover:bg-gray-50"
     >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       {copied ? "Copied" : "Copy"}
     </button>
   );
@@ -32,7 +34,7 @@ export function Overview({ business }: { business: Business }) {
     <div>
       {business.connectionState === "needs_attention" && business.lastRejection && (
         <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3.5">
-          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
           <div className="flex-1 text-sm">
             <div className="font-medium text-red-800">{business.lastRejection.message}</div>
             <div className="mt-0.5 text-red-700">Field: {business.lastRejection.field}</div>
@@ -55,8 +57,9 @@ export function Overview({ business }: { business: Business }) {
         </div>
         <button
           onClick={() => navigate("/settings/bharatconnect/profile/business_details")}
-          className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          className="flex items-center gap-1.5 rounded-md bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
         >
+          <Pencil className="h-3.5 w-3.5" />
           Edit profile
         </button>
       </div>
