@@ -16,6 +16,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   const invoice = useStore((s) => s.invoices.find((i) => i.id === id));
   const sendInvoiceViaBharatConnect = useStore((s) => s.sendInvoiceViaBharatConnect);
   const respondToBill = useStore((s) => s.respondToBill);
+  const inviteToBharatConnect = useStore((s) => s.inviteToBharatConnect);
   const connected = business.connectionState === "connected";
 
   if (!invoice) {
@@ -92,11 +93,26 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
             </div>
             <div className="mt-1 font-medium text-ink">{invoice.counterpartyName}</div>
             {invoice.counterpartyGstin && <div className="text-sm text-faint">GSTIN: {invoice.counterpartyGstin}</div>}
-            {invoice.counterpartyB2bId && (
+            {invoice.counterpartyB2bId ? (
               <div className="mt-1 flex items-center gap-1.5 text-sm text-faint">
                 <BharatConnectMark size={12} />
                 <span className="font-mono">{invoice.counterpartyB2bId}</span>
               </div>
+            ) : (
+              connected && (
+                <div className="mt-1 flex items-center gap-2 text-sm">
+                  <span className="flex items-center gap-1.5 text-faint">
+                    <BharatConnectMark size={12} className="grayscale opacity-60" />
+                    Not on BharatConnect
+                  </span>
+                  <button
+                    onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
+                    className="font-medium text-primary hover:text-primary-hover"
+                  >
+                    Invite
+                  </button>
+                </div>
+              )
             )}
           </div>
 
@@ -182,12 +198,32 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
 
                 {kind === "sales" ? (
                   invoice.bcSendStatus === "not_sent" ? (
-                    <button
-                      onClick={handleSend}
-                      className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-                    >
-                      Send via BharatConnect
-                    </button>
+                    invoice.counterpartyB2bId ? (
+                      <button
+                        onClick={handleSend}
+                        className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                      >
+                        Send via BharatConnect
+                      </button>
+                    ) : (
+                      <div>
+                        <button
+                          disabled
+                          className="w-full cursor-not-allowed rounded-md bg-gray-200 px-3 py-2 text-sm font-medium text-faint opacity-70"
+                        >
+                          Send via BharatConnect
+                        </button>
+                        <p className="mt-1.5 text-xs text-faint">
+                          {invoice.counterpartyName} hasn't joined BharatConnect yet.
+                        </p>
+                        <button
+                          onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
+                          className="mt-2 w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary-soft"
+                        >
+                          Invite to BharatConnect
+                        </button>
+                      </div>
+                    )
                   ) : invoice.bcSendStatus === "sending" ? (
                     <div className="flex items-center gap-2 text-sm text-faint">
                       <CircularSpinner size={14} /> Sending…

@@ -97,6 +97,8 @@ interface StoreState {
 
   // Dev-panel: simulate the buyer's webhook confirming/rejecting a sent sales invoice
   simulateInvoiceConfirmation: (invoiceId: string, outcome: "accepted" | "failure") => void;
+
+  inviteToBharatConnect: (counterpartyName: string) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -476,6 +478,12 @@ export const useStore = create<StoreState>((set, get) => ({
         : `${invoice?.counterpartyName ?? "Buyer"} rejected ${invoiceId} via BharatConnect.`,
       outcome === "accepted" ? "success" : "error",
     );
+  },
+
+  inviteToBharatConnect: async (counterpartyName) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    get().pushToast(`Invited ${counterpartyName} to join BharatConnect.`);
   },
 }));
 

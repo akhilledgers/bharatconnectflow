@@ -21,6 +21,7 @@ import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { ConnectBharatConnectBanner } from "../../components/ConnectBharatConnectCTA";
 import { PendingActionsBanner } from "../../components/layout/PendingActionsBanner";
+import { InviteBcTooltip } from "../../components/InviteBcTooltip";
 import { configFor, sumAmount, sumUnpaid, inr, money } from "./kindConfig";
 import type { Invoice } from "../../types";
 
@@ -262,6 +263,7 @@ function InvoiceRow({
   const showSend = connected && config.kind === "sales" && invoice.bcSendStatus === "not_sent";
   const showSending = connected && invoice.bcSendStatus === "sending";
   const showRetry = connected && config.kind === "sales" && invoice.bcConfirmationStatus === "failure";
+  const counterpartyOnBc = !!invoice.counterpartyB2bId;
 
   return (
     <tr className="relative hover:bg-gray-50/60">
@@ -289,12 +291,20 @@ function InvoiceRow({
       {connected && (
         <td className="px-2 py-4">
           {showSend ? (
-            <button
-              onClick={onSend}
-              className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:text-primary-hover"
-            >
-              Send via <BharatConnectMark size={12} />
-            </button>
+            counterpartyOnBc ? (
+              <button
+                onClick={onSend}
+                className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:text-primary-hover"
+              >
+                Send via <BharatConnectMark size={12} />
+              </button>
+            ) : (
+              <InviteBcTooltip counterpartyName={invoice.counterpartyName}>
+                <span className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap text-xs font-medium text-faint opacity-50">
+                  Send via <BharatConnectMark size={12} className="grayscale" />
+                </span>
+              </InviteBcTooltip>
+            )
           ) : showSending ? (
             <span className="flex items-center gap-2 text-xs text-faint">
               <CircularSpinner size={12} /> Sending…
