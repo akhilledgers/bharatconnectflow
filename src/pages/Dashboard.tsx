@@ -4,6 +4,7 @@ import { DashboardBanner } from "../components/layout/DashboardBanner";
 import { SendViaBharatConnectButton } from "../components/SendViaBharatConnectButton";
 import { ExpenseDonut } from "../components/dashboard/ExpenseDonut";
 import { SalesBarChart } from "../components/dashboard/SalesBarChart";
+import { money } from "./invoices/kindConfig";
 
 const STAT_TILES = [
   { label: "Total sales", value: "INR 5.09 L", icon: TrendingUp, iconClass: "bg-emerald-50 text-emerald-600" },
@@ -92,7 +93,7 @@ export function Dashboard() {
                 <div>
                   <div className="font-medium text-blue-600">#{inv.id}</div>
                   <div className="mt-0.5 text-sm text-faint">
-                    INR {inv.amount.toLocaleString("en-IN")} · {inv.status.replace("_", " ")}
+                    INR {money(inv.amount)} · {inv.status.replace("_", " ")}
                   </div>
                 </div>
                 <SendViaBharatConnectButton invoiceId={inv.id} />

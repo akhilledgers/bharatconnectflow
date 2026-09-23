@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { CheckCircle2, X, XCircle } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useStore } from "../../store/useStore";
@@ -31,14 +32,23 @@ export function AppShell() {
       </button>
       {devPanelOpen && <DevPanel />}
 
-      <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2">
+      <div className="fixed right-5 top-5 z-50 flex w-80 flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
-            onClick={() => dismissToast(t.id)}
-            className="cursor-pointer rounded-md bg-ink px-4 py-2.5 text-sm text-white shadow-lg"
+            className={`flex items-start gap-2.5 rounded-lg border px-4 py-3 text-sm shadow-lg ${
+              t.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"
+            }`}
           >
-            {t.message}
+            {t.tone === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span className="flex-1">{t.message}</span>
+            <button onClick={() => dismissToast(t.id)} className="shrink-0 opacity-60 hover:opacity-100">
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         ))}
       </div>

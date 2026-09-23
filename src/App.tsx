@@ -1,10 +1,12 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { Dashboard } from "./pages/Dashboard";
-import { BharatConnectPlaceholder } from "./pages/settings/BharatConnectPlaceholder";
 import { BharatConnectPage } from "./pages/settings/bharatconnect/BharatConnectPage";
 import { ProfilePage } from "./pages/settings/bharatconnect/profile/ProfilePage";
 import { IdsPage } from "./pages/settings/bharatconnect/IdsPage";
+import { InvoiceListPage } from "./pages/invoices/InvoiceListPage";
+import { InvoiceViewPage } from "./pages/invoices/InvoiceViewPage";
+import { InvoiceCreatePage } from "./pages/invoices/InvoiceCreatePage";
 
 export default function App() {
   return (
@@ -15,10 +17,14 @@ export default function App() {
           <Route path="/settings/bharatconnect" element={<BharatConnectPage />} />
           <Route path="/settings/bharatconnect/profile/*" element={<ProfilePage />} />
           <Route path="/settings/bharatconnect/ids" element={<IdsPage />} />
-          <Route
-            path="/sales/counterparty-search"
-            element={<BharatConnectPlaceholder label="Send via BharatConnect" />}
-          />
+
+          <Route path="/sales/invoices" element={<InvoiceListPage kind="sales" />} />
+          <Route path="/sales/invoices/create" element={<InvoiceCreatePage kind="sales" />} />
+          <Route path="/sales/invoices/:id" element={<InvoiceViewPage kind="sales" />} />
+
+          <Route path="/expenses/bills" element={<InvoiceListPage kind="purchase" />} />
+          <Route path="/expenses/bills/create" element={<InvoiceCreatePage kind="purchase" />} />
+          <Route path="/expenses/bills/:id" element={<InvoiceViewPage kind="purchase" />} />
         </Route>
       </Routes>
     </HashRouter>

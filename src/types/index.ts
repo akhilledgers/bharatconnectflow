@@ -114,6 +114,8 @@ export interface Business {
   lastSyncedAt: string | null;
 
   bannerSnoozedUntil: string | null;
+  invoiceBannerSnoozedUntil: string | null;
+  billsBannerSnoozedUntil: string | null;
   welcomeSeen: boolean;
 
   profileDraft: ProfileDraft;
@@ -121,12 +123,38 @@ export interface Business {
   kycDocuments: KycDocument[];
 }
 
+export type BcSendStatus = "not_sent" | "sending" | "sent";
+export type BcConfirmationStatus = "pending" | "accepted" | "failure";
+
+export interface InvoiceLineItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  qty: number;
+  gstPercent: number;
+  hsnSac?: string;
+}
+
 export interface Invoice {
   id: string;
   kind: "sales" | "purchase";
   counterpartyName: string;
+  counterpartyEmail?: string;
+  counterpartyGstin?: string;
+  /** BharatConnect B2B ID of the counterparty, if known — null means not on the network. */
+  counterpartyB2bId?: string | null;
   amount: number;
   status: "unpaid" | "partly_paid" | "paid";
+  date: string;
+  dueDate?: string;
+  createdBy?: string;
+  lineItems: InvoiceLineItem[];
+
+  /** Sales side: has this business sent it over BharatConnect. */
+  bcSendStatus: BcSendStatus;
+  /** Either side: how the counterparty (sales) or this business (purchase, inbound) responded. */
+  bcConfirmationStatus: BcConfirmationStatus | null;
 }
 
 export type ConnectSubmitPhase =

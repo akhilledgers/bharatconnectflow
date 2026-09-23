@@ -10,9 +10,7 @@ function popoverContent(business: Business): { body: string; actionLabel: string
   switch (business.connectionState) {
     case "connected":
       return {
-        body: `${idCount} active B2B ID${idCount === 1 ? "" : "s"}. Verified for invoicing.${
-          business.verification.payments ? " Payments are enabled." : " Payments are not enabled yet."
-        }`,
+        body: `${idCount} active B2B ID${idCount === 1 ? "" : "s"}. Verified for invoicing.`,
         actionLabel: "Manage",
         action: "open",
       };
@@ -51,6 +49,7 @@ function popoverContent(business: Business): { body: string; actionLabel: string
 
 export function StatusChip() {
   const business = useStore((s) => s.currentBusiness());
+  const invoices = useStore((s) => s.invoices);
   const linkExistingId = useStore((s) => s.linkExistingId);
   const pushToast = useStore((s) => s.pushToast);
   const [open, setOpen] = useState(false);
@@ -68,6 +67,10 @@ export function StatusChip() {
 
   const meta = STATUS_META[business.connectionState];
   const content = popoverContent(business);
+  const sentCount = invoices.filter((i) => i.kind === "sales" && i.bcSendStatus === "sent").length;
+  const acceptedCount = invoices.filter((i) => i.kind === "sales" && i.bcConfirmationStatus === "accepted").length;
+  const receivedCount = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus !== null).length;
+  const pendingAcceptCount = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus === "pending").length;
 
   async function handleAction() {
     switch (content.action) {
@@ -118,13 +121,37 @@ export function StatusChip() {
             {business.connectionState === "connected" ? "Connected to BharatConnect" : meta.label}
           </div>
           <p className="mb-3 text-sm text-body">{content.body}</p>
-          <button
-            onClick={handleAction}
-            disabled={linking}
-            className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-          >
-            {linking ? "Linking…" : content.actionLabel}
-          </button>
+
+          {business.connectionState === "connected" && (
+            <div className="mb-3 grid grid-cols-2 gap-2 rounded-md border border-gray-100 bg-gray-50 p-3">
+              <div>
+                <div className="text-lg font-semibold text-ink">{sentCount}</div>
+                <div className="text-xs text-faint">Invoices sent</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-ink">{receivedCount}</div>
+                <div className="text-xs text-faint">Bills received</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-emerald-600">{acceptedCount}</div>
+                <div className="text-xs text-faint">Invoices accepted</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-blue-600">{pendingAcceptCount}</div>
+                <div className="text-xs text-faint">Bills to accept</div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-center">
+            <button
+              onClick={handleAction}
+              disabled={linking}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+            >
+              {linking ? "Linking…" : content.actionLabel}
+            </button>
+          </div>
         </div>
       )}
     </div>

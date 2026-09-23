@@ -12,6 +12,7 @@ import { baseId } from "../lib/id-standard";
 import type { Invoice } from "../types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 interface ConnectFlowState {
   basedOn: "PAN" | "GSTIN";
@@ -44,18 +45,19 @@ interface StoreState {
   invoices: Invoice[];
   devPanelOpen: boolean;
   connectFlow: Record<string, ConnectFlowState>;
-  toasts: { id: string; message: string }[];
+  toasts: { id: string; message: string; tone: "success" | "error" }[];
 
   currentBusiness: () => Business;
   switchBusiness: (id: string) => void;
   toggleDevPanel: (open?: boolean) => void;
-  pushToast: (message: string) => void;
+  pushToast: (message: string, tone?: "success" | "error") => void;
   dismissToast: (id: string) => void;
 
   // Connection status (dev panel + banner + chip)
   forceConnectionState: (businessId: string, state: ConnectionState) => void;
   snoozeBanner: (businessId: string) => void;
   dismissBannerPermanentlyForSession: (businessId: string) => void;
+  snoozeInvoiceBanner: (businessId: string, kind: "sales" | "purchase") => void;
   linkExistingId: (businessId: string) => Promise<void>;
 
   // Connect flow (single page onboarding)
@@ -87,6 +89,14 @@ interface StoreState {
 
   // Dev-panel: force a verification level to test level-gated UI
   setVerificationLevel: (businessId: string, level: VerificationLevel) => void;
+
+  // Invoices / Bills
+  sendInvoiceViaBharatConnect: (invoiceId: string) => Promise<void>;
+  respondToBill: (invoiceId: string, decision: "accept" | "reject") => Promise<void>;
+  createInvoice: (invoice: Invoice) => Promise<void>;
+
+  // Dev-panel: simulate the buyer's webhook confirming/rejecting a sent sales invoice
+  simulateInvoiceConfirmation: (invoiceId: string, outcome: "accepted" | "failure") => void;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -104,8 +114,11 @@ export const useStore = create<StoreState>((set, get) => ({
   toggleDevPanel: (open) =>
     set((s) => ({ devPanelOpen: open ?? !s.devPanelOpen })),
 
-  pushToast: (message) =>
-    set((s) => ({ toasts: [...s.toasts, { id: crypto.randomUUID(), message }] })),
+  pushToast: (message, tone = "success") => {
+    const id = crypto.randomUUID();
+    set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }));
+    setTimeout(() => get().dismissToast(id), 4000);
+  },
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
@@ -135,6 +148,19 @@ export const useStore = create<StoreState>((set, get) => ({
         [businessId]: {
           ...s.businesses[businessId],
           bannerSnoozedUntil: new Date(Date.now() + SEVEN_DAYS_MS).toISOString(),
+        },
+      },
+    })),
+
+  snoozeInvoiceBanner: (businessId, kind) =>
+    set((s) => ({
+      businesses: {
+        ...s.businesses,
+        [businessId]: {
+          ...s.businesses[businessId],
+          ...(kind === "sales"
+            ? { invoiceBannerSnoozedUntil: new Date(Date.now() + THREE_DAYS_MS).toISOString() }
+            : { billsBannerSnoozedUntil: new Date(Date.now() + THREE_DAYS_MS).toISOString() }),
         },
       },
     })),
@@ -405,6 +431,52 @@ export const useStore = create<StoreState>((set, get) => ({
         },
       },
     })),
+
+  sendInvoiceViaBharatConnect: async (invoiceId) => {
+    const { delay } = await import("../mock/api");
+    set((s) => ({
+      invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, bcSendStatus: "sending" as const } : i)),
+    }));
+    await delay(undefined, 900, 1300);
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId ? { ...i, bcSendStatus: "sent" as const, bcConfirmationStatus: "pending" as const } : i,
+      ),
+    }));
+    get().pushToast("Sent via BharatConnect. Waiting for the buyer to confirm.");
+  },
+
+  respondToBill: async (invoiceId, decision) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 600, 1000);
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? { ...i, bcConfirmationStatus: decision === "accept" ? ("accepted" as const) : ("failure" as const) }
+          : i,
+      ),
+    }));
+    get().pushToast(decision === "accept" ? "Bill accepted." : "Bill rejected.", decision === "accept" ? "success" : "error");
+  },
+
+  createInvoice: async (invoice) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    set((s) => ({ invoices: [invoice, ...s.invoices] }));
+  },
+
+  simulateInvoiceConfirmation: (invoiceId, outcome) => {
+    set((s) => ({
+      invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, bcConfirmationStatus: outcome } : i)),
+    }));
+    const invoice = get().invoices.find((i) => i.id === invoiceId);
+    get().pushToast(
+      outcome === "accepted"
+        ? `${invoice?.counterpartyName ?? "Buyer"} accepted ${invoiceId} via BharatConnect.`
+        : `${invoice?.counterpartyName ?? "Buyer"} rejected ${invoiceId} via BharatConnect.`,
+      outcome === "accepted" ? "success" : "error",
+    );
+  },
 }));
 
 export function isVisibilityPublic(v: IdVisibility) {

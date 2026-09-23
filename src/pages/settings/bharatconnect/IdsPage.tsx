@@ -20,7 +20,7 @@ export function IdsPage() {
   function handleDeactivate(id: BharatConnectId) {
     const reason = blockReason(id);
     if (reason) {
-      pushToast(reason);
+      pushToast(reason, "error");
       return;
     }
     deactivateId(business.id, id.id);

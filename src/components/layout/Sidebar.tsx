@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Contact,
@@ -20,18 +21,32 @@ import { useStore } from "../../store/useStore";
 import { STATUS_META } from "../../lib/status";
 import { LedgersLogo } from "./LedgersLogo";
 
-const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; hasChildren?: boolean }[] = [
+type Child = string | { label: string; to: string };
+
+const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; children?: Child[]; chevron?: boolean }[] = [
   { label: "Contacts", icon: Contact },
   { label: "Catalog", icon: ShoppingBag },
   { label: "Inventory", icon: Boxes },
-  { label: "Sales", icon: TrendingUp, hasChildren: true },
-  { label: "Expenses", icon: Receipt, hasChildren: true },
-  { label: "Accounting", icon: BookOpen, hasChildren: true },
-  { label: "Taxation", icon: Percent, hasChildren: true },
+  {
+    label: "Sales",
+    icon: TrendingUp,
+    children: [
+      { label: "Invoices", to: "/sales/invoices" },
+      "Quotes",
+      "Receipts",
+      "Credit Notes",
+      "Delivery Challans",
+      "Receivables",
+      "Payment Collection",
+    ],
+  },
+  { label: "Expenses", icon: Receipt, children: [{ label: "Bills", to: "/expenses/bills" }] },
+  { label: "Accounting", icon: BookOpen, chevron: true },
+  { label: "Taxation", icon: Percent, chevron: true },
   { label: "Banking", icon: Landmark },
-  { label: "HRMS", icon: Layers, hasChildren: true },
+  { label: "HRMS", icon: Layers, chevron: true },
   { label: "Users & Roles", icon: UsersRound },
-  { label: "Dataport", icon: Database, hasChildren: true },
+  { label: "Dataport", icon: Database, chevron: true },
 ];
 
 const SETTINGS_ITEMS = ["Basic Settings", "Advanced Settings", "Customization", "PG Settings"];
@@ -40,6 +55,18 @@ export function Sidebar() {
   const business = useStore((s) => s.currentBusiness());
   const meta = STATUS_META[business.connectionState];
   const incomplete = business.connectionState !== "connected";
+  const location = useLocation();
+
+  const [openSection, setOpenSection] = useState<string | null>(() =>
+    location.pathname.startsWith("/sales") ? "Sales" : location.pathname.startsWith("/expenses") ? "Expenses" : null,
+  );
+
+  // Sidebar persists across route changes (it's outside the routed Outlet), so
+  // the section has to re-sync on every navigation, not just once at mount.
+  useEffect(() => {
+    if (location.pathname.startsWith("/sales")) setOpenSection("Sales");
+    else if (location.pathname.startsWith("/expenses")) setOpenSection("Expenses");
+  }, [location.pathname]);
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
@@ -67,16 +94,48 @@ export function Sidebar() {
           Dashboard
         </NavLink>
 
-        {NAV_ITEMS.map(({ label, icon: Icon, hasChildren }) => (
-          <div
-            key={label}
-            className="mb-0.5 flex cursor-default items-center gap-2.5 rounded-md px-3 py-2 text-body hover:bg-gray-50"
-          >
-            <Icon className="h-4 w-4 shrink-0 text-faint" />
-            <span className="flex-1">{label}</span>
-            {hasChildren && <ChevronDown className="h-3.5 w-3.5 shrink-0 text-faint" />}
-          </div>
-        ))}
+        {NAV_ITEMS.map(({ label, icon: Icon, children, chevron }) => {
+          const isOpen = openSection === label;
+          const expandable = !!children && children.length > 0;
+          return (
+            <div key={label}>
+              <button
+                onClick={() => expandable && setOpenSection(isOpen ? null : label)}
+                className={`mb-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-body hover:bg-gray-50 ${expandable ? "" : "cursor-default"}`}
+              >
+                <Icon className="h-4 w-4 shrink-0 text-faint" />
+                <span className="flex-1">{label}</span>
+                {(expandable || chevron) && (
+                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                )}
+              </button>
+
+              {expandable && isOpen && (
+                <div className="ml-6 border-l border-gray-100 pl-3">
+                  {children.map((child) =>
+                    typeof child === "string" ? (
+                      <div key={child} className="mb-0.5 cursor-default rounded-md px-3 py-1.5 text-body hover:bg-gray-50">
+                        {child}
+                      </div>
+                    ) : (
+                      <NavLink
+                        key={child.to}
+                        to={child.to}
+                        className={({ isActive }) =>
+                          `mb-0.5 block rounded-md px-3 py-1.5 ${
+                            isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
+                          }`
+                        }
+                      >
+                        {child.label}
+                      </NavLink>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         <div className="mb-0.5 flex cursor-default items-center gap-2.5 rounded-md px-3 py-2 text-body hover:bg-gray-50">
           <SettingsIcon className="h-4 w-4 shrink-0 text-faint" />

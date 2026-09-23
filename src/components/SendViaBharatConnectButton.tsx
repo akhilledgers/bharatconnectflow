@@ -26,7 +26,7 @@ export function SendViaBharatConnectButton({ invoiceId }: { invoiceId: string })
 
   return (
     <button
-      onClick={() => navigate(`/sales/counterparty-search?invoice=${invoiceId}`)}
+      onClick={() => navigate(`/sales/invoices/${invoiceId}`)}
       className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
     >
       Send via BharatConnect
