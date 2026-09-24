@@ -23,8 +23,8 @@ import { LedgersLogo } from "./LedgersLogo";
 
 type Child = string | { label: string; to: string };
 
-const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; children?: Child[]; chevron?: boolean }[] = [
-  { label: "Contacts", icon: Contact },
+const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; to?: string; children?: Child[]; chevron?: boolean }[] = [
+  { label: "Contacts", icon: Contact, to: "/contacts" },
   { label: "Catalog", icon: ShoppingBag },
   { label: "Inventory", icon: Boxes },
   {
@@ -94,21 +94,35 @@ export function Sidebar() {
           Dashboard
         </NavLink>
 
-        {NAV_ITEMS.map(({ label, icon: Icon, children, chevron }) => {
+        {NAV_ITEMS.map(({ label, icon: Icon, to, children, chevron }) => {
           const isOpen = openSection === label;
           const expandable = !!children && children.length > 0;
           return (
             <div key={label}>
-              <button
-                onClick={() => expandable && setOpenSection(isOpen ? null : label)}
-                className={`mb-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-body hover:bg-gray-50 ${expandable ? "" : "cursor-default"}`}
-              >
-                <Icon className="h-4 w-4 shrink-0 text-faint" />
-                <span className="flex-1">{label}</span>
-                {(expandable || chevron) && (
-                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                )}
-              </button>
+              {to ? (
+                <NavLink
+                  to={to}
+                  className={({ isActive }) =>
+                    `mb-0.5 flex items-center gap-2.5 rounded-md px-3 py-2 ${
+                      isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
+                    }`
+                  }
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-faint" />
+                  <span className="flex-1">{label}</span>
+                </NavLink>
+              ) : (
+                <button
+                  onClick={() => expandable && setOpenSection(isOpen ? null : label)}
+                  className={`mb-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-body hover:bg-gray-50 ${expandable ? "" : "cursor-default"}`}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-faint" />
+                  <span className="flex-1">{label}</span>
+                  {(expandable || chevron) && (
+                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  )}
+                </button>
+              )}
 
               {expandable && isOpen && (
                 <div className="ml-6 border-l border-gray-100 pl-3">

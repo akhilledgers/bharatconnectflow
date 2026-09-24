@@ -1,4 +1,4 @@
-import type { Business, Invoice } from "../types";
+import type { Address, Business, Invoice, LedgerContact } from "../types";
 
 export const STOCK_HOLDING_ID = "stock-holding";
 export const SHARMA_TRADERS_ID = "sharma-traders";
@@ -438,3 +438,168 @@ export const COUNTERPARTY_DIRECTORY = [
     capability: "Not yet on BharatConnect. Invite them to exchange invoices directly.",
   },
 ];
+
+/**
+ * Mock of what the native GST portal lookup (unrelated to BharatConnect) returns for a
+ * GSTIN — this is the "autofill name, PAN, address & more" promise, and works regardless
+ * of whether the business is connected to BharatConnect or the counterparty is on it.
+ */
+export const GST_REGISTRY_BY_GSTIN: Record<string, { name: string; pan: string; address: Address }> = {
+  "27PQRPR5678K1ZQ": {
+    name: "Sharma Traders",
+    pan: "PQRPR5678K",
+    address: { line1: "12, Marketyard Road", city: "Pune", state: "MAHARASHTRA", pincode: "411037", source: "gst_portal" },
+  },
+  "27AACCB4821F1ZQ": {
+    name: "Bharat Retail Pvt Ltd",
+    pan: "AACCB4821F",
+    address: { line1: "45, MG Road", city: "Mumbai", state: "MAHARASHTRA", pincode: "400001", source: "gst_portal" },
+  },
+  "29AABCS4021L1Z2": {
+    name: "Stanwell Kids Garments",
+    pan: "AABCS4021L",
+    address: { line1: "7, Commercial Street", city: "Bengaluru", state: "KARNATAKA", pincode: "560001", source: "gst_portal" },
+  },
+  "33AABCL3984G2ZH": {
+    name: "Verve Financial Services Private Limited",
+    pan: "AABCL3984G",
+    address: { line1: "22, Anna Salai", city: "Chennai", state: "TAMIL NADU", pincode: "600002", source: "gst_portal" },
+  },
+  "07ABCPY9668B1Z7": {
+    name: "Manoj Kumar Yadav",
+    pan: "ABCPY9668B",
+    address: { line1: "18, Karol Bagh", city: "New Delhi", state: "DELHI", pincode: "110005", source: "gst_portal" },
+  },
+  "24AAOPT5566K1Z9": {
+    name: "Om Traders",
+    pan: "AAOPT5566K",
+    address: { line1: "3, Ring Road", city: "Surat", state: "GUJARAT", pincode: "395002", source: "gst_portal" },
+  },
+  "29AASFL9988M1Z3": {
+    name: "Sri Lakshmi Enterprises",
+    pan: "AASFL9988M",
+    address: { line1: "56, Jayanagar 4th Block", city: "Bengaluru", state: "KARNATAKA", pincode: "560011", source: "gst_portal" },
+  },
+  "33AADCI6142F1ZX": {
+    name: "Indus Comtrade Private Limited",
+    pan: "AADCI6142F",
+    address: { line1: "9, Nungambakkam High Road", city: "Chennai", state: "TAMIL NADU", pincode: "600034", source: "gst_portal" },
+  },
+};
+
+/** Every valid-looking GSTIN carries its linked PAN at characters 3-12 — extractable even
+ * for GSTINs outside the mock registry, matching real GST-portal autofill behavior. */
+export function lookupGstRegistry(gstin: string): { name: string | null; pan: string; address: Address | null } | null {
+  const value = gstin.trim().toUpperCase();
+  if (value.length !== 15) return null;
+  const known = GST_REGISTRY_BY_GSTIN[value];
+  if (known) return known;
+  return { name: null, pan: value.slice(2, 12), address: null };
+}
+
+/**
+ * Mock of what a reqSearchEntity call against a GSTIN would return — keyed by the
+ * same GSTINs already used across the seed invoices/bills so a contact created with
+ * a matching GSTIN resolves to the same B2B ID as its invoices.
+ */
+export const BC_REGISTRY_BY_GSTIN: Record<string, { name: string; bcId: string }> = {
+  "27PQRPR5678K1ZQ": { name: "Sharma Traders", bcId: "SHAR.RAME.5678.001@BCB" },
+  "27AACCB4821F1ZQ": { name: "Bharat Retail Pvt Ltd", bcId: "AACCB4821F@BCB" },
+  "29AABCS4021L1Z2": { name: "Stanwell Kids Garments", bcId: "STAN.KIDS.4021.001@BCB" },
+  "33AABCL3984G2ZH": { name: "Verve Financial Services Private Limited", bcId: "VERV.FIN.3984.001@BCB" },
+  "07ABCPY9668B1Z7": { name: "Manoj Kumar Yadav", bcId: "MANO.YADA.9668.001@BCB" },
+  "24AAOPT5566K1Z9": { name: "Om Traders", bcId: "OMTR.OMTR.1122.001@BCB" },
+  "33AADCI6142F1ZX": { name: "Indus Comtrade Private Limited", bcId: "INDU.COMT.6142.001@BCB" },
+};
+
+export function lookupBcByGstin(gstin: string): { name: string; bcId: string } | null {
+  return BC_REGISTRY_BY_GSTIN[gstin.trim().toUpperCase()] ?? null;
+}
+
+export function makeSeedContacts(): LedgerContact[] {
+  return [
+    {
+      id: "ct-1",
+      salutation: "Mr",
+      name: "Reliance",
+      type: "customer",
+      businessName: "RELIANCE INDUSTRIES LIMITED",
+      region: "INDIA",
+      b2bId: undefined,
+    },
+    {
+      id: "ct-2",
+      salutation: "Mr",
+      name: "JSD",
+      type: "customer",
+      businessName: "RELIANCE INDUSTRIES LIMITED",
+      region: "INDIA",
+      b2bId: undefined,
+    },
+    {
+      id: "ct-3",
+      salutation: "Mr",
+      name: "Oidar",
+      type: "supplier",
+      businessName: "GoDaddy.com LLC",
+      gstin: "9917USA29016OS6",
+      region: "INDIA",
+      b2bId: null,
+    },
+    {
+      id: "ct-4",
+      salutation: "Mr",
+      name: "Ramesh",
+      displayName: "Sharma Traders",
+      type: "customer",
+      businessName: "Sharma Traders",
+      email: "ramesh.sharma@sharmatraders.in",
+      mobile: "9820001234",
+      gstin: "27PQRPR5678K1ZQ",
+      region: "INDIA",
+      b2bId: "SHAR.RAME.5678.001@BCB",
+    },
+    {
+      id: "ct-5",
+      salutation: "Mr",
+      name: "Bharat Retail",
+      displayName: "Bharat Retail Pvt Ltd",
+      type: "customer",
+      businessName: "Bharat Retail Pvt Ltd",
+      email: "accounts@bharatretail.in",
+      gstin: "27AACCB4821F1ZQ",
+      region: "INDIA",
+      b2bId: "AACCB4821F@BCB",
+    },
+    {
+      id: "ct-6",
+      salutation: "Mr",
+      name: "Om Traders",
+      type: "supplier",
+      businessName: "Om Traders",
+      gstin: "24AAOPT5566K1Z9",
+      region: "INDIA",
+      b2bId: "OMTR.OMTR.1122.001@BCB",
+    },
+    {
+      id: "ct-7",
+      salutation: "Ms",
+      name: "Gowthami",
+      type: "customer",
+      email: "gowthami@hiyyachronojail.in",
+      region: "INDIA",
+      b2bId: undefined,
+    },
+    {
+      id: "ct-8",
+      salutation: "Mr",
+      name: "Ashoka Textiles",
+      type: "customer",
+      businessName: "Ashoka Textiles",
+      email: "purchase@ashokatextiles.in",
+      gstin: "27AASHT1234L1ZQ",
+      region: "INDIA",
+      b2bId: null,
+    },
+  ];
+}

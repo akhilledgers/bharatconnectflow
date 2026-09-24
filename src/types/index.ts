@@ -157,6 +157,28 @@ export interface Invoice {
   bcConfirmationStatus: BcConfirmationStatus | null;
 }
 
+export type ContactType = "customer" | "supplier";
+
+export interface LedgerContact {
+  id: string;
+  salutation: string;
+  name: string;
+  displayName?: string;
+  type: ContactType;
+  businessName?: string;
+  email?: string;
+  mobile?: string;
+  gstin?: string;
+  pan?: string;
+  region: string;
+  billingAddress?: Address;
+  /**
+   * BharatConnect B2B ID resolved from this contact's GSTIN, if any.
+   * undefined = no GSTIN on file, never checked. null = checked, not on BharatConnect. string = connected.
+   */
+  b2bId?: string | null;
+}
+
 export type ConnectSubmitPhase =
   | "idle"
   | "sending"

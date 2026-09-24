@@ -7,6 +7,8 @@ import { IdsPage } from "./pages/settings/bharatconnect/IdsPage";
 import { InvoiceListPage } from "./pages/invoices/InvoiceListPage";
 import { InvoiceViewPage } from "./pages/invoices/InvoiceViewPage";
 import { InvoiceCreatePage } from "./pages/invoices/InvoiceCreatePage";
+import { ContactsListPage } from "./pages/contacts/ContactsListPage";
+import { ContactViewPage } from "./pages/contacts/ContactViewPage";
 
 export default function App() {
   return (
@@ -14,6 +16,8 @@ export default function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/contacts" element={<ContactsListPage />} />
+          <Route path="/contacts/:id" element={<ContactViewPage />} />
           <Route path="/settings/bharatconnect" element={<BharatConnectPage />} />
           <Route path="/settings/bharatconnect/profile/*" element={<ProfilePage />} />
           <Route path="/settings/bharatconnect/ids" element={<IdsPage />} />

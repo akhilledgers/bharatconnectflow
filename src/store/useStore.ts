@@ -6,8 +6,9 @@ import type {
   ConnectSubmitPhase,
   IdVisibility,
   VerificationLevel,
+  LedgerContact,
 } from "../types";
-import { makeSeedBusinesses, makeSeedInvoices, STOCK_HOLDING_ID } from "../mock/seed";
+import { makeSeedBusinesses, makeSeedInvoices, makeSeedContacts, STOCK_HOLDING_ID } from "../mock/seed";
 import { baseId } from "../lib/id-standard";
 import type { Invoice } from "../types";
 
@@ -43,6 +44,7 @@ interface StoreState {
   businesses: Record<string, Business>;
   currentBusinessId: string;
   invoices: Invoice[];
+  contacts: LedgerContact[];
   devPanelOpen: boolean;
   connectFlow: Record<string, ConnectFlowState>;
   toasts: { id: string; message: string; tone: "success" | "error" }[];
@@ -99,12 +101,18 @@ interface StoreState {
   simulateInvoiceConfirmation: (invoiceId: string, outcome: "accepted" | "failure") => void;
 
   inviteToBharatConnect: (counterpartyName: string) => Promise<void>;
+  /** Mocks reqNonPublicInfo — email/mobile aren't returned by search, they need the counterparty's consent. */
+  requestContactDetails: (counterpartyName: string) => Promise<void>;
+
+  // Contacts
+  createContact: (contact: LedgerContact, inviteIfUnconnected: boolean) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
   businesses: makeSeedBusinesses(),
   currentBusinessId: STOCK_HOLDING_ID,
   invoices: makeSeedInvoices(),
+  contacts: makeSeedContacts(),
   devPanelOpen: false,
   connectFlow: {},
   toasts: [],
@@ -484,6 +492,25 @@ export const useStore = create<StoreState>((set, get) => ({
     const { delay } = await import("../mock/api");
     await delay(undefined, 500, 900);
     get().pushToast(`Invited ${counterpartyName} to join BharatConnect.`);
+  },
+
+  requestContactDetails: async (counterpartyName) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    get().pushToast(`Requested ${counterpartyName}'s email and mobile. They'll need to approve before it's shared.`);
+  },
+
+  createContact: async (contact, inviteIfUnconnected) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    set((s) => ({ contacts: [contact, ...s.contacts] }));
+    if (contact.b2bId) {
+      get().pushToast(`${contact.name} added. Already on BharatConnect.`);
+    } else if (contact.b2bId === null && inviteIfUnconnected) {
+      await get().inviteToBharatConnect(contact.name);
+    } else {
+      get().pushToast(`${contact.name} added to Contacts.`);
+    }
   },
 }));
 

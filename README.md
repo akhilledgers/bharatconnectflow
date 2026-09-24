@@ -4,10 +4,16 @@ A working front-end prototype of the BharatConnect integration inside LEDGERS. E
 client-side: React + TypeScript + Tailwind, React Router (hash routing), Zustand for state,
 and a mocked API layer with artificial network delay. Nothing talks to a real backend.
 
-This is **phase one** of the prototype. It covers connection status, onboarding, the
-connected overview, the BharatConnect IDs page, and a redesigned profile-edit page with a
-verification-level system. Counterparty search (section 7 of the original brief) has not
-been built yet — see "Not built yet" below.
+Two builds are stacked here:
+
+1. **Onboarding & profile** — connection status everywhere, the one-page connect flow, the
+   connected overview, BharatConnect IDs, and the redesigned profile-edit page with a
+   verification-level system.
+2. **Invoices, Bills & Contacts, integrated natively** — BharatConnect isn't a separate
+   module. Sales Invoices, Expenses Bills, and Contacts are LEDGERS' own native pages; they
+   render exactly as they would with no BharatConnect connection at all until the business
+   connects, at which point send/accept/reject actions, status filters, pending-action
+   banners, and a BharatConnect column appear in place — same page, same URL, same table.
 
 ## Running it
 
@@ -27,6 +33,8 @@ Every screen has a **dev panel** — the `{ }` button, bottom-right of every pag
 - Force any of the six connection states directly, without going through a real flow
 - Fire the two simulated BharatConnect webhooks (confirm activation / reject an update)
 - Force the business's verification level (1, 2, or 3) to see level-gated UI
+- Simulate the buyer's side of a sent sales invoice — Accept or Fail any invoice currently
+  sitting in "sent, awaiting confirmation," without leaving the page you're on
 
 The profile-edit page has two more dev controls of its own, next to its section nav
 ("Simulate reject" / "Simulate conflict" pills) — those arm the *next* save specifically,
@@ -43,6 +51,25 @@ without leaving the page.
 | Verification level | 2 | 1 |
 | BharatConnect IDs | none yet (connect to generate one) | 4 — default, extra, a deactivated extra, and one legacy-format ID |
 | Used to demo | The connect flow, ID generation for company-type PAN, Level 2→3 documents flow | The individual ID format, `needs_attention` state, IDs table with mixed statuses |
+
+Both businesses share one flat pool of seed data — invoices/bills aren't scoped per
+business in this prototype. [`src/mock/seed.ts`](src/mock/seed.ts) also seeds:
+
+- **Invoices & Bills** (`makeSeedInvoices`) — a mix deliberately covering every
+  BharatConnect state a sales invoice or bill can be in: not sent, sent+pending,
+  accepted, failed (with retry), and — for sales — customers with and without a
+  BharatConnect B2B ID (to exercise the greyed-out "Send" + Invite flow).
+- **Contacts** (`makeSeedContacts`) — customers/suppliers spanning connected (has a B2B
+  ID), invite-eligible (has a GSTIN, checked, not on BharatConnect), and unchecked (no
+  GSTIN on file at all).
+- **`GST_REGISTRY_BY_GSTIN`** — mocks the native GST-portal autofill (name, PAN, address)
+  that the Create Contact modal's "Autofill from GSTIN" box uses — works regardless of
+  BharatConnect connection.
+- **`BC_REGISTRY_BY_GSTIN`** — mocks what a BharatConnect `reqSearchEntity` call would
+  return for a GSTIN (business name + B2B ID). Keyed by the same GSTINs used across the
+  seed invoices/bills/contacts so results stay consistent everywhere a GSTIN is looked up.
+  Includes `33AADCI6142F1ZX` ("Indus Comtrade Private Limited") as a known-good test GSTIN
+  that resolves on both registries.
 
 ## What's built
 
@@ -125,6 +152,61 @@ Single scrollable page (no tabs, no wizard), five sections in a fixed order:
 - MCC is hidden behind a collapsed "needed once you enable payments" line below Level 2,
   and becomes a required visible field once Level 2 is complete.
 
+### 7. Invoices & Bills — native, not a separate module
+Sales Invoices (`/sales/invoices`) and Expenses Bills (`/expenses/bills`) are one shared,
+kind-parameterized set of components
+([`InvoiceListPage.tsx`](src/pages/invoices/InvoiceListPage.tsx),
+[`InvoiceViewPage.tsx`](src/pages/invoices/InvoiceViewPage.tsx),
+[`InvoiceCreatePage.tsx`](src/pages/invoices/InvoiceCreatePage.tsx)) so a fix or feature on
+one side ships on both automatically. Behavior is one rule: **not connected → the plain
+native UI, pixel-matched to the real LEDGERS screens, with nothing BharatConnect-shaped
+anywhere. Connected → the same UI, augmented in place.**
+
+What "augmented" means, connected:
+- **List page**: a BharatConnect column appears (Sent/Pending/Accepted/Failure, or a
+  "Send via [B]" action for sales / Accept·Reject icons for bills), plus a status filter
+  dropdown ("Pending to send", "Awaiting confirmation", "Accepted", "Failed", etc.) and a
+  pending-actions banner ("N invoices pending to send via BharatConnect") whose CTA applies
+  that filter — no navigation needed. The banner dismisses with its own 3-day snooze, kept
+  independent per page (Invoices vs. Bills) so dismissing one doesn't hide the other.
+- **View page**: a BharatConnect card in the sidebar mirrors the existing "GST filings"
+  pattern — Send / Sending… / Status+Confirmation for sales, Accept/Reject for bills. A
+  failed send gets a **Send Again** button right there (and a matching **Retry** link in
+  the list's BharatConnect column) — same underlying action as the original send.
+- **Create page**: the customer/supplier search auto-checks "Send via BharatConnect" the
+  moment you pick a counterparty who has a B2B ID; the checkbox is disabled otherwise.
+- **Customer not onboarded on BharatConnect** (no B2B ID): the send action greys out
+  instead of pretending to work, everywhere it appears (list, view, create). Hovering it
+  (list) or just looking at it (view — no hover needed there) surfaces an
+  **Invite to BharatConnect** CTA ([`InviteBcTooltip.tsx`](src/components/InviteBcTooltip.tsx)),
+  which fires the same mocked-delay-then-toast pattern as everything else.
+- **Not connected at all**: a dismiss-free banner CTA on the list page and a dashed
+  placeholder card on the view page's sidebar both point at
+  `/settings/bharatconnect` ([`ConnectBharatConnectCTA.tsx`](src/components/ConnectBharatConnectCTA.tsx)).
+
+**Toasts** ([`AppShell.tsx`](src/components/layout/AppShell.tsx)) are top-right cards, green
+for success / red for error, auto-dismissing after 4 seconds — used for every action above.
+
+### 8. Contacts (`/contacts`)
+Matches the real LEDGERS Contacts screens (list, Create Contact modal, view page) with one
+addition: the **Autofill from GSTIN** box on Create Contact — which businesses already use
+for tax autofill — silently also checks BharatConnect status as a side effect, but only once
+this business is itself connected (with an explicit "We'll also check if they're on
+BharatConnect" hint so that isn't a surprise). Two independent mock lookups drive it:
+native GST-portal autofill (name/PAN/address, always active, `GST_REGISTRY_BY_GSTIN`) and
+the BharatConnect check (B2B ID, connected-only, `BC_REGISTRY_BY_GSTIN`). A match shows the
+B2B ID plus a **Request contact details** action rather than auto-filling email/mobile —
+per the partner handbook, `reqSearchEntity` doesn't return those; they're "non-public
+information" requiring a separate `reqNonPublicInfo` consent request, so that's what's
+mocked (`requestContactDetails`, a toast, not an instant fill). No match still auto-checks
+**"Invite them to BharatConnect once saved"**, so creating a contact and inviting them onto
+BharatConnect collapse into one action.
+
+The View Contact page ([`ContactViewPage.tsx`](src/pages/contacts/ContactViewPage.tsx))
+joins that contact's invoices/bills by B2B ID when one exists (falls back to name match
+otherwise) to compute Receivables/Payables and a Recent Invoices table, plus a BharatConnect
+card with live Sent/Accepted/Received counts for just that contact.
+
 ## Mocked endpoints and what drives them
 
 Every function in [`src/mock/api.ts`](src/mock/api.ts) simulates a network call with
@@ -145,7 +227,15 @@ re-renders from that state. Nothing here is a real request.
 | — (client-side) | `setVerificationLevel` (store) | Dev-panel-only. Recomputes `invoicing`/`payments` flags from the level, same as a real level change would |
 | — (client-side, per-field) | `useProfileForm`'s `doSend` | The profile save bar's send pipeline — resolves to success, or (when armed via the page's own dev toggles) a field-specific rejection or a version-conflict merge |
 | `POST /contacts/otp/send` / `POST /contacts/otp/verify` | `mockOtpSend` / `mockOtpVerify` | Wired but not currently called from any screen — reserved for a future "verify new contact before adding to draft" flow |
-| `GET /bharatconnect/counterparties/search?q=` | `mockSearchCounterparties` | Wired but unused — counterparty search hasn't been built yet |
+| — (client-side) | `sendInvoiceViaBharatConnect` (store) | Send / Send Again / Retry, everywhere they appear — sending → sent+pending, then resolves via the dev panel or `simulateInvoiceConfirmation` |
+| — (client-side) | `respondToBill` (store) | Accept/Reject on a bill, list or view page |
+| — (client-side) | `createInvoice` (store) | Create Invoice/Bill submit |
+| — (client-side) | `simulateInvoiceConfirmation` (store) | Dev-panel-only — plays the buyer's side of a sent sales invoice (Accept/Fail) |
+| — (client-side) | `inviteToBharatConnect` (store) | Every "Invite to BharatConnect" CTA (invoice send column, view pages, contacts) |
+| — (client-side) | `requestContactDetails` (store) | Mocks `reqNonPublicInfo` — "Request contact details" on a BharatConnect-matched contact, since email/mobile aren't returned by search |
+| — (client-side) | `createContact` (store) | Create Contact submit — auto-invites when the GSTIN check found no B2B ID and the (default-checked) invite box is still ticked |
+| — (client-side) | `snoozeInvoiceBanner` (store) | The pending-actions banner's dismiss — 3-day snooze, tracked per page (`invoiceBannerSnoozedUntil` / `billsBannerSnoozedUntil`) |
+| `lookupGstRegistry` / `lookupBcByGstin` ([`mock/seed.ts`](src/mock/seed.ts)) | Create Contact's GSTIN box | Two separate synchronous mock lookups — native GST autofill (always) vs. BharatConnect status (connected-only) |
 
 ## Design decisions worth knowing about
 
@@ -167,14 +257,34 @@ re-renders from that state. Nothing here is a real request.
   (`<ProfilePageInner key={business.id} .../>`) so switching businesses in the dev panel
   fully remounts the form state — `useReducer`'s initializer only runs once per mount, so
   without the key a previous business's draft would leak into the next one.
+- **Invoices/Bills share one component tree, parameterized by `kind`.** Rather than two
+  near-identical page sets, `InvoiceListPage`/`InvoiceViewPage`/`InvoiceCreatePage` all take
+  `kind: "sales" | "purchase"` and a small `kindConfig.ts` supplies the copy/labels that
+  differ (page title, "Customer" vs "Supplier", stat-card labels). A fix ships to both sides
+  at once.
+- **The BharatConnect UI is always additive, never a fork.** Every augmented screen renders
+  the exact native layout first; BharatConnect elements are conditionally inserted into that
+  same layout rather than swapping to a different component tree, so "not connected" is
+  never a degraded or placeholder experience — it's just the real screen.
+- **Not on BharatConnect gets an Invite CTA, not a dead end.** Wherever a send action is
+  unavailable because the counterparty has no B2B ID, the affordance right there is to
+  invite them — never just a disabled control with no next step.
+- **Contact details follow the actual API contract, not a shortcut.** The partner handbook
+  is explicit that `reqSearchEntity` doesn't return non-public info like email/mobile — that
+  needs a separate consent-based `reqNonPublicInfo` request. Rather than fake an instant
+  autofill, Create Contact mocks that real two-step shape (search → optional request →
+  pending approval).
 
 ## Not built yet
 
-- **Counterparty search** (section 7 of the original brief) — the "Send via BharatConnect"
-  button on an invoice currently routes to a placeholder page.
 - The profile page's contact fields don't yet require OTP verification before a new
   phone/email is added to the draft (the mock endpoints for it exist and are wired into
   `mock/api.ts`, just not called from the UI).
+- Contacts' Billing Address and Tax Information tabs, and the view page's Account Statement /
+  Transaction / Documents / Notes / Activity Log tabs, are placeholders ("add this after
+  creating the contact" / "No data available") — only the Information tab is fully wired.
+- The "reqNonPublicInfo" request in Contacts stops at "request sent" — there's no simulated
+  counterparty response that actually fills in the email/mobile fields afterward.
 - No persistence across a hard reload — all state lives in the Zustand store in memory.
 
 ## File map
@@ -182,24 +292,33 @@ re-renders from that state. Nothing here is a real request.
 ```
 src/
   types/            Shared TypeScript types for the whole domain model
-  mock/             seed.ts (mock businesses/invoices/counterparty directory), api.ts (mocked network calls)
+  mock/             seed.ts (businesses, invoices, contacts, GST/BharatConnect lookup tables),
+                     api.ts (mocked network calls)
   lib/               id-standard.ts (B2B ID generation), status.ts (connection-state metadata),
-                     profile.ts (MCC list, pincode validation, payment-address generation)
-  store/useStore.ts  Single Zustand store — all business/connection/profile/dev-panel state
+                     invoiceStatus.ts (status labels/pill classes), profile.ts (MCC list,
+                     pincode validation, payment-address generation)
+  store/useStore.ts  Single Zustand store — business/connection/profile/invoices/contacts/
+                     toasts/dev-panel state, all in one place
   components/
-    layout/          AppShell, Sidebar, TopBar, StatusChip, DashboardBanner, BharatConnectMark
-    dev/DevPanel.tsx Global dev panel (business switch, connection state, verification level, webhooks)
+    layout/          AppShell (incl. toasts), Sidebar, TopBar, StatusChip (incl. the connected
+                     quick-stats popover), DashboardBanner, PendingActionsBanner,
+                     BharatConnectMark, BharatConnectLogo, CircularSpinner
+    dev/DevPanel.tsx Global dev panel (business switch, connection state, verification level,
+                     webhooks, simulate invoice confirmation)
+    ConnectBharatConnectCTA.tsx  Not-connected banner (list pages) / card (view pages)
+    InviteBcTooltip.tsx          "Not on BharatConnect · Invite" hover popover
+    SendViaBharatConnectButton.tsx
   pages/
     Dashboard.tsx
-    settings/bharatconnect/
-      BharatConnectPage.tsx   Routes to the right state-specific view
-      ConnectFlow.tsx, LinkExistingId.tsx, SettingUp.tsx, AssistedSetup.tsx, Overview.tsx
-      IdsPage.tsx, CreateIdDrawer.tsx
-      profile/
-        ProfilePage.tsx       Page shell: header, level status, nudge, section nav, save bar
-        useProfileForm.ts     The save-bar state machine (saved/draft diffing, tiers, send pipeline)
-        fieldConfig.ts        Per-field permission/tier config
-        fields.tsx            Shared row/input primitives
-        sections/             BusinessSection, TaxSection, AddressesSection, SettlementSection, ContactsSection
-        LevelStatus.tsx, FullVerificationNudge.tsx, DocumentsCard.tsx, Modal.tsx, SaveBar.tsx
+    settings/bharatconnect/     (see the onboarding & profile sections above — connect flow, IDs)
+    invoices/
+      kindConfig.ts             Per-kind (sales/purchase) copy + money/inr formatters
+      InvoiceListPage.tsx       List + BharatConnect column/filter/pending banner, shared by
+                                 Invoices and Bills
+      InvoiceViewPage.tsx       View + BharatConnect sidebar card, shared by both
+      InvoiceCreatePage.tsx     Create + counterparty search, shared by both
+    contacts/
+      ContactsListPage.tsx      List + BharatConnect column, All/Customer/Supplier filter
+      CreateContactModal.tsx    GSTIN autofill (native + BharatConnect), invite-on-save
+      ContactViewPage.tsx       Native layout + BharatConnect card, invoices joined by B2B ID
 ```
