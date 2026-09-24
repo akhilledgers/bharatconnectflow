@@ -80,9 +80,14 @@ Six states — `not_connected`, `existing_id_found`, `setting_up`, `connected`,
 
 - **Top-bar badge** ([`StatusChip.tsx`](src/components/layout/StatusChip.tsx)): the
   BharatConnect "B" mark plus a status dot. Hover to see the status and a contextual action
-  ("Connect now", "Link existing ID", "Manage", "Fix now", "Contact us").
+  ("Connect now", "Link existing ID", "Manage", "Fix now", "Contact us"). When connected, a
+  red count badge on the mark itself shows total pending items (invoices pending to send +
+  bills pending to accept) without even opening the popover; inside the popover, all four
+  quick stats — Pending to send, Pending to accept, Invoices accepted, Bills received — are
+  clickable through to the relevant list page.
 - **Dashboard banner** ([`DashboardBanner.tsx`](src/components/layout/DashboardBanner.tsx)):
-  shown only for states that need action, with a 7-day snooze. Never shown when connected.
+  shown only for states that need action, with a 7-day snooze ("Remind me later"). Never
+  shown when connected.
 - **Sidebar dot** on the Settings → BharatConnect item while setup is incomplete.
 - **"Send via BharatConnect" button** on the dashboard's recent-sales list: disabled with a
   "Connect to enable" hint until connected.
@@ -165,10 +170,12 @@ anywhere. Connected → the same UI, augmented in place.**
 What "augmented" means, connected:
 - **List page**: a BharatConnect column appears (Sent/Pending/Accepted/Failure, or a
   "Send via [B]" action for sales / Accept·Reject icons for bills), plus a status filter
-  dropdown ("Pending to send", "Awaiting confirmation", "Accepted", "Failed", etc.) and a
-  pending-actions banner ("N invoices pending to send via BharatConnect") whose CTA applies
-  that filter — no navigation needed. The banner dismisses with its own 3-day snooze, kept
-  independent per page (Invoices vs. Bills) so dismissing one doesn't hide the other.
+  ("Pending to send", "Awaiting confirmation", "Accepted", "Failed", etc.) tucked behind the
+  toolbar's Filter icon as a popover ([`FilterMenu.tsx`](src/components/FilterMenu.tsx), a
+  dot on the icon shows when a non-default filter is active) and a pending-actions banner
+  ("N invoices pending to send via BharatConnect") whose CTA applies that filter — no
+  navigation needed. That banner dismisses with its own 3-day snooze, kept independent per
+  page (Invoices vs. Bills) so dismissing one doesn't hide the other.
 - **View page**: a BharatConnect card in the sidebar mirrors the existing "GST filings"
   pattern — Send / Sending… / Status+Confirmation for sales, Accept/Reject for bills. A
   failed send gets a **Send Again** button right there (and a matching **Retry** link in
@@ -180,9 +187,15 @@ What "augmented" means, connected:
   (list) or just looking at it (view — no hover needed there) surfaces an
   **Invite to BharatConnect** CTA ([`InviteBcTooltip.tsx`](src/components/InviteBcTooltip.tsx)),
   which fires the same mocked-delay-then-toast pattern as everything else.
-- **Not connected at all**: a dismiss-free banner CTA on the list page and a dashed
-  placeholder card on the view page's sidebar both point at
-  `/settings/bharatconnect` ([`ConnectBharatConnectCTA.tsx`](src/components/ConnectBharatConnectCTA.tsx)).
+- **Not connected at all**: a banner CTA on the list page and a dashed placeholder card on
+  the view page's sidebar both point at `/settings/bharatconnect`
+  ([`ConnectBharatConnectCTA.tsx`](src/components/ConnectBharatConnectCTA.tsx)). The banner
+  is self-governing (reads connection/snooze state straight from the store, same as the
+  pending-actions banner) with its own dismiss and 7-day snooze — sharing the same
+  `bannerSnoozedUntil` field as the Dashboard's connection banner, so dismissing "connect
+  BharatConnect" on any one page hides it everywhere, since it's one decision, not three.
+  Copy is tailored per page (Invoices/Bills/Contacts each say something different, and each
+  passes it via a `message` prop) rather than one generic sentence.
 
 **Toasts** ([`AppShell.tsx`](src/components/layout/AppShell.tsx)) are top-right cards, green
 for success / red for error, auto-dismissing after 4 seconds — used for every action above.
@@ -205,7 +218,14 @@ BharatConnect collapse into one action.
 The View Contact page ([`ContactViewPage.tsx`](src/pages/contacts/ContactViewPage.tsx))
 joins that contact's invoices/bills by B2B ID when one exists (falls back to name match
 otherwise) to compute Receivables/Payables and a Recent Invoices table, plus a BharatConnect
-card with live Sent/Accepted/Received counts for just that contact.
+card. That card deliberately shows only two numbers — **Pending to send** / **Pending to
+accept**, scoped to this contact — rather than a full sent/accepted/received breakdown;
+each is clickable through to the relevant list page, mirroring the top bar's own pending
+stats. The list page's contact icon (a small B mark placed right before the name, not a
+separate column) follows the same three-state logic: full-color when connected, greyed
+with an Invite-on-hover tooltip when checked and not found, and a barely-visible placeholder
+when there's no GSTIN/PAN on file at all — kept in a fixed-width slot so rows stay aligned
+regardless of which state a given contact is in.
 
 ## Mocked endpoints and what drives them
 
@@ -307,6 +327,8 @@ src/
                      webhooks, simulate invoice confirmation)
     ConnectBharatConnectCTA.tsx  Not-connected banner (list pages) / card (view pages)
     InviteBcTooltip.tsx          "Not on BharatConnect · Invite" hover popover
+    FilterMenu.tsx               Filter-icon popover for the BharatConnect status filter,
+                                  shared by Invoices/Bills and Contacts list pages
     SendViaBharatConnectButton.tsx
   pages/
     Dashboard.tsx
