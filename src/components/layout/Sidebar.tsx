@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { STATUS_META } from "../../lib/status";
-import { LedgersLogo } from "./LedgersLogo";
+import { LedgersLogoFull } from "./LedgersLogoFull";
 
 type Child = string | { label: string; to: string };
 
@@ -72,8 +72,7 @@ export function Sidebar() {
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
       <div className="flex items-center justify-between px-5 py-5">
         <div className="flex items-center gap-2">
-          <LedgersLogo size={26} />
-          <span className="text-lg font-semibold tracking-tight text-ink">LEDGERS</span>
+          <LedgersLogoFull height={24} />
         </div>
         <button className="text-faint hover:text-body" title="Collapse sidebar">
           <PanelLeftClose className="h-4 w-4" />
