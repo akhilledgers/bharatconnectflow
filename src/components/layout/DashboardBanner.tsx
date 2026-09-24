@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { STATUS_META, isBannerSnoozed } from "../../lib/status";
@@ -5,7 +6,7 @@ import { BharatConnectMark } from "./BharatConnectMark";
 import type { Business, ConnectionState } from "../../types";
 
 interface BannerCopy {
-  title: string;
+  title: ReactNode;
   body: string;
   actionLabel: string;
   action: "connect" | "link" | "fix" | "contact";
@@ -15,9 +16,9 @@ function bannerCopy(business: Business): BannerCopy | null {
   switch (business.connectionState) {
     case "not_connected":
       return {
-        title: "Send invoices to your buyers on BharatConnect",
-        body: "Your GSTIN is verified and your business details are ready. Setup takes about 2 minutes.",
-        actionLabel: "Connect now",
+        title: "Claim your B2B ID on BharatConnect for Business",
+        body: "Send and receive invoices instantly from your contacts.",
+        actionLabel: "Get My ID",
         action: "connect",
       };
     case "existing_id_found":
@@ -91,7 +92,7 @@ export function DashboardBanner() {
           onClick={() => snoozeBanner(business.id)}
           className="text-sm font-medium text-primary hover:text-primary-hover"
         >
-          Remind me in 7 days
+          Remind me later
         </button>
       </div>
     </div>

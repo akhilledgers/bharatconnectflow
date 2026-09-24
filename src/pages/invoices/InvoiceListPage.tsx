@@ -22,6 +22,7 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { ConnectBharatConnectBanner } from "../../components/ConnectBharatConnectCTA";
 import { PendingActionsBanner } from "../../components/layout/PendingActionsBanner";
 import { InviteBcTooltip } from "../../components/InviteBcTooltip";
+import { FilterMenu } from "../../components/FilterMenu";
 import { configFor, sumAmount, sumUnpaid, inr, money } from "./kindConfig";
 import type { Invoice } from "../../types";
 
@@ -103,7 +104,13 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
         </button>
       </div>
 
-      {!connected && <ConnectBharatConnectBanner />}
+      <ConnectBharatConnectBanner
+        message={
+          kind === "sales"
+            ? "Get paid faster — connect BharatConnect and send invoices instantly."
+            : "Connect BharatConnect to receive and confirm bills the moment they land."
+        }
+      />
       {connected && (
         <PendingActionsBanner kind={kind} onReview={() => setBcFilter(kind === "sales" ? "not_sent" : "pending")} />
       )}
@@ -125,21 +132,17 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
               <Calendar className="h-4 w-4" />
               Select Date range
             </button>
-            {connected && (
-              <div className="relative">
-                <Filter className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
-                <select
-                  value={bcFilter}
-                  onChange={(e) => setBcFilter(e.target.value as BcFilter)}
-                  className="appearance-none rounded-lg border border-gray-200 py-2 pl-8 pr-7 text-sm text-body hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  {(kind === "sales" ? SALES_BC_FILTERS : PURCHASE_BC_FILTERS).map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {connected ? (
+              <FilterMenu
+                value={bcFilter}
+                defaultValue="all"
+                onChange={setBcFilter}
+                options={kind === "sales" ? SALES_BC_FILTERS : PURCHASE_BC_FILTERS}
+              />
+            ) : (
+              <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+                <Filter className="h-4 w-4" />
+              </button>
             )}
             <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
               <Layers className="h-4 w-4" />

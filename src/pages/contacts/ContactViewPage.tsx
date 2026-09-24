@@ -39,12 +39,11 @@ export function ContactViewPage() {
   const receivable = salesInvoices.filter((i) => i.status !== "paid").reduce((s, i) => s + i.amount, 0);
   const payable = purchaseInvoices.filter((i) => i.status !== "paid").reduce((s, i) => s + i.amount, 0);
 
-  const sentViaBc = salesInvoices.filter((i) => i.bcSendStatus === "sent").length;
-  const acceptedViaBc = salesInvoices.filter((i) => i.bcConfirmationStatus === "accepted").length;
-  const receivedViaBc = purchaseInvoices.filter((i) => i.bcConfirmationStatus !== null).length;
-
   const recentRows = recentKind === "sales" ? salesInvoices : purchaseInvoices;
   const recentBasePath = recentKind === "sales" ? "/sales/invoices" : "/expenses/bills";
+
+  const pendingToSend = salesInvoices.filter((i) => i.bcSendStatus === "not_sent");
+  const pendingToAccept = purchaseInvoices.filter((i) => i.bcConfirmationStatus === "pending");
 
   return (
     <div>
@@ -118,7 +117,17 @@ export function ContactViewPage() {
               </div>
 
               {!connected ? (
-                <p className="text-sm text-faint">Connect your business to BharatConnect to see this contact's status.</p>
+                <>
+                  <p className="mb-3 text-sm text-faint">
+                    Connect BharatConnect to see if {contact.name} is already on the network.
+                  </p>
+                  <button
+                    onClick={() => navigate("/settings/bharatconnect")}
+                    className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                  >
+                    Connect BharatConnect
+                  </button>
+                </>
               ) : contact.b2bId ? (
                 <>
                   <div className="mb-3 flex items-center gap-1.5 text-sm text-emerald-700">
@@ -126,20 +135,24 @@ export function ContactViewPage() {
                     Connected
                   </div>
                   <div className="mb-3 font-mono text-xs text-faint">{contact.b2bId}</div>
-                  <div className="grid grid-cols-3 gap-2 rounded-md border border-gray-100 bg-gray-50 p-3 text-center">
-                    <div>
-                      <div className="text-base font-semibold text-ink">{sentViaBc}</div>
-                      <div className="text-[10px] text-faint">Sent</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-semibold text-emerald-600">{acceptedViaBc}</div>
-                      <div className="text-[10px] text-faint">Accepted</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-semibold text-ink">{receivedViaBc}</div>
-                      <div className="text-[10px] text-faint">Received</div>
-                    </div>
+
+                  <div className="grid grid-cols-2 gap-2 rounded-md border border-gray-100 bg-gray-50 p-3">
+                    <button
+                      onClick={() => navigate("/sales/invoices")}
+                      className="rounded-md p-1 text-left hover:bg-white"
+                    >
+                      <div className="text-lg font-semibold text-red-600">{pendingToSend.length}</div>
+                      <div className="text-xs text-faint">Pending to send</div>
+                    </button>
+                    <button
+                      onClick={() => navigate("/expenses/bills")}
+                      className="rounded-md p-1 text-left hover:bg-white"
+                    >
+                      <div className="text-lg font-semibold text-red-600">{pendingToAccept.length}</div>
+                      <div className="text-xs text-faint">Pending to accept</div>
+                    </button>
                   </div>
+
                   {!contact.email && !contact.mobile && (
                     <button
                       onClick={() => requestContactDetails(contact.name)}

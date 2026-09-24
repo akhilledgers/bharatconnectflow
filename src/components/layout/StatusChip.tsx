@@ -67,10 +67,17 @@ export function StatusChip() {
 
   const meta = STATUS_META[business.connectionState];
   const content = popoverContent(business);
-  const sentCount = invoices.filter((i) => i.kind === "sales" && i.bcSendStatus === "sent").length;
+  const pendingSendCount = invoices.filter((i) => i.kind === "sales" && i.bcSendStatus === "not_sent").length;
   const acceptedCount = invoices.filter((i) => i.kind === "sales" && i.bcConfirmationStatus === "accepted").length;
   const receivedCount = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus !== null).length;
   const pendingAcceptCount = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus === "pending").length;
+  const totalPending = pendingSendCount + pendingAcceptCount;
+  const connected = business.connectionState === "connected";
+
+  function goTo(path: string) {
+    navigate(path);
+    setOpen(false);
+  }
 
   async function handleAction() {
     switch (content.action) {
@@ -112,6 +119,11 @@ export function StatusChip() {
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${meta.dotClass}`}
         />
+        {connected && totalPending > 0 && (
+          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
+            {totalPending}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -122,24 +134,24 @@ export function StatusChip() {
           </div>
           <p className="mb-3 text-sm text-body">{content.body}</p>
 
-          {business.connectionState === "connected" && (
+          {connected && (
             <div className="mb-3 grid grid-cols-2 gap-2 rounded-md border border-gray-100 bg-gray-50 p-3">
-              <div>
-                <div className="text-lg font-semibold text-ink">{sentCount}</div>
-                <div className="text-xs text-faint">Invoices sent</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-ink">{receivedCount}</div>
-                <div className="text-xs text-faint">Bills received</div>
-              </div>
-              <div>
+              <button onClick={() => goTo("/sales/invoices")} className="rounded-md p-1 text-left hover:bg-white">
+                <div className="text-lg font-semibold text-red-600">{pendingSendCount}</div>
+                <div className="text-xs text-faint">Pending to send</div>
+              </button>
+              <button onClick={() => goTo("/expenses/bills")} className="rounded-md p-1 text-left hover:bg-white">
+                <div className="text-lg font-semibold text-red-600">{pendingAcceptCount}</div>
+                <div className="text-xs text-faint">Pending to accept</div>
+              </button>
+              <button onClick={() => goTo("/sales/invoices")} className="rounded-md p-1 text-left hover:bg-white">
                 <div className="text-lg font-semibold text-emerald-600">{acceptedCount}</div>
                 <div className="text-xs text-faint">Invoices accepted</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-blue-600">{pendingAcceptCount}</div>
-                <div className="text-xs text-faint">Bills to accept</div>
-              </div>
+              </button>
+              <button onClick={() => goTo("/expenses/bills")} className="rounded-md p-1 text-left hover:bg-white">
+                <div className="text-lg font-semibold text-ink">{receivedCount}</div>
+                <div className="text-xs text-faint">Bills received</div>
+              </button>
             </div>
           )}
 

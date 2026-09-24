@@ -4,6 +4,8 @@ import { Copy, Edit3, Eye, Filter, MoreHorizontal, SlidersHorizontal, Trash2 } f
 import { useStore } from "../../store/useStore";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { InviteBcTooltip } from "../../components/InviteBcTooltip";
+import { FilterMenu } from "../../components/FilterMenu";
+import { ConnectBharatConnectBanner } from "../../components/ConnectBharatConnectCTA";
 import { CreateContactModal } from "./CreateContactModal";
 import type { LedgerContact, ContactType } from "../../types";
 
@@ -46,6 +48,8 @@ export function ContactsListPage() {
         </button>
       </div>
 
+      <ConnectBharatConnectBanner message="Turn your contacts into a live network — connect BharatConnect." />
+
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-100 p-4">
           <input
@@ -72,20 +76,22 @@ export function ContactsListPage() {
                 </button>
               ))}
             </div>
-            {connected && (
-              <select
+            {connected ? (
+              <FilterMenu
                 value={bcFilter}
-                onChange={(e) => setBcFilter(e.target.value as BcFilter)}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-body focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="all">All BharatConnect statuses</option>
-                <option value="connected">Connected</option>
-                <option value="not_connected">Not connected</option>
-              </select>
+                defaultValue="all"
+                onChange={setBcFilter}
+                options={[
+                  { value: "all", label: "All BharatConnect statuses" },
+                  { value: "connected", label: "Connected" },
+                  { value: "not_connected", label: "Not connected" },
+                ]}
+              />
+            ) : (
+              <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+                <Filter className="h-4 w-4" />
+              </button>
             )}
-            <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
-              <Filter className="h-4 w-4" />
-            </button>
             <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
               <SlidersHorizontal className="h-4 w-4" />
             </button>
@@ -104,7 +110,6 @@ export function ContactsListPage() {
               <th className="px-2 py-3 font-medium">Mobile</th>
               <th className="px-2 py-3 font-medium">GSTIN</th>
               <th className="px-2 py-3 font-medium">Region</th>
-              {connected && <th className="px-2 py-3 font-medium">BharatConnect</th>}
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
           </thead>
@@ -122,7 +127,7 @@ export function ContactsListPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-faint">
+                <td colSpan={7} className="px-4 py-10 text-center text-faint">
                   No contacts match this filter.
                 </td>
               </tr>
@@ -195,34 +200,36 @@ function ContactRow({
         <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
       </td>
       <td className="px-2 py-4">
-        <button onClick={onView} className="font-medium text-blue-600 hover:underline">
-          {contact.salutation} {contact.name}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {connected && (
+            <span className="flex w-[13px] shrink-0 justify-center">
+              {contact.b2bId ? (
+                <span title="Connected to BharatConnect">
+                  <BharatConnectMark size={13} />
+                </span>
+              ) : contact.b2bId === null ? (
+                <InviteBcTooltip counterpartyName={contact.name}>
+                  <span className="cursor-default">
+                    <BharatConnectMark size={13} className="grayscale opacity-50" />
+                  </span>
+                </InviteBcTooltip>
+              ) : (
+                <span title="No GSTIN or PAN on file — can't check BharatConnect status">
+                  <BharatConnectMark size={13} className="grayscale opacity-20" />
+                </span>
+              )}
+            </span>
+          )}
+          <button onClick={onView} className="font-medium text-blue-600 hover:underline">
+            {contact.salutation} {contact.name}
+          </button>
+        </div>
       </td>
       <td className="px-2 py-4 text-body">{contact.businessName ?? "—"}</td>
       <td className="px-2 py-4 text-body">{contact.email ?? "—"}</td>
       <td className="px-2 py-4 text-body">{contact.mobile ?? "—"}</td>
       <td className="px-2 py-4 text-body">{contact.gstin ?? "—"}</td>
       <td className="px-2 py-4 text-body">{contact.region}</td>
-      {connected && (
-        <td className="px-2 py-4">
-          {contact.b2bId ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-              <BharatConnectMark size={12} />
-              Connected
-            </span>
-          ) : contact.b2bId === null ? (
-            <InviteBcTooltip counterpartyName={contact.name}>
-              <span className="flex cursor-not-allowed items-center gap-1.5 text-xs font-medium text-faint">
-                <BharatConnectMark size={12} className="grayscale opacity-60" />
-                Invite
-              </span>
-            </InviteBcTooltip>
-          ) : (
-            <span className="text-xs text-faint">—</span>
-          )}
-        </td>
-      )}
       <td className="px-4 py-4 text-right">
         <div className="relative inline-block">
           <button
