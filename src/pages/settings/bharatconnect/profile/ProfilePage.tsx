@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useStore } from "../../../../store/useStore";
 import type { Business } from "../../../../types";
 import { useProfileForm } from "./useProfileForm";
-import { SECTIONS } from "./fieldConfig";
+import { SECTIONS, type SectionId } from "./fieldConfig";
 import { SaveBar } from "./SaveBar";
 import { BusinessSection } from "./sections/BusinessSection";
 import { TaxSection } from "./sections/TaxSection";
@@ -12,6 +12,8 @@ import { SettlementSection } from "./sections/SettlementSection";
 import { ContactsSection } from "./sections/ContactsSection";
 import { LevelStatus } from "./LevelStatus";
 import { FullVerificationNudge } from "./FullVerificationNudge";
+import { Card } from "../../../../components/ui/card";
+import { Tabs } from "../../../../components/ui/tabs";
 
 const OLD_TAB_TO_SECTION: Record<string, string> = {
   business_details: "business",
@@ -22,6 +24,10 @@ const OLD_TAB_TO_SECTION: Record<string, string> = {
   review_send: "settlement",
 };
 
+// Top bar (54px) + sticky tabs (~50px) + a little air: a section counts as "current" once its
+// heading has scrolled up to here.
+const SPY_OFFSET = 130;
+
 export function ProfilePage() {
   const business = useStore((s) => s.currentBusiness());
   // Keyed by business id so switching businesses fully remounts the form —
@@ -30,79 +36,74 @@ export function ProfilePage() {
   return <ProfilePageInner key={business.id} business={business} />;
 }
 
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function ProfilePageInner({ business }: { business: Business }) {
   const params = useParams<{ "*": string }>();
   const form = useProfileForm(business);
+  const [active, setActive] = useState<SectionId>("business");
 
   useEffect(() => {
     const raw = params["*"];
     const target = raw ? OLD_TAB_TO_SECTION[raw] : null;
     if (target) {
       // Wait a tick for layout to settle before scrolling.
-      requestAnimationFrame(() => {
-        document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      requestAnimationFrame(() => scrollToSection(target));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params["*"], business.id]);
 
+  // Scroll-spy: highlight the tab for the section currently under the sticky tabs.
+  useEffect(() => {
+    function onScroll() {
+      let current: SectionId = SECTIONS[0].id;
+      for (const s of SECTIONS) {
+        const el = document.getElementById(s.id);
+        if (el && el.getBoundingClientRect().top <= SPY_OFFSET) current = s.id;
+      }
+      // At the very bottom the last section may never reach the offset; treat it as current.
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+        current = SECTIONS[SECTIONS.length - 1].id;
+      }
+      setActive(current);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div>
-      <div className="max-w-[760px] pb-24 pt-2">
-        <h1 className="text-2xl font-semibold text-ink">BharatConnect profile</h1>
-        <div className="mt-1.5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">BharatConnect profile</h1>
           <LevelStatus business={business} />
-          <FullVerificationNudge business={business} />
         </div>
-
-        <div className="mt-5 flex items-center justify-between border-b border-gray-100">
-          <nav className="flex h-11 items-center gap-6">
-            {SECTIONS.map((s) => (
-              <a
-                key={s.id}
-                href={`#section-${s.id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className="text-[13px] font-medium text-body hover:text-primary"
-              >
-                {s.navLabel}
-              </a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={form.toggleArmReject}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                form.armReject ? "border-red-300 bg-red-50 text-red-700" : "border-gray-200 text-faint hover:bg-gray-50"
-              }`}
-              title="Dev: make the next send come back rejected"
-            >
-              {form.armReject ? "Reject armed" : "Simulate reject"}
-            </button>
-            <button
-              onClick={form.toggleArmConflict}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                form.armConflict ? "border-amber-300 bg-amber-50 text-amber-700" : "border-gray-200 text-faint hover:bg-gray-50"
-              }`}
-              title="Dev: make the next send come back as a version conflict"
-            >
-              {form.armConflict ? "Conflict armed" : "Simulate conflict"}
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-10 pt-8">
-          <BusinessSection business={business} form={form} />
-          <TaxSection business={business} />
-          <AddressesSection business={business} form={form} />
-          <SettlementSection business={business} form={form} />
-          <ContactsSection business={business} form={form} />
-        </div>
+        <FullVerificationNudge business={business} />
       </div>
 
-      <SaveBar business={business} form={form} />
+      <Card>
+        <div className="sticky top-(--header-height) z-10 rounded-t-xl bg-card">
+          <Tabs
+            variant="line"
+            items={SECTIONS.map((s) => ({ value: s.id, label: s.label }))}
+            value={active}
+            onChange={(id) => {
+              setActive(id);
+              scrollToSection(id);
+            }}
+          />
+        </div>
+
+        <BusinessSection business={business} form={form} />
+        <TaxSection business={business} />
+        <AddressesSection business={business} form={form} />
+        <SettlementSection business={business} form={form} />
+        <ContactsSection business={business} form={form} />
+
+        <SaveBar business={business} form={form} />
+      </Card>
     </div>
   );
 }

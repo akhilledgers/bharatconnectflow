@@ -2,7 +2,13 @@
 
 A working front-end prototype of the BharatConnect integration inside LEDGERS. Everything is
 client-side: React + TypeScript + Tailwind, React Router (hash routing), Zustand for state,
-and a mocked API layer with artificial network delay. Nothing talks to a real backend.
+Sonner for toasts, and a mocked API layer with artificial network delay. Nothing talks to a
+real backend.
+
+The UI follows the **LEDGERS design system** (the v4 app's tokens and component recipes): the
+theme lives in [`src/index.css`](src/index.css) and shared building blocks in
+[`src/components/ui/`](src/components/ui/). The restyle is in progress — see
+[Design system restyle](#design-system-restyle) for what's converted so far.
 
 Two builds are stacked here:
 
@@ -27,19 +33,20 @@ vite` installs today doesn't run on this machine's Node version — see `package
 
 ## How to explore it
 
-Every screen has a **dev panel** — the `{ }` button, bottom-right of every page. It lets you:
+Every screen has a **dev panel** — the small `{ }` button at the right end of the sidebar
+footer. It lets you:
 
 - Switch between the two seeded businesses (a company and a sole proprietorship)
 - Force any of the six connection states directly, without going through a real flow
-- Fire the two simulated BharatConnect webhooks (confirm activation / reject an update)
 - Force the business's verification level (1, 2, or 3) to see level-gated UI
+- Choose how the profile page's next save resolves — **Succeeds / Rejected / Conflict** —
+  to test the save bar's rejected and version-conflict paths
+- Fire the two simulated BharatConnect webhooks (confirm activation / reject an update)
 - Simulate the buyer's side of a sent sales invoice — Accept or Fail any invoice currently
   sitting in "sent, awaiting confirmation," without leaving the page you're on
 
-The profile-edit page has two more dev controls of its own, next to its section nav
-("Simulate reject" / "Simulate conflict" pills) — those arm the *next* save specifically,
-rather than changing global state, so you can test the save-bar's rejected/conflict paths
-without leaving the page.
+The "Reach full verification" documents dialog has one dev control of its own ("Dev ·
+Simulate re-request"), kept inside the dialog because the dev panel sits behind it.
 
 ## Seeded businesses
 
@@ -87,7 +94,9 @@ Six states — `not_connected`, `existing_id_found`, `setting_up`, `connected`,
   clickable through to the relevant list page.
 - **Dashboard banner** ([`DashboardBanner.tsx`](src/components/layout/DashboardBanner.tsx)):
   shown only for states that need action, with a 7-day snooze ("Remind me later"). Never
-  shown when connected.
+  shown when connected. For `existing_id_found`, its **Link existing ID** button links in
+  place ("Linking…" → banner disappears → toast), exactly like the top-bar chip's action —
+  both entry points behave the same.
 - **Sidebar dot** on the Settings → BharatConnect item while setup is incomplete.
 - **"Send via BharatConnect" button** on the dashboard's recent-sales list: disabled with a
   "Connect to enable" hint until connected.
@@ -101,7 +110,11 @@ consent is one checkbox. Submitting morphs the same card in place through
 sending → creating ID → waiting for confirmation → success, with no page navigation.
 
 Other states on this route:
-- `existing_id_found` → a one-click "Link existing ID" card, no form
+- `existing_id_found` → a one-click "Link existing ID" card, no form. The ID shown is the
+  one that gets linked (`existingIdFor` in [`id-standard.ts`](src/lib/id-standard.ts) —
+  `PAN@BCB` for companies, the individual format for sole proprietors). Linking adds it to
+  the business's IDs as the Default (unless it already has an active ID), so the Overview
+  and IDs page show it straight away.
 - `setting_up` → a static progress card
 - `assisted_setup` → "Contact us", no automatic flow
 - `connected` / `needs_attention` → the connected overview (below), with a red banner on
@@ -109,13 +122,18 @@ Other states on this route:
 
 ### 3. Connected overview (`/settings/bharatconnect`, when connected)
 Deliberately minimal — plain label/value rows, no cards, one accent color. The BharatConnect
-ID in large monospace type with copy, an invoicing/payments summary, business details, and a
+ID in large monospace type with copy and an always-visible **Manage IDs** link (with the
+active-ID count when there's more than one), an invoicing/payments summary, business details, and a
 footer with last-synced date, an "unsent draft" link when the profile has unconfirmed
 changes, and a disconnect link (blocked with a tooltip while any invoice is unpaid or partly
 paid — see [`Overview.tsx`](src/pages/settings/bharatconnect/Overview.tsx)).
 
 ### 4. BharatConnect IDs page (`/settings/bharatconnect/ids`)
-Table of every ID for the business — visibility, linked identifier, status, actions.
+Reached from **Manage IDs** on the connected overview and from **Manage** on the Default
+BharatConnect ID row of the profile page's Tax & legal IDs section.
+Table of every ID for the business — visibility, linked identifier, status, and
+Deactivate / Reactivate. (Editing an existing ID — `reqEditId` — is phase 2, so there's no
+Edit action yet.)
 "Create ID" opens a drawer: pick PAN or GSTIN as the base (skipped for sole proprietors,
 whose format is fixed), a live-generated preview, a 2–5 character ending with a mocked
 availability check and suggestion chips, public/private, and an optional settlement account
@@ -130,32 +148,46 @@ business name, proprietor name, PAN digits 6–9, and a disambiguation sequence)
 `base.ENDING@BCB` for extra IDs. No user ever types an ID from scratch.
 
 ### 6. Profile-edit page (`/settings/bharatconnect/profile`)
-The page that took the most iteration — see the notes below on what changed and why.
-Single scrollable page (no tabs, no wizard), five sections in a fixed order:
+The page that took the most iteration — see the notes below on what changed and why. It's
+the first screen fully converted to the LEDGERS design system. One scrollable page, laid out
+as a single full-width card with five sections in a fixed order:
 
+- **Header**: "BharatConnect profile" with a **Verified for Level N** badge (hover it for the
+  checklist of which checks are met at each level) and, below Level 3, an outline **Reach
+  Full Verification** button on the right (with an amber dot when BharatConnect has
+  re-requested a document).
+- **Line tabs** at the top of the card (Business details · Tax & legal IDs · Addresses ·
+  Settlement account · Contacts & notifications) stay pinned under the top bar while you
+  scroll; clicking one scrolls to its section, and the tab for the section you're in is
+  highlighted (scroll-spy). Old tab-shaped URLs still scroll to the right section.
 - Every field has an explicit permission in one config
   ([`fieldConfig.ts`](src/pages/settings/bharatconnect/profile/fieldConfig.ts)):
   **editable** (boxed input, tier 1 = saves immediately, tier 2 = needs confirmation),
-  **readonly-sourced** (plain text, tagged "From GST portal" etc.), or **bc-owned** (a
-  status display near the header, never a form field).
-- All fields — read-only and editable alike — render as simple `label · value` rows
-  separated by a thin divider (the same pattern as the connected overview page), so the
-  only thing marking a field editable is its input box, not the layout.
-- A single sticky **save bar** at the bottom is the only save mechanism — no per-section
-  saves, no separate review page. It runs through a real state machine: clean → dirty →
-  invalid → confirming (only when a tier-2 field changed — shows a diff panel that expands
-  upward from the bar) → sending → success (auto-reverts after 3s) / rejected (points at the
-  specific field; editing that field clears it) / a version-conflict path that refreshes
-  stale fields while keeping the user's pending edits intact.
-- **Verification level** (1/2/3) is shown as "Verified for: Level N" near the header, with
-  a hover tooltip breaking down which checks are met at each level. Below it, a small nudge
-  ("Reach full verification…") appears only below Level 3 and opens the KYC document
-  upload flow in a modal — it isn't inline in the page. Uploading a document simulates
-  BharatConnect's own async review (uploaded → verified a couple seconds later), and
-  BharatConnect can re-request an already-verified document at any time (dev-toggleable),
-  which reopens the upload control for just that document.
-- MCC is hidden behind a collapsed "needed once you enable payments" line below Level 2,
+  **readonly-sourced** (plain text with a grey source badge — "GST portal", "Derived from
+  PAN", "Set by BharatConnect", "Generated"), or **bc-owned** (the level badge in the header,
+  never a form field).
+- All fields — read-only and editable alike — are the same two-column row: label (plus its
+  source badge) on the left, value or control on the right, so the only thing marking a
+  field editable is its input box. A changed field gets an amber **Edited** badge next to
+  its label. Invalid fields are marked on the input itself (red border, message below).
+- The **save bar** is the card's sticky footer and the only save mechanism — no per-section
+  saves, no separate review page. It runs through a real state machine: clean ("Up to date")
+  → dirty ("N fields changed") → invalid ("Fix: …" link that scrolls to the field) →
+  confirming (only when a tier-2 field changed — a before → after diff opens inside the
+  footer with Cancel / Confirm & Send) → sending → success ("Sent to BharatConnect",
+  auto-reverts after 3s) / rejected (points at the specific field; editing that field clears
+  it) / a version-conflict path that refreshes stale fields, keeps the user's pending edits,
+  and shows a banner above the footer. The rejected/conflict outcomes are armed from the dev
+  panel.
+- **Reach Full Verification** opens the KYC documents dialog (not inline in the page).
+  Uploading a document simulates BharatConnect's own async review (uploaded → verified a
+  couple seconds later), and BharatConnect can re-request an already-verified document at
+  any time (dev-toggleable), which reopens the upload control for just that document.
+- MCC is hidden behind a collapsed "needed once you enable payments" row below Level 2,
   and becomes a required visible field once Level 2 is complete.
+- The form opens with two pending demo edits (MCC set to 6211, "Use as default settlement
+  account" toggled) so Save and the tier-2 confirm step can be tried straight away. No
+  additional addresses are seeded; add one with a wrong pincode to see the invalid state.
 
 ### 7. Invoices & Bills — native, not a separate module
 Sales Invoices (`/sales/invoices`) and Expenses Bills (`/expenses/bills`) are one shared,
@@ -180,10 +212,27 @@ What "augmented" means, connected:
   pattern — Send / Sending… / Status+Confirmation for sales, Accept/Reject for bills. A
   failed send gets a **Send Again** button right there (and a matching **Retry** link in
   the list's BharatConnect column) — same underlying action as the original send.
-- **Create page**: the customer/supplier search auto-checks "Send via BharatConnect" the
-  moment you pick a counterparty who has a B2B ID; the checkbox is disabled otherwise.
+- **Bills not received over BharatConnect** (a supplier with no B2B ID, bill entered by
+  hand): the list's BharatConnect column says **Not on BharatConnect** (never "Not sent" —
+  bills are received, not sent), and hovering it offers **Invite to BharatConnect** worded
+  for suppliers ("…so their future bills reach you over BharatConnect").
+- **Create → review → send**: creating never sends. After **Create**, you always land on
+  the new document's view page with a "created" toast. For a sales invoice, a
+  **review-and-send callout** sits above the document
+  ([`ReviewAndSendCallout.tsx`](src/pages/invoices/ReviewAndSendCallout.tsx)): "Review it
+  below, then send it to <customer>" with **Send via BharatConnect**; it then follows the
+  invoice in place (Sending… → Sent, waiting for confirmation). If the customer isn't on
+  BharatConnect it offers **Invite** instead; if the business isn't connected it offers
+  Connect. It shows only right after Create and can be dismissed. The Create page has no
+  "Send via BharatConnect" checkbox — when the chosen customer has a B2B ID, a hint says
+  you can review and send after creating.
+- **One action per page**: while the callout is showing it holds the page's filled Send /
+  Invite button, and the sidebar card's version steps back (outline Send, no Invite). The
+  customer block on the document shows "Not on BharatConnect" as status only — no second
+  Invite link. The view page's header has no BharatConnect icon; status lives only in the
+  sidebar card.
 - **Customer not onboarded on BharatConnect** (no B2B ID): the send action greys out
-  instead of pretending to work, everywhere it appears (list, view, create). Hovering it
+  instead of pretending to work, everywhere it appears (list, view). Hovering it
   (list) or just looking at it (view — no hover needed there) surfaces an
   **Invite to BharatConnect** CTA ([`InviteBcTooltip.tsx`](src/components/InviteBcTooltip.tsx)),
   which fires the same mocked-delay-then-toast pattern as everything else.
@@ -197,8 +246,10 @@ What "augmented" means, connected:
   Copy is tailored per page (Invoices/Bills/Contacts each say something different, and each
   passes it via a `message` prop) rather than one generic sentence.
 
-**Toasts** ([`AppShell.tsx`](src/components/layout/AppShell.tsx)) are top-right cards, green
-for success / red for error, auto-dismissing after 4 seconds — used for every action above.
+**Toasts** ([`AppShell.tsx`](src/components/layout/AppShell.tsx)) are Sonner toasts in the
+**top-right** corner (the LEDGERS convention), green for success / red for error,
+auto-dismissing after 4 seconds — used for every action above. Store actions still call
+`pushToast`; the shell bridges each new store toast to Sonner exactly once.
 
 ### 8. Contacts (`/contacts`)
 Matches the real LEDGERS Contacts screens (list, Create Contact modal, view page) with one
@@ -238,18 +289,18 @@ re-renders from that state. Nothing here is a real request.
 |---|---|---|
 | `POST /bharatconnect/lookup` | `mockLookupConnectionStatus` | Stands in for the PAN/GSTIN lookup on login/business-switch (state itself is set via the dev panel in this prototype rather than a real lookup) |
 | `POST /bharatconnect/ownership/verify` | `verifyOwnership` (store) | The connect flow's OTP step, when ownership isn't already verified |
-| `POST /bharatconnect/ids/link` | `linkExistingId` (store) | The `existing_id_found` one-click link action, from the banner, chip, or dedicated page |
+| `POST /bharatconnect/ids/link` | `linkExistingId` (store) | The `existing_id_found` one-click link action, from the banner, chip, or dedicated page — also adds the found ID as the business's Default ID. (Not a handbook API: the handbook's path is `reqCheckEntity` → proceed with existing details; see Not built yet) |
 | `GET /bharatconnect/ids/check?ending=` | `mockCheckEndingAvailability` | The "Create ID" drawer's live availability check (rejects `USED`/`TEST` as taken, for demo purposes) |
 | — (client-side, no call) | `submitConnect` (store) | The connect flow's in-place progress morph: sending → creating ID → waiting for confirmation → success, ending with a real ID generated by `id-standard.ts` and the business flipped to `connected` |
 | — (client-side) | `simulateWebhookConfirm` / `simulateWebhookReject` (store) | The dev panel's webhook buttons — confirm flips `setting_up`→`connected`; reject flips any state→`needs_attention` with a rejection pinned to the settlement-account field |
 | — (client-side) | `uploadKycDocument` (store) | Profile page's document upload: sets `uploaded` immediately, then `verified` after a further 1.8–2.6s, simulating BharatConnect's own async review |
-| — (client-side) | `devRequestKycDocument` (store) | The documents modal's "Simulate re-request" — flips a verified document back to `requested` and reopens its upload control |
+| — (client-side) | `devRequestKycDocument` (store) | The documents dialog's "Dev · Simulate re-request" — flips a verified document back to `requested` and reopens its upload control |
 | — (client-side) | `setVerificationLevel` (store) | Dev-panel-only. Recomputes `invoicing`/`payments` flags from the level, same as a real level change would |
-| — (client-side, per-field) | `useProfileForm`'s `doSend` | The profile save bar's send pipeline — resolves to success, or (when armed via the page's own dev toggles) a field-specific rejection or a version-conflict merge |
+| — (client-side, per-field) | `useProfileForm`'s `doSend` | The profile save bar's send pipeline — resolves to success, or (when armed via the dev panel's "Profile page — next save", stored as `devProfileSaveOutcome`) a field-specific rejection or a version-conflict merge |
 | `POST /contacts/otp/send` / `POST /contacts/otp/verify` | `mockOtpSend` / `mockOtpVerify` | Wired but not currently called from any screen — reserved for a future "verify new contact before adding to draft" flow |
 | — (client-side) | `sendInvoiceViaBharatConnect` (store) | Send / Send Again / Retry, everywhere they appear — sending → sent+pending, then resolves via the dev panel or `simulateInvoiceConfirmation` |
 | — (client-side) | `respondToBill` (store) | Accept/Reject on a bill, list or view page |
-| — (client-side) | `createInvoice` (store) | Create Invoice/Bill submit |
+| — (client-side) | `createInvoice` (store) | Create Invoice/Bill submit — never sends; the page then opens the new document for review |
 | — (client-side) | `simulateInvoiceConfirmation` (store) | Dev-panel-only — plays the buyer's side of a sent sales invoice (Accept/Fail) |
 | — (client-side) | `inviteToBharatConnect` (store) | Every "Invite to BharatConnect" CTA (invoice send column, view pages, contacts) |
 | — (client-side) | `requestContactDetails` (store) | Mocks `reqNonPublicInfo` — "Request contact details" on a BharatConnect-matched contact, since email/mobile aren't returned by search |
@@ -266,11 +317,11 @@ re-renders from that state. Nothing here is a real request.
   changes). The route (`/settings/bharatconnect/profile/*`) still accepts the old tab-shaped
   paths (`business_details`, `settlement_accounts`, etc.) and maps them to a scroll-to
   target, so links from other screens didn't need to change.
-- **Verification levels are numbered on screen** ("Verified for: Level 2") rather than
+- **Verification levels are numbered on screen** ("Verified for Level 2") rather than
   described only by capability, per direct feedback — the capability breakdown lives in the
   hover tooltip instead.
-- **The Level-3 document flow is opt-in, not automatically inline.** It's reached through a
-  small nudge and a modal, rather than a card that appears in the page flow once Level 2 is
+- **The Level-3 document flow is opt-in, not automatically inline.** It's reached through the
+  header's "Reach Full Verification" button and a dialog, rather than a card that appears in the page flow once Level 2 is
   complete, to avoid pushing every Level 2 user into a KYC document checklist they may not
   be ready for yet.
 - **useReducer per business.** The profile form is keyed by `business.id`
@@ -289,6 +340,17 @@ re-renders from that state. Nothing here is a real request.
 - **Not on BharatConnect gets an Invite CTA, not a dead end.** Wherever a send action is
   unavailable because the counterparty has no B2B ID, the affordance right there is to
   invite them — never just a disabled control with no next step.
+- **Create → review → send, never auto-send.** Creating an invoice used to be able to send it
+  in the same click (a "Send via BharatConnect" checkbox on the Create page). Now nothing
+  reaches a buyer unreviewed: every invoice lands on its view page first, and sending is a
+  deliberate click from there.
+- **One call to action per page.** Where the same action could appear in several places
+  (Send, Invite, Connect), only one copy is the filled button; the rest step back to outline
+  or plain status text. Follows the LEDGERS design system's "one filled button per view".
+- **LEDGERS design system, hand-built components.** The theme is the design system's own
+  `globals.css`; components in `src/components/ui/` are thin typed wrappers over plain HTML
+  elements using the design system's class recipes (no shadcn CLI / Radix), which keeps
+  dependencies to one addition (`sonner`). Toasts are top-right per LEDGERS convention.
 - **Contact details follow the actual API contract, not a shortcut.** The partner handbook
   is explicit that `reqSearchEntity` doesn't return non-public info like email/mobile — that
   needs a separate consent-based `reqNonPublicInfo` request. Rather than fake an instant
@@ -306,6 +368,37 @@ re-renders from that state. Nothing here is a real request.
 - The "reqNonPublicInfo" request in Contacts stops at "request sent" — there's no simulated
   counterparty response that actually fills in the email/mobile fields afterward.
 - No persistence across a hard reload — all state lives in the Zustand store in memory.
+- **Handbook-aligned "ID found" flow (deferred).** Per the partner handbook (Annexure A §1.1,
+  `reqCheckEntity`), when a PAN is already registered LEDGERS should first show the
+  business's public details from BharatConnect, then offer *proceed* / *edit existing
+  details* / (sole proprietors only) *create a new business*, with consent and PAN/user
+  verification before the check. It should also ask whether LEDGERS becomes the ID's
+  **primary AI/OU** (§1.9 `reqEditId`; Annexure O — inbound invoices are delivered to the
+  primary AI). The prototype keeps the one-click link for now. How LEDGERS attaches to a
+  business onboarded through another platform needs confirming with NBBL.
+- **Ownership rule (deferred).** The LEDGERS sign-up OTP (mobile + email) covers Level 1's
+  "OTP on the contacts provided", but not Level 2's ownership check ("mobile/email linked
+  with PAN/GSTIN/Udyam") unless the verified contact matches the GST/PAN record or the
+  business has completed the GSTN connection. Both seeded businesses hard-code
+  `ownershipVerified: true` today; it should record which route verified it.
+
+## Design system restyle
+
+In progress. The LEDGERS design-system theme and shared components are in place everywhere,
+so unconverted screens already use the LEDGERS palette (blue primary, neutral canvas) through
+temporary aliases for the old token names (`ink`, `body`, `faint`, `canvas` in `index.css`,
+to be removed once every screen is converted).
+
+| Area | Status |
+|---|---|
+| Theme, fonts, shared `ui/` components, Sonner toasts | Done |
+| App shell — sidebar, top bar, BharatConnect status chip | Done |
+| BharatConnect profile page (+ documents dialog, level badge) | Done |
+| Invoice view — review-and-send callout | Done (rest of the page not yet restyled) |
+| Dashboard, Invoices/Bills list + view + create, Contacts, Connect flow, Overview, IDs page | Not yet |
+
+Design and plan notes: [`docs/superpowers/specs/2026-09-29-ledgers-ds-restyle-design.md`](docs/superpowers/specs/2026-09-29-ledgers-ds-restyle-design.md),
+[`docs/superpowers/plans/2026-09-29-ledgers-ds-restyle.md`](docs/superpowers/plans/2026-09-29-ledgers-ds-restyle.md).
 
 ## File map
 
@@ -314,17 +407,22 @@ src/
   types/            Shared TypeScript types for the whole domain model
   mock/             seed.ts (businesses, invoices, contacts, GST/BharatConnect lookup tables),
                      api.ts (mocked network calls)
-  lib/               id-standard.ts (B2B ID generation), status.ts (connection-state metadata),
-                     invoiceStatus.ts (status labels/pill classes), profile.ts (MCC list,
-                     pincode validation, payment-address generation)
+  index.css          LEDGERS design-system theme (tokens, radii, 13px control text) + temporary
+                     aliases for the old token names
+  lib/               id-standard.ts (B2B ID generation, existingIdFor), status.ts (connection-state
+                     metadata), invoiceStatus.ts (status labels/pill classes), profile.ts (MCC
+                     list, pincode validation, payment-address generation), cn.ts (class joiner)
   store/useStore.ts  Single Zustand store — business/connection/profile/invoices/contacts/
                      toasts/dev-panel state, all in one place
   components/
-    layout/          AppShell (incl. toasts), Sidebar, TopBar, StatusChip (incl. the connected
-                     quick-stats popover), DashboardBanner, PendingActionsBanner,
-                     BharatConnectMark, BharatConnectLogo, CircularSpinner
+    ui/              Design-system building blocks: button (+ button-variants), badge, input
+                     (Input/Select/Checkbox/Label), card, dialog (Dialog + Sheet), tabs
+                     (Tabs + ToggleGroup), table, popover (surface classes + Callout)
+    layout/          AppShell (incl. Sonner toaster + dev button), Sidebar, TopBar, StatusChip
+                     (incl. the connected quick-stats popover), DashboardBanner,
+                     PendingActionsBanner, BharatConnectMark, BharatConnectLogo, CircularSpinner
     dev/DevPanel.tsx Global dev panel (business switch, connection state, verification level,
-                     webhooks, simulate invoice confirmation)
+                     profile-save outcome, webhooks, simulate invoice confirmation)
     ConnectBharatConnectCTA.tsx  Not-connected banner (list pages) / card (view pages)
     InviteBcTooltip.tsx          "Not on BharatConnect · Invite" hover popover
     FilterMenu.tsx               Filter-icon popover for the BharatConnect status filter,
@@ -333,12 +431,18 @@ src/
   pages/
     Dashboard.tsx
     settings/bharatconnect/     (see the onboarding & profile sections above — connect flow, IDs)
+      profile/                  ProfilePage (header, sticky line tabs, card), fields.tsx
+                                 (rows + ProfileSection), SaveBar (card footer), sections/*,
+                                 LevelStatus, FullVerificationNudge, DocumentsCard,
+                                 useProfileForm, fieldConfig
     invoices/
       kindConfig.ts             Per-kind (sales/purchase) copy + money/inr formatters
       InvoiceListPage.tsx       List + BharatConnect column/filter/pending banner, shared by
                                  Invoices and Bills
       InvoiceViewPage.tsx       View + BharatConnect sidebar card, shared by both
-      InvoiceCreatePage.tsx     Create + counterparty search, shared by both
+      ReviewAndSendCallout.tsx  "Created — review, then send" callout on a new sales invoice
+      InvoiceCreatePage.tsx     Create + counterparty search, shared by both; lands on the
+                                 new document's view page
     contacts/
       ContactsListPage.tsx      List + BharatConnect column, All/Customer/Supplier filter
       CreateContactModal.tsx    GSTIN autofill (native + BharatConnect), invite-on-save

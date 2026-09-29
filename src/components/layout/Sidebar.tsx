@@ -1,32 +1,33 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Contact,
-  ShoppingBag,
-  Boxes,
+  House,
+  ContactRound,
+  GalleryVerticalEnd,
+  Package,
   TrendingUp,
-  Receipt,
+  ShoppingBag,
   BookOpen,
   Percent,
   Landmark,
   Layers,
-  UsersRound,
-  Database,
-  Settings as SettingsIcon,
+  Users,
+  DatabaseZap,
+  Settings2,
   ChevronDown,
-  PanelLeftClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { STATUS_META } from "../../lib/status";
+import { cn } from "../../lib/cn";
 import { LedgersLogoFull } from "./LedgersLogoFull";
 
 type Child = string | { label: string; to: string };
 
-const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; to?: string; children?: Child[]; chevron?: boolean }[] = [
-  { label: "Contacts", icon: Contact, to: "/contacts" },
-  { label: "Catalog", icon: ShoppingBag },
-  { label: "Inventory", icon: Boxes },
+const NAV_ITEMS: { label: string; icon: typeof House; to?: string; children?: Child[]; chevron?: boolean }[] = [
+  { label: "Contacts", icon: ContactRound, to: "/contacts" },
+  { label: "Catalog", icon: GalleryVerticalEnd },
+  { label: "Inventory", icon: Package },
   {
     label: "Sales",
     icon: TrendingUp,
@@ -40,16 +41,23 @@ const NAV_ITEMS: { label: string; icon: typeof LayoutDashboard; to?: string; chi
       "Payment Collection",
     ],
   },
-  { label: "Expenses", icon: Receipt, children: [{ label: "Bills", to: "/expenses/bills" }] },
+  { label: "Expenses", icon: ShoppingBag, children: [{ label: "Bills", to: "/expenses/bills" }] },
   { label: "Accounting", icon: BookOpen, chevron: true },
   { label: "Taxation", icon: Percent, chevron: true },
   { label: "Banking", icon: Landmark },
   { label: "HRMS", icon: Layers, chevron: true },
-  { label: "Users & Roles", icon: UsersRound },
-  { label: "Dataport", icon: Database, chevron: true },
+  { label: "Users & Roles", icon: Users },
+  { label: "Dataport", icon: DatabaseZap, chevron: true },
 ];
 
 const SETTINGS_ITEMS = ["Basic Settings", "Advanced Settings", "Customization", "PG Settings"];
+
+// components.md → Sidebar.
+const ITEM =
+  "relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-foreground hover:bg-accent [&_svg]:size-4 [&_svg]:shrink-0";
+const SUB_ITEM = "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-sm text-foreground hover:bg-accent";
+const ICON = "opacity-60";
+const CHEVRON = "ms-auto !size-3.5 text-muted-foreground transition-transform duration-200";
 
 export function Sidebar() {
   const business = useStore((s) => s.currentBusiness());
@@ -69,27 +77,19 @@ export function Sidebar() {
   }, [location.pathname]);
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
-      <div className="flex items-center justify-between px-5 py-5">
-        <div className="flex items-center gap-2">
-          <LedgersLogoFull height={24} />
+    <aside className="fixed inset-y-0 start-0 z-20 flex w-(--sidebar-width) flex-col border-e border-border bg-background">
+      <div className="flex h-(--header-height) shrink-0 items-center justify-between gap-2.5 border-b border-border px-2.5">
+        <div className="flex items-center ps-1.5">
+          <LedgersLogoFull height={22} />
         </div>
-        <button className="text-faint hover:text-body" title="Collapse sidebar">
-          <PanelLeftClose className="h-4 w-4" />
+        <button className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-accent-foreground hover:bg-accent" title="Collapse sidebar">
+          <PanelRightOpen className="size-4 opacity-60" />
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-1 text-sm">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `mb-0.5 flex items-center gap-2.5 rounded-md px-3 py-2 ${
-              isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
-            }`
-          }
-        >
-          <LayoutDashboard className="h-4 w-4 shrink-0 text-faint" />
+      <nav className="scrollbar-thin flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3.5">
+        <NavLink to="/" end className={({ isActive }) => cn(ITEM, isActive && "bg-accent")}>
+          <House className={ICON} />
           Dashboard
         </NavLink>
 
@@ -97,49 +97,32 @@ export function Sidebar() {
           const isOpen = openSection === label;
           const expandable = !!children && children.length > 0;
           return (
-            <div key={label}>
+            <div key={label} className="space-y-0.5">
               {to ? (
-                <NavLink
-                  to={to}
-                  className={({ isActive }) =>
-                    `mb-0.5 flex items-center gap-2.5 rounded-md px-3 py-2 ${
-                      isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
-                    }`
-                  }
-                >
-                  <Icon className="h-4 w-4 shrink-0 text-faint" />
+                <NavLink to={to} className={({ isActive }) => cn(ITEM, isActive && "bg-accent")}>
+                  <Icon className={ICON} />
                   <span className="flex-1">{label}</span>
                 </NavLink>
               ) : (
                 <button
                   onClick={() => expandable && setOpenSection(isOpen ? null : label)}
-                  className={`mb-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-body hover:bg-gray-50 ${expandable ? "" : "cursor-default"}`}
+                  className={cn(ITEM, "text-left", expandable ? "cursor-pointer" : "cursor-default")}
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-faint" />
+                  <Icon className={ICON} />
                   <span className="flex-1">{label}</span>
-                  {(expandable || chevron) && (
-                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                  )}
+                  {(expandable || chevron) && <ChevronDown className={cn(CHEVRON, isOpen && "-rotate-180")} />}
                 </button>
               )}
 
               {expandable && isOpen && (
-                <div className="ml-6 border-l border-gray-100 pl-3">
+                <div className="space-y-0.5 ps-4">
                   {children.map((child) =>
                     typeof child === "string" ? (
-                      <div key={child} className="mb-0.5 cursor-default rounded-md px-3 py-1.5 text-body hover:bg-gray-50">
+                      <div key={child} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
                         {child}
                       </div>
                     ) : (
-                      <NavLink
-                        key={child.to}
-                        to={child.to}
-                        className={({ isActive }) =>
-                          `mb-0.5 block rounded-md px-3 py-1.5 ${
-                            isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
-                          }`
-                        }
-                      >
+                      <NavLink key={child.to} to={child.to} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
                         {child.label}
                       </NavLink>
                     ),
@@ -150,40 +133,31 @@ export function Sidebar() {
           );
         })}
 
-        <div className="mb-0.5 flex cursor-default items-center gap-2.5 rounded-md px-3 py-2 text-body hover:bg-gray-50">
-          <SettingsIcon className="h-4 w-4 shrink-0 text-faint" />
+        <div className={cn(ITEM, "cursor-default")}>
+          <Settings2 className={ICON} />
           <span className="flex-1">Settings</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-faint" />
+          <ChevronDown className={cn(CHEVRON, "-rotate-180")} />
         </div>
 
-        <div className="ml-6 border-l border-gray-100 pl-3">
+        <div className="space-y-0.5 ps-4">
           {SETTINGS_ITEMS.map((item) => (
-            <div key={item} className="mb-0.5 cursor-default rounded-md px-3 py-1.5 text-body hover:bg-gray-50">
+            <div key={item} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
               {item}
             </div>
           ))}
 
-          <NavLink
-            to="/settings/bharatconnect"
-            className={({ isActive }) =>
-              `mb-0.5 flex items-center justify-between rounded-md px-3 py-1.5 ${
-                isActive ? "bg-gray-100 font-medium text-ink" : "text-body hover:bg-gray-50"
-              }`
-            }
-          >
+          <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
             <span>BharatConnect</span>
-            {incomplete && <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`} />}
+            {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
           </NavLink>
         </div>
       </nav>
 
-      <div className="flex items-center gap-2.5 border-t border-gray-200 px-4 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-          DL
-        </div>
-        <div className="leading-tight">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-faint">Business</div>
-          <div className="text-sm font-medium text-ink">Demo Ledgers</div>
+      <div className="flex h-16 shrink-0 items-center gap-2 border-t border-border px-2.5">
+        <div className="flex size-8 items-center justify-center rounded-full bg-blue-500/10 text-xs font-medium text-blue-500">DL</div>
+        <div className="min-w-0 leading-tight">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Business</div>
+          <div className="truncate text-sm font-medium text-foreground">Demo Ledgers</div>
         </div>
       </div>
     </aside>

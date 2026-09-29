@@ -3,6 +3,7 @@ import type { Business } from "../../../../types";
 import { FIELD_CONFIG } from "./fieldConfig";
 import { pincodeMatchesState } from "../../../../lib/profile";
 import { delay } from "../../../../mock/api";
+import { useStore } from "../../../../store/useStore";
 
 export interface DraftAddress {
   id: string;
@@ -35,8 +36,6 @@ interface FormState {
   rejectedSnapshot: unknown;
   version: number;
   banner: string | null;
-  armReject: boolean;
-  armConflict: boolean;
 }
 
 type Action =
@@ -48,8 +47,6 @@ type Action =
   | { type: "SEND_REJECTED"; fieldId: string; message: string }
   | { type: "SEND_CONFLICT"; fresh: Partial<ProfileValues> }
   | { type: "REVERT_TO_CLEAN" }
-  | { type: "TOGGLE_ARM_REJECT" }
-  | { type: "TOGGLE_ARM_CONFLICT" }
   | { type: "DISMISS_BANNER" };
 
 const EDITABLE_KEYS = Object.values(FIELD_CONFIG).filter((f) => f.permission === "editable");
@@ -112,10 +109,6 @@ function reducer(state: FormState, action: Action): FormState {
       };
     case "REVERT_TO_CLEAN":
       return { ...state, phase: "idle" };
-    case "TOGGLE_ARM_REJECT":
-      return { ...state, armReject: !state.armReject, armConflict: false };
-    case "TOGGLE_ARM_CONFLICT":
-      return { ...state, armConflict: !state.armConflict, armReject: false };
     case "DISMISS_BANNER":
       return { ...state, banner: null };
     default:
@@ -127,16 +120,13 @@ function seedValues(business: Business): ProfileValues {
   return {
     tradeName: business.profileDraft.tradeName || business.name,
     mcc: business.profileDraft.mcc,
-    additionalAddresses:
-      business.profileDraft.additionalAddresses.length > 0
-        ? business.profileDraft.additionalAddresses.map((a, i) => ({
-            id: `addr-${i}`,
-            line1: a.line1,
-            city: a.city,
-            state: a.state,
-            pincode: a.pincode,
-          }))
-        : [{ id: "addr-seed", line1: "4th Cross, Anna Nagar", city: "Daman", state: "TAMIL NADU", pincode: "396220" }],
+    additionalAddresses: business.profileDraft.additionalAddresses.map((a, i) => ({
+      id: `addr-${i}`,
+      line1: a.line1,
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+    })),
     settlementAccountId: business.bankAccounts.find((a) => a.verified)?.id ?? null,
     useAsDefault: true,
     primaryMobile: business.contacts.mobileMasked,
@@ -166,12 +156,12 @@ export function useProfileForm(business: Business) {
       rejectedSnapshot: null,
       version: 1,
       banner: null,
-      armReject: false,
-      armConflict: false,
     };
   }, [business.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [state, dispatch] = useReducer(reducer, initial);
+  // Armed from the dev panel; decides how the next save resolves.
+  const devOutcome = useStore((s) => s.devProfileSaveOutcome);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const changedFieldIds = useMemo(() => fieldsChanged(state.saved, state.draft), [state.saved, state.draft]);
@@ -192,7 +182,7 @@ export function useProfileForm(business: Business) {
     dispatch({ type: "CONFIRM_SEND" });
     await delay(undefined, 700, 1100);
 
-    if (state.armConflict) {
+    if (devOutcome === "conflict") {
       // Simulate someone else changing a field the user never touched — merge
       // the fresh server value in, but leave every one of the user's pending
       // edits exactly as they left them.
@@ -203,7 +193,7 @@ export function useProfileForm(business: Business) {
       });
       return;
     }
-    if (state.armReject) {
+    if (devOutcome === "reject") {
       dispatch({
         type: "SEND_REJECTED",
         fieldId: "settlementAccountId",
@@ -213,7 +203,7 @@ export function useProfileForm(business: Business) {
     }
     dispatch({ type: "SEND_SUCCESS" });
     successTimer.current = setTimeout(() => dispatch({ type: "REVERT_TO_CLEAN" }), 3000);
-  }, [state.armConflict, state.armReject, state.saved, state.draft]);
+  }, [devOutcome, state.saved, state.draft]);
 
   const confirmSend = useCallback(() => {
     doSend();
@@ -229,8 +219,6 @@ export function useProfileForm(business: Business) {
     }
   }, [hasErrors, changedFieldIds, doSend]);
 
-  const toggleArmReject = useCallback(() => dispatch({ type: "TOGGLE_ARM_REJECT" }), []);
-  const toggleArmConflict = useCallback(() => dispatch({ type: "TOGGLE_ARM_CONFLICT" }), []);
   const dismissBanner = useCallback(() => dispatch({ type: "DISMISS_BANNER" }), []);
 
   return {
@@ -243,14 +231,10 @@ export function useProfileForm(business: Business) {
     rejectedMessage: state.rejectedMessage,
     rejectedSnapshot: state.rejectedSnapshot,
     banner: state.banner,
-    armReject: state.armReject,
-    armConflict: state.armConflict,
     setField,
     pressSave: pressSaveOrConfirm,
     cancelConfirm,
     confirmSend,
-    toggleArmReject,
-    toggleArmConflict,
     dismissBanner,
   };
 }

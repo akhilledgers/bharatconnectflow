@@ -137,16 +137,7 @@ export function makeSeedBusinesses(): Record<string, Business> {
       profileDraft: {
         tradeName: "Sharma Traders",
         mcc: null,
-        additionalAddresses: [
-          {
-            line1: "4th Cross, Anna Nagar",
-            city: "Daman",
-            state: "TAMIL NADU",
-            pincode: "396220",
-            source: "manual",
-            pincodeMismatch: true,
-          },
-        ],
+        additionalAddresses: [],
         additionalMobiles: ["+919820001234"],
         additionalEmails: [],
         pendingReverification: {},

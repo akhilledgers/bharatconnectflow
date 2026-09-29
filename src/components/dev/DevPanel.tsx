@@ -24,13 +24,15 @@ export function DevPanel() {
   const setVerificationLevel = useStore((s) => s.setVerificationLevel);
   const invoices = useStore((s) => s.invoices);
   const simulateInvoiceConfirmation = useStore((s) => s.simulateInvoiceConfirmation);
+  const devProfileSaveOutcome = useStore((s) => s.devProfileSaveOutcome);
+  const setDevProfileSaveOutcome = useStore((s) => s.setDevProfileSaveOutcome);
 
   const awaitingConfirmation = invoices.filter(
     (i) => i.kind === "sales" && i.bcSendStatus === "sent" && i.bcConfirmationStatus === "pending",
   );
 
   return (
-    <div className="fixed bottom-20 right-5 z-40 w-80 overflow-y-auto scrollbar-thin rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-2xl" style={{ maxHeight: "calc(100vh - 6rem)" }}>
+    <div className="fixed bottom-16 left-[262px] z-40 w-80 overflow-y-auto scrollbar-thin rounded-xl border border-border bg-popover p-4 text-sm shadow-2xl" style={{ maxHeight: "calc(100vh - 6rem)" }}>
       <div className="mb-3 flex items-center justify-between">
         <div className="font-semibold text-ink">Dev panel</div>
         <button onClick={() => toggleDevPanel(false)} className="text-faint hover:text-body">
@@ -102,6 +104,27 @@ export function DevPanel() {
           {business.verification.level === 2 && "+ Paying others. MCC required, documents card appears."}
           {business.verification.level === 3 && "+ Receiving payments. Full verification reached."}
         </p>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Profile page — next save</div>
+        <div className="flex gap-1.5">
+          {([
+            [null, "Succeeds"],
+            ["reject", "Rejected"],
+            ["conflict", "Conflict"],
+          ] as const).map(([outcome, label]) => (
+            <button
+              key={label}
+              onClick={() => setDevProfileSaveOutcome(outcome)}
+              className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium ${
+                devProfileSaveOutcome === outcome ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div>

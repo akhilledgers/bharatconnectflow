@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Pencil, Plus, PowerOff, RotateCcw } from "lucide-react";
+import { ChevronRight, Plus, PowerOff, RotateCcw } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import { CreateIdDrawer } from "./CreateIdDrawer";
 import type { BharatConnectId } from "../../../types";
@@ -91,11 +91,8 @@ export function IdsPage() {
                   </span>
                 </td>
                 <td className="px-5 py-4">
+                  {/* Editing an ID (visibility, identifier, settlement account — reqEditId) is phase 2. */}
                   <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover">
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit
-                    </button>
                     {id.status === "active" ? (
                       <button
                         onClick={() => handleDeactivate(id)}

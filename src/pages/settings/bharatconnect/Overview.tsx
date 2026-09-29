@@ -27,7 +27,6 @@ export function Overview({ business }: { business: Business }) {
   const hasOpenInvoices = invoices.some((i) => i.status !== "paid");
   const activeIds = business.bharatConnectIds.filter((i) => i.status === "active");
   const defaultId = activeIds[0];
-  const extraCount = Math.max(0, activeIds.length - 1);
   const settlement = business.bankAccounts[0];
 
   return (
@@ -69,18 +68,15 @@ export function Overview({ business }: { business: Business }) {
         <div className="mt-1 flex items-center gap-3">
           <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{defaultId?.id ?? "—"}</span>
           {defaultId && <CopyId id={defaultId.id} />}
+          {/* Always shown — the IDs page (and Create ID) must be reachable even with a single ID. */}
+          <a
+            href="#/settings/bharatconnect/ids"
+            className="text-sm font-medium text-primary hover:text-primary-hover"
+          >
+            Manage IDs{activeIds.length > 1 ? ` (${activeIds.length})` : ""}
+          </a>
         </div>
-        <p className="mt-2 text-sm text-faint">
-          Share this ID so buyers and suppliers can send you invoices.{" "}
-          {extraCount > 0 && (
-            <a
-              href="#/settings/bharatconnect/ids"
-              className="font-medium text-primary hover:text-primary-hover"
-            >
-              {extraCount} more ID{extraCount === 1 ? "" : "s"}
-            </a>
-          )}
-        </p>
+        <p className="mt-2 text-sm text-faint">Share this ID so buyers and suppliers can send you invoices.</p>
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-8 border-t border-gray-100 pt-6">

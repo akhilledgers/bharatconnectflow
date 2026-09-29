@@ -1,57 +1,50 @@
+import { useEffect, useRef } from "react";
 import { Outlet } from "react-router-dom";
-import { CheckCircle2, X, XCircle } from "lucide-react";
+import { Toaster, toast } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useStore } from "../../store/useStore";
 import { DevPanel } from "../dev/DevPanel";
 
+// LEDGERS app shell (patterns.md §1): fixed 250px sidebar, fixed 54px top bar, content with a 20px gutter.
 export function AppShell() {
   const toasts = useStore((s) => s.toasts);
-  const dismissToast = useStore((s) => s.dismissToast);
   const devPanelOpen = useStore((s) => s.devPanelOpen);
   const toggleDevPanel = useStore((s) => s.toggleDevPanel);
 
+  // The store still owns toasts (every action calls pushToast); this bridges each new one to
+  // Sonner exactly once. The Set survives StrictMode's double effect run, and Sonner also
+  // dedupes by id.
+  const shown = useRef(new Set<string>());
+  useEffect(() => {
+    for (const t of toasts) {
+      if (shown.current.has(t.id)) continue;
+      shown.current.add(t.id);
+      const show = t.tone === "success" ? toast.success : toast.error;
+      show(t.message, { id: t.id, duration: 4000 });
+    }
+  }, [toasts]);
+
   return (
-    <div className="flex h-screen bg-canvas">
+    <div className="min-h-screen bg-background [--header-height:54px] [--sidebar-width:250px]">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="mx-auto max-w-6xl px-8 py-7">
-            <Outlet />
-          </div>
-        </main>
-      </div>
+      <TopBar />
+      <main className="ms-(--sidebar-width) pt-(--header-height)">
+        <div className="container-fluid py-5">
+          <Outlet />
+        </div>
+      </main>
 
       <button
         onClick={() => toggleDevPanel()}
-        className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-ink text-white shadow-lg hover:bg-gray-800"
+        className="fixed bottom-4 left-[calc(var(--sidebar-width)-44px)] z-40 flex size-8 cursor-pointer items-center justify-center rounded-full bg-foreground text-background shadow-lg hover:bg-foreground/85"
         title="Dev panel"
       >
-        <span className="text-sm font-mono">{"{ }"}</span>
+        <span className="font-mono text-xs">{"{ }"}</span>
       </button>
       {devPanelOpen && <DevPanel />}
 
-      <div className="fixed right-5 top-5 z-50 flex w-80 flex-col gap-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`flex items-start gap-2.5 rounded-lg border px-4 py-3 text-sm shadow-lg ${
-              t.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"
-            }`}
-          >
-            {t.tone === "success" ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <span className="flex-1">{t.message}</span>
-            <button onClick={() => dismissToast(t.id)} className="shrink-0 opacity-60 hover:opacity-100">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
+      <Toaster position="top-right" richColors closeButton toastOptions={{ style: { fontFamily: "Inter, sans-serif" } }} />
     </div>
   );
 }

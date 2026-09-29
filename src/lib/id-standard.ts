@@ -38,6 +38,15 @@ export function baseId(
   return `${value}@BCB`;
 }
 
+/**
+ * The already-registered ID shown in the "ID found" state and attached on link. Mocked from the
+ * business's own PAN (a real lookup would return it from reqCheckEntity); follows the same
+ * standard as a fresh registration so the individual format is used for sole proprietors.
+ */
+export function existingIdFor(business: Pick<Business, "businessType" | "pan" | "gstin" | "name" | "proprietorName">): string {
+  return baseId(business, "PAN");
+}
+
 export function baseIdWithoutSuffix(
   business: Pick<Business, "businessType" | "pan" | "gstin" | "name" | "proprietorName">,
   basedOn: "PAN" | "GSTIN",

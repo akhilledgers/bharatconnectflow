@@ -15,6 +15,7 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
   const navigate = useNavigate();
   const business = useStore((s) => s.currentBusiness());
   const createInvoice = useStore((s) => s.createInvoice);
+  const pushToast = useStore((s) => s.pushToast);
   const connected = business.connectionState === "connected";
 
   const [query, setQuery] = useState("");
@@ -24,7 +25,6 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
   const [qty, setQty] = useState("1");
   const [gstPercent, setGstPercent] = useState("18");
   const [hsnSac, setHsnSac] = useState("");
-  const [sendViaBc, setSendViaBc] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const matches = useMemo(() => {
@@ -35,7 +35,6 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
   function selectCounterparty(name: string, bcId: string | null) {
     setCounterparty({ name, bcId });
     setQuery(name);
-    setSendViaBc(kind === "sales" && connected && !!bcId);
   }
 
   const priceNum = parseFloat(price) || 0;
@@ -57,17 +56,15 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
       status: "unpaid",
       date: new Date().toLocaleDateString("en-GB").split("/").join("-"),
       lineItems: [{ id: "li-1", name: itemName, price: priceNum, qty: qtyNum, gstPercent: gstNum, hsnSac }],
-      bcSendStatus: sendViaBc ? "sending" : "not_sent",
+      bcSendStatus: "not_sent",
       bcConfirmationStatus: null,
     };
     await createInvoice(invoice);
     setSaving(false);
-    if (sendViaBc) {
-      navigate(`${config.basePath}/${invoice.id}`);
-      useStore.getState().sendInvoiceViaBharatConnect(invoice.id);
-    } else {
-      navigate(config.basePath);
-    }
+    pushToast(`${config.singular} ${invoice.id} created`);
+    // Creating never sends. The user lands on the new document to review it, and sends it
+    // via BharatConnect from there (InvoiceViewPage shows a review-and-send callout for it).
+    navigate(`${config.basePath}/${invoice.id}`, { state: { justCreated: true } });
   }
 
   return (
@@ -174,28 +171,10 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
           </div>
         </div>
 
-        {connected && kind === "sales" && (
-          <div className="border-b border-gray-100 py-5">
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                checked={sendViaBc}
-                onChange={(e) => setSendViaBc(e.target.checked)}
-                disabled={!counterparty?.bcId}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-40"
-              />
-              <span className="text-body">
-                <span className="flex items-center gap-1.5 font-medium text-ink">
-                  <BharatConnectMark size={13} />
-                  Send via BharatConnect
-                </span>
-                {counterparty?.bcId ? (
-                  <span className="text-faint">Delivered straight to their BharatConnect ID — no email attachment.</span>
-                ) : (
-                  <span className="text-faint">Search and select a customer with a BharatConnect ID to enable this.</span>
-                )}
-              </span>
-            </label>
+        {connected && kind === "sales" && counterparty?.bcId && (
+          <div className="flex items-center gap-2 border-b border-gray-100 py-4 text-xs text-muted-foreground">
+            <BharatConnectMark size={13} />
+            After you create it, you can review this invoice and send it to {counterparty.name} via BharatConnect.
           </div>
         )}
 

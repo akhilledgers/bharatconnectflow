@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link2, Loader2 } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import type { Business } from "../../../types";
+import { existingIdFor } from "../../../lib/id-standard";
 
 export function LinkExistingId({ business }: { business: Business }) {
   const linkExistingId = useStore((s) => s.linkExistingId);
@@ -24,7 +25,7 @@ export function LinkExistingId({ business }: { business: Business }) {
         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3.5">
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-faint">Existing BharatConnect ID</div>
-            <div className="mt-0.5 font-mono text-lg font-semibold text-ink">{business.pan}@BCB</div>
+            <div className="mt-0.5 font-mono text-lg font-semibold text-ink">{existingIdFor(business)}</div>
           </div>
           <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Active</span>
         </div>

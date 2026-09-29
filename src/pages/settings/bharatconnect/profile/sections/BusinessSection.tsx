@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { Business } from "../../../../../types";
 import type { useProfileForm } from "../useProfileForm";
 import { FIELD_CONFIG } from "../fieldConfig";
-import { FieldShell, ReadonlyRow, SelectInput, TextInput } from "../fields";
+import { FieldShell, ProfileSection, ReadonlyRow, SelectInput, TextInput } from "../fields";
+import { Button } from "../../../../../components/ui/button";
 import { MCC_CODES } from "../../../../../lib/profile";
 
 export function BusinessSection({
@@ -21,10 +22,7 @@ export function BusinessSection({
   const [mccExpanded, setMccExpanded] = useState(false);
 
   return (
-    <section id="business" className="scroll-mt-28">
-      <h2 className="mb-1 text-base font-semibold text-ink">Business details</h2>
-
-      <div className="divide-y divide-gray-100">
+    <ProfileSection id="business" title="Business details" description="Shared with businesses you trade with on BharatConnect.">
         <ReadonlyRow meta={FIELD_CONFIG.legalName} value={business.name} />
         <ReadonlyRow meta={FIELD_CONFIG.businessType} value={businessTypeLabel} />
 
@@ -48,14 +46,13 @@ export function BusinessSection({
             </SelectInput>
           </FieldShell>
         ) : (
-          <div className="flex items-center justify-between gap-6 py-3">
-            <span className="text-sm text-faint">Business category (MCC) — needed once you enable payments</span>
-            <button onClick={() => setMccExpanded(true)} className="shrink-0 text-sm font-medium text-primary hover:text-primary-hover">
-              Add now
-            </button>
+          <div className="flex min-h-[50px] items-center justify-between gap-6 py-2">
+            <span className="text-2sm text-muted-foreground">Business category (MCC) — needed once you enable payments</span>
+            <Button variant="outline" size="sm" onClick={() => setMccExpanded(true)}>
+              Add Now
+            </Button>
           </div>
         )}
-      </div>
-    </section>
+    </ProfileSection>
   );
 }

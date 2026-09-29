@@ -342,6 +342,22 @@ function InvoiceRow({
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confirmation.className}`}>
               {confirmation.label}
             </span>
+          ) : config.kind === "purchase" ? (
+            // A bill entered by hand: it didn't come over BharatConnect. "Not sent" would be wrong —
+            // bills are received, never sent.
+            counterpartyOnBc ? (
+              <span className="text-xs text-faint">Not via BharatConnect</span>
+            ) : (
+              <InviteBcTooltip
+                counterpartyName={invoice.counterpartyName}
+                message={`${invoice.counterpartyName} hasn't joined BharatConnect yet. Invite them so their future bills reach you over BharatConnect.`}
+              >
+                <span className="flex cursor-default items-center gap-1 whitespace-nowrap text-xs text-faint">
+                  <BharatConnectMark size={12} className="grayscale opacity-60" />
+                  Not on BharatConnect
+                </span>
+              </InviteBcTooltip>
+            )
           ) : (
             <span className="text-xs text-faint">Not sent</span>
           )}

@@ -9,7 +9,7 @@ import type {
   LedgerContact,
 } from "../types";
 import { makeSeedBusinesses, makeSeedInvoices, makeSeedContacts, STOCK_HOLDING_ID } from "../mock/seed";
-import { baseId } from "../lib/id-standard";
+import { baseId, existingIdFor } from "../lib/id-standard";
 import type { Invoice } from "../types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -46,12 +46,15 @@ interface StoreState {
   invoices: Invoice[];
   contacts: LedgerContact[];
   devPanelOpen: boolean;
+  /** Dev panel: arms how the profile page's next save resolves (null = succeeds normally). */
+  devProfileSaveOutcome: "reject" | "conflict" | null;
   connectFlow: Record<string, ConnectFlowState>;
   toasts: { id: string; message: string; tone: "success" | "error" }[];
 
   currentBusiness: () => Business;
   switchBusiness: (id: string) => void;
   toggleDevPanel: (open?: boolean) => void;
+  setDevProfileSaveOutcome: (outcome: "reject" | "conflict" | null) => void;
   pushToast: (message: string, tone?: "success" | "error") => void;
   dismissToast: (id: string) => void;
 
@@ -114,6 +117,7 @@ export const useStore = create<StoreState>((set, get) => ({
   invoices: makeSeedInvoices(),
   contacts: makeSeedContacts(),
   devPanelOpen: false,
+  devProfileSaveOutcome: null,
   connectFlow: {},
   toasts: [],
 
@@ -123,6 +127,8 @@ export const useStore = create<StoreState>((set, get) => ({
 
   toggleDevPanel: (open) =>
     set((s) => ({ devPanelOpen: open ?? !s.devPanelOpen })),
+
+  setDevProfileSaveOutcome: (outcome) => set({ devProfileSaveOutcome: outcome }),
 
   pushToast: (message, tone = "success") => {
     const id = crypto.randomUUID();
@@ -178,10 +184,29 @@ export const useStore = create<StoreState>((set, get) => ({
   linkExistingId: async (businessId) => {
     const { delay } = await import("../mock/api");
     await delay(undefined);
+    const business = get().businesses[businessId];
+    // The ID that was found (see existingIdFor) becomes this business's default ID — without it
+    // the Overview and IDs page would show no ID after linking.
+    const alreadyHasActive = business.bharatConnectIds.some((i) => i.status === "active");
+    const linkedId: BharatConnectId = {
+      id: existingIdFor(business),
+      label: "Default",
+      basedOn: "PAN",
+      linkedIdentifierValue: business.pan,
+      visibility: "public",
+      status: "active",
+      settlementAccountId: null,
+    };
     set((s) => ({
       businesses: {
         ...s.businesses,
-        [businessId]: { ...s.businesses[businessId], connectionState: "connected", welcomeSeen: false },
+        [businessId]: {
+          ...s.businesses[businessId],
+          connectionState: "connected",
+          bharatConnectIds: alreadyHasActive ? s.businesses[businessId].bharatConnectIds : [linkedId, ...s.businesses[businessId].bharatConnectIds],
+          lastSyncedAt: new Date().toISOString().slice(0, 10),
+          welcomeSeen: false,
+        },
       },
     }));
     get().pushToast("Linked to your existing BharatConnect ID.");

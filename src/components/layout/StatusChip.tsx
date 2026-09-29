@@ -4,6 +4,9 @@ import { useStore } from "../../store/useStore";
 import { STATUS_META } from "../../lib/status";
 import { BharatConnectMark } from "./BharatConnectMark";
 import type { Business } from "../../types";
+import { Button } from "../ui/button";
+import { popoverCls } from "../ui/popover";
+import { cn } from "../../lib/cn";
 
 function popoverContent(business: Business): { body: string; actionLabel: string; action: string } {
   const idCount = business.bharatConnectIds.filter((i) => i.status === "active").length;
@@ -113,56 +116,50 @@ export function StatusChip() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={`BharatConnect: ${meta.label}`}
-        className="relative flex items-center justify-center rounded-full border border-gray-200 bg-white p-1.5 hover:border-gray-300"
+        className="relative inline-flex size-9 cursor-pointer items-center justify-center rounded-md hover:bg-accent"
       >
-        <BharatConnectMark size={16} />
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${meta.dotClass}`}
-        />
+        <BharatConnectMark size={18} />
+        <span className={`absolute bottom-1 right-1 size-2.5 rounded-full ring-2 ring-background ${meta.dotClass}`} />
         {connected && totalPending > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
+          <span className="absolute -right-1 -top-1 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-background">
             {totalPending}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
-          <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-ink">
-            <span className={`h-2 w-2 rounded-full ${meta.dotClass}`} />
-            {business.connectionState === "connected" ? "Connected to BharatConnect" : meta.label}
-          </div>
-          <p className="mb-3 text-sm text-body">{content.body}</p>
-
-          {connected && (
-            <div className="mb-3 grid grid-cols-2 gap-2 rounded-md border border-gray-100 bg-gray-50 p-3">
-              <button onClick={() => goTo("/sales/invoices")} className="rounded-md p-1 text-left hover:bg-white">
-                <div className="text-lg font-semibold text-red-600">{pendingSendCount}</div>
-                <div className="text-xs text-faint">Pending to send</div>
-              </button>
-              <button onClick={() => goTo("/expenses/bills")} className="rounded-md p-1 text-left hover:bg-white">
-                <div className="text-lg font-semibold text-red-600">{pendingAcceptCount}</div>
-                <div className="text-xs text-faint">Pending to accept</div>
-              </button>
-              <button onClick={() => goTo("/sales/invoices")} className="rounded-md p-1 text-left hover:bg-white">
-                <div className="text-lg font-semibold text-emerald-600">{acceptedCount}</div>
-                <div className="text-xs text-faint">Invoices accepted</div>
-              </button>
-              <button onClick={() => goTo("/expenses/bills")} className="rounded-md p-1 text-left hover:bg-white">
-                <div className="text-lg font-semibold text-ink">{receivedCount}</div>
-                <div className="text-xs text-faint">Bills received</div>
-              </button>
+        // pt-2 instead of mt-2 keeps the hover area continuous between the chip and the popover.
+        <div className="absolute right-0 top-full z-30 pt-2">
+          <div className={cn(popoverCls, "w-80 p-4")}>
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+              <span className={`size-2 rounded-full ${meta.dotClass}`} />
+              {business.connectionState === "connected" ? "Connected to BharatConnect" : meta.label}
             </div>
-          )}
+            <p className="mb-3 text-xs text-muted-foreground">{content.body}</p>
 
-          <div className="flex justify-center">
-            <button
-              onClick={handleAction}
-              disabled={linking}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-            >
+            {connected && (
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                {[
+                  { value: pendingSendCount, label: "Pending to send", to: "/sales/invoices", cls: "text-red-600" },
+                  { value: pendingAcceptCount, label: "Pending to accept", to: "/expenses/bills", cls: "text-red-600" },
+                  { value: acceptedCount, label: "Invoices accepted", to: "/sales/invoices", cls: "text-green-600" },
+                  { value: receivedCount, label: "Bills received", to: "/expenses/bills", cls: "text-foreground" },
+                ].map((stat) => (
+                  <button
+                    key={stat.label}
+                    onClick={() => goTo(stat.to)}
+                    className="cursor-pointer rounded-lg border border-border px-3 py-2 text-left hover:bg-accent"
+                  >
+                    <div className={`text-lg font-semibold tabular-nums tracking-tight ${stat.cls}`}>{stat.value}</div>
+                    <div className="text-xs text-muted-foreground">{stat.label}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <Button variant="primary" size="sm" className="w-full" onClick={handleAction} disabled={linking}>
               {linking ? "Linking…" : content.actionLabel}
-            </button>
+            </Button>
           </div>
         </div>
       )}

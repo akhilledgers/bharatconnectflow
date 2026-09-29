@@ -1,8 +1,11 @@
+import { Plus } from "lucide-react";
 import type { Business } from "../../../../../types";
 import type { useProfileForm } from "../useProfileForm";
 import type { DraftAddress } from "../useProfileForm";
 import { FIELD_CONFIG } from "../fieldConfig";
-import { FieldShell, ReadonlyRow } from "../fields";
+import { FieldShell, ProfileSection, ReadonlyRow } from "../fields";
+import { Input } from "../../../../../components/ui/input";
+import { Button } from "../../../../../components/ui/button";
 
 let addrCounter = 0;
 
@@ -41,66 +44,51 @@ export function AddressesSection({
   const ra = business.registeredAddress;
 
   return (
-    <section id="addresses" className="scroll-mt-28">
-      <h2 className="mb-1 text-base font-semibold text-ink">Addresses</h2>
+    <ProfileSection id="addresses" title="Addresses" description="Your registered address comes from the GST portal. Add any others you trade from.">
+      <ReadonlyRow
+        meta={FIELD_CONFIG.registeredAddress}
+        value={`${ra.line1}, ${ra.city}, ${ra.state} ${ra.pincode}`}
+      />
 
-      <div className="divide-y divide-gray-100">
-        <ReadonlyRow
-          meta={FIELD_CONFIG.registeredAddress}
-          value={`${ra.line1}, ${ra.city}, ${ra.state} ${ra.pincode}`}
-        />
-
-        <FieldShell meta={FIELD_CONFIG.additionalAddresses} changed={changed} layout="block">
-          <div className="space-y-3">
-            {draft.additionalAddresses.map((a) => (
-              <div
-                key={a.id}
-                className={`rounded-lg border p-3.5 ${errors[a.id] ? "border-red-300 bg-red-50/40" : "border-gray-200"}`}
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    value={a.line1}
-                    onChange={(e) => updateAddress(a.id, { line1: e.target.value })}
-                    placeholder="Address line"
-                    className="col-span-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <input
-                    value={a.city}
-                    onChange={(e) => updateAddress(a.id, { city: e.target.value })}
-                    placeholder="City"
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <input
-                    value={a.state}
-                    onChange={(e) => updateAddress(a.id, { state: e.target.value.toUpperCase() })}
-                    placeholder="State"
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <input
-                    value={a.pincode}
-                    onChange={(e) => updateAddress(a.id, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
-                    placeholder="Pincode"
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    onClick={() => removeAddress(a.id)}
-                    className="text-left text-sm font-medium text-red-600 hover:text-red-700"
-                  >
-                    Remove
-                  </button>
-                </div>
-                {errors[a.id] && <p className="mt-2 text-[13px] text-red-800">{errors[a.id]}</p>}
+      <FieldShell meta={FIELD_CONFIG.additionalAddresses} changed={changed} layout="block">
+        <div className="space-y-4">
+          {draft.additionalAddresses.map((a) => (
+            // Neutral group; the invalid pincode field itself carries the error state.
+            <div key={a.id} className="grid grid-cols-2 gap-2.5">
+              <Input
+                value={a.line1}
+                onChange={(e) => updateAddress(a.id, { line1: e.target.value })}
+                placeholder="Address line"
+                className="col-span-2"
+              />
+              <Input value={a.city} onChange={(e) => updateAddress(a.id, { city: e.target.value })} placeholder="City" />
+              <Input
+                value={a.state}
+                onChange={(e) => updateAddress(a.id, { state: e.target.value.toUpperCase() })}
+                placeholder="State"
+              />
+              <Input
+                value={a.pincode}
+                onChange={(e) => updateAddress(a.id, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                placeholder="Pincode"
+                aria-invalid={errors[a.id] ? true : undefined}
+              />
+              <div className="flex items-center justify-end">
+                <Button variant="ghost" size="sm" className="!text-destructive hover:!bg-red-50" onClick={() => removeAddress(a.id)}>
+                  Remove
+                </Button>
               </div>
-            ))}
-            <button
-              onClick={addAddress}
-              className="text-sm font-medium text-primary hover:text-primary-hover"
-            >
-              + Add address
-            </button>
+              {errors[a.id] && <p className="col-span-2 text-xs text-destructive">{errors[a.id]}</p>}
+            </div>
+          ))}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={addAddress}>
+              <Plus />
+              Add Address
+            </Button>
           </div>
-        </FieldShell>
-      </div>
-    </section>
+        </div>
+      </FieldShell>
+    </ProfileSection>
   );
 }

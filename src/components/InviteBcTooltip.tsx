@@ -7,10 +7,13 @@ export function InviteBcTooltip({
   counterpartyName,
   children,
   className = "relative inline-flex",
+  message,
 }: {
   counterpartyName: string;
   children: ReactNode;
   className?: string;
+  /** Overrides the default (customer-facing) explanation, e.g. for suppliers on Bills. */
+  message?: string;
 }) {
   const inviteToBharatConnect = useStore((s) => s.inviteToBharatConnect);
   const [show, setShow] = useState(false);
@@ -38,7 +41,7 @@ export function InviteBcTooltip({
             Not on BharatConnect
           </div>
           <p className="mb-2 text-[11px] leading-snug text-faint">
-            {counterpartyName} hasn't joined BharatConnect yet. Invite them so future invoices reach them instantly.
+            {message ?? `${counterpartyName} hasn't joined BharatConnect yet. Invite them so future invoices reach them instantly.`}
           </p>
           <button
             onClick={() => inviteToBharatConnect(counterpartyName)}

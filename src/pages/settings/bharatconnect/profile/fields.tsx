@@ -1,15 +1,43 @@
 import type { ReactNode } from "react";
 import type { FieldMeta } from "./fieldConfig";
+import { Badge } from "../../../../components/ui/badge";
+import { Input, Select } from "../../../../components/ui/input";
+import { cn } from "../../../../lib/cn";
+
+// Every field — read-only or editable — is the same two-column row: label (with its source or
+// "Edited" badge) on the left, value or control on the right. The only thing marking a field
+// editable is its input box, not the layout.
+const ROW = "grid grid-cols-[minmax(0,300px)_minmax(0,1fr)] items-center gap-6 border-b border-border py-2 min-h-[50px] last:border-b-0";
+
+/** Source tags read as short badges ("GST portal"), not bracketed text. */
+function sourceLabel(tag: string): string {
+  return tag.replace(/^From /, "");
+}
+
+function RowLabel({ meta, changed }: { meta: FieldMeta; changed?: boolean }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2 text-2sm text-muted-foreground">
+      <span>{meta.label}</span>
+      {meta.tag && (
+        <Badge variant="secondary" className="h-5 text-[11px]">
+          {sourceLabel(meta.tag)}
+        </Badge>
+      )}
+      {changed && (
+        <Badge variant="warning" className="h-5 text-[11px]">
+          Edited
+        </Badge>
+      )}
+    </div>
+  );
+}
 
 /** Plain label/value row — same shape as the connected overview page's detail rows. */
 export function ReadonlyRow({ meta, value }: { meta: FieldMeta; value: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 py-3">
-      <span className="shrink-0 text-sm text-faint">
-        {meta.label}
-        {meta.tag && <span className="ml-1.5 text-xs text-faint">({meta.tag})</span>}
-      </span>
-      <span className="text-right text-sm text-ink">{value}</span>
+    <div className={ROW}>
+      <RowLabel meta={meta} />
+      <div className="justify-self-end text-right text-2sm text-foreground">{value}</div>
     </div>
   );
 }
@@ -19,39 +47,25 @@ interface FieldShellProps {
   changed: boolean;
   error?: string;
   hint?: string;
-  /** "row": label left, boxed control right (short values). "block": label above, full-width content below (lists). */
+  /** "row": short control (360px). "block": wider content for lists and address groups. */
   layout?: "row" | "block";
   children: ReactNode;
 }
 
-// Every field — read-only or editable — lives in the same divided-row list, so the
-// only thing that visually marks a field as editable is its input box, not the layout.
 export function FieldShell({ meta, changed, error, hint, layout = "row", children }: FieldShellProps) {
   return (
-    <div className="relative">
-      {changed && (
-        <span className="absolute -left-3 top-0 h-full w-[3px] rounded-full bg-primary" aria-hidden />
-      )}
-      {layout === "row" ? (
-        <div className="flex items-center justify-between gap-6 py-3">
-          <span className="shrink-0 text-sm text-faint">{meta.label}</span>
-          <div className="w-64 shrink-0">{children}</div>
-        </div>
-      ) : (
-        <div className="py-3">
-          <label className="mb-2 block text-sm text-faint">{meta.label}</label>
-          {children}
-        </div>
-      )}
-      {hint && <p className={`pb-2 text-xs text-faint ${layout === "row" ? "text-right" : ""}`}>{hint}</p>}
-      {error && <p className="pb-2 text-[13px] text-red-800">{error}</p>}
+    <div className={cn(ROW, layout === "block" && "items-start py-3")}>
+      <div className={layout === "block" ? "pt-2" : undefined}>
+        <RowLabel meta={meta} changed={changed} />
+      </div>
+      <div className={cn("flex w-full flex-col gap-1.5 justify-self-end", layout === "row" ? "max-w-[360px]" : "max-w-[520px]")}>
+        {children}
+        {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
     </div>
   );
 }
-
-const boxClass = "w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2";
-const boxOk = "border-[#d1d5db] focus:border-primary focus:ring-primary/30";
-const boxErr = "border-red-300 focus:border-red-400 focus:ring-red-300/40";
 
 export function TextInput({
   value,
@@ -64,14 +78,7 @@ export function TextInput({
   error?: string;
   placeholder?: string;
 }) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={`${boxClass} ${error ? boxErr : boxOk}`}
-    />
-  );
+  return <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-invalid={error ? true : undefined} />;
 }
 
 export function SelectInput({
@@ -86,8 +93,37 @@ export function SelectInput({
   children: ReactNode;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${boxClass} ${error ? boxErr : boxOk}`}>
+    <Select value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={error ? true : undefined}>
       {children}
-    </select>
+    </Select>
+  );
+}
+
+/** Section wrapper inside the profile card: heading, optional description, rows. */
+export function ProfileSection({
+  id,
+  title,
+  description,
+  aside,
+  children,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    // scroll-mt clears the fixed top bar plus the sticky section tabs.
+    <section id={id} className="scroll-mt-[120px] border-b border-border px-5 pb-2 pt-5 last:border-b-0">
+      <div className="mb-2 flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        </div>
+        {aside}
+      </div>
+      <div>{children}</div>
+    </section>
   );
 }

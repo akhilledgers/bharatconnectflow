@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { STATUS_META, isBannerSnoozed } from "../../lib/status";
@@ -51,7 +51,9 @@ export function DashboardBanner() {
   const business = useStore((s) => s.currentBusiness());
   const snoozeBanner = useStore((s) => s.snoozeBanner);
   const pushToast = useStore((s) => s.pushToast);
+  const linkExistingId = useStore((s) => s.linkExistingId);
   const navigate = useNavigate();
+  const [linking, setLinking] = useState(false);
 
   const meta = STATUS_META[business.connectionState];
   if (!meta.needsAction) return null;
@@ -60,7 +62,14 @@ export function DashboardBanner() {
   const copy = bannerCopy(business);
   if (!copy) return null;
 
-  function handleAction() {
+  async function handleAction() {
+    if (copy!.action === "link") {
+      // Links in place — same as the top-bar chip — so the banner's "one click" is true.
+      setLinking(true);
+      await linkExistingId(business.id);
+      setLinking(false);
+      return;
+    }
     if (copy!.action === "contact") {
       pushToast("Our team will reach out to help with setup.");
       return;
@@ -84,9 +93,10 @@ export function DashboardBanner() {
       <div className="flex shrink-0 items-center gap-4 pt-0.5">
         <button
           onClick={handleAction}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          disabled={linking}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
         >
-          {copy.actionLabel}
+          {linking ? "Linking…" : copy.actionLabel}
         </button>
         <button
           onClick={() => snoozeBanner(business.id)}

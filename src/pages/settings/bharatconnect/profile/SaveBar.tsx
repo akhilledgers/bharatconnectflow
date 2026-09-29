@@ -3,6 +3,8 @@ import { CircularSpinner } from "../../../../components/layout/CircularSpinner";
 import type { Business } from "../../../../types";
 import type { useProfileForm } from "./useProfileForm";
 import { FIELD_CONFIG } from "./fieldConfig";
+import { Button } from "../../../../components/ui/button";
+import { cn } from "../../../../lib/cn";
 
 function accountLabel(business: Business, id: string | null): string {
   if (!id) return "None selected";
@@ -45,110 +47,93 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
   const firstErrorMessage = errorCount > 0 ? Object.values(errors)[0] : null;
 
   const quiet = barState === "clean";
+  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  // The card's footer, pinned to the bottom of the viewport while the card scrolls past.
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 md:left-64">
+    <div className={cn("sticky bottom-0 z-10 rounded-b-xl border-t border-border bg-card", !quiet && "shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.08)]")}>
       {banner && (
-        <div className="mx-auto max-w-6xl px-8">
-          <div className="max-w-[760px]">
-            <div className="mb-2 flex items-center justify-between rounded-t-lg border border-b-0 border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-              {banner}
-              <button onClick={dismissBanner} className="text-amber-700 hover:text-amber-900">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-[var(--color-warning-soft)] px-5 py-2 text-xs text-[var(--color-warning-accent)]">
+          {banner}
+          <Button variant="ghost" size="icon-sm" onClick={dismissBanner} aria-label="Dismiss">
+            <X />
+          </Button>
         </div>
       )}
 
       {barState === "confirming" && (
-        <div className="mx-auto max-w-6xl px-8">
-          <div className="max-w-[760px] max-h-[320px] overflow-y-auto scrollbar-thin rounded-t-xl border border-b-0 border-gray-200 bg-white p-5 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
-            <h3 className="mb-3 text-sm font-semibold text-ink">Confirm changes before sending</h3>
-            <div className="divide-y divide-gray-100">
-              {diffRows(business, form).map((row) => (
-                <div key={row.id} className="grid grid-cols-[1fr_1.4fr] gap-4 py-2.5 text-sm">
-                  <span className="text-faint">{row.label}</span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-faint line-through">{row.from}</span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-faint" />
-                    <span className="text-ink">{row.to}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                onClick={cancelConfirm}
-                className="rounded-full border border-gray-300 px-5 py-2 text-sm font-medium text-body hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSend}
-                className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-              >
-                Confirm &amp; send
-              </button>
-            </div>
+        <div className="scrollbar-thin max-h-[320px] overflow-y-auto border-b border-border px-5 py-4">
+          <h3 className="mb-1 text-sm font-semibold tracking-tight text-foreground">Confirm changes before sending</h3>
+          <p className="mb-3 text-xs text-muted-foreground">These changes need your confirmation before BharatConnect gets them.</p>
+          <div>
+            {diffRows(business, form).map((row) => (
+              <div key={row.id} className="grid grid-cols-[minmax(0,300px)_minmax(0,1fr)] gap-6 border-b border-border py-2.5 text-2sm last:border-b-0">
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground line-through">{row.from}</span>
+                  <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-foreground">{row.to}</span>
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      <div
-        className={`h-16 border-t bg-white ${
-          quiet ? "border-gray-100" : "border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
-        }`}
-      >
-        <div className="mx-auto max-w-6xl px-8">
-        <div className="flex h-16 max-w-[760px] items-center justify-between">
-          {barState === "clean" && <span className="text-sm text-faint">Up to date</span>}
+      <div className="flex min-h-14 items-center justify-between gap-4 px-5">
+        <div className="min-w-0 text-2sm">
+          {barState === "clean" && <span className="text-muted-foreground">Up to date</span>}
 
           {barState === "dirty" && (
-            <span className="text-sm text-body">
+            <span className="text-foreground">
               {changedFieldIds.length} field{changedFieldIds.length === 1 ? "" : "s"} changed
             </span>
           )}
 
           {barState === "invalid" && (
-            <button
-              onClick={() => document.getElementById("addresses")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              className="text-left text-sm font-medium text-red-700 hover:text-red-800"
-            >
-              {errorCount > 1 ? `${errorCount} issues — ` : ""}Fix: {firstErrorMessage}
-            </button>
+            <Button variant="link" className="!text-destructive" onClick={() => scrollTo("addresses")}>
+              {errorCount > 1 ? `${errorCount} issues · ` : ""}Fix: {firstErrorMessage}
+            </Button>
           )}
 
-          {barState === "confirming" && <span className="text-sm text-body">Review the changes above</span>}
+          {barState === "confirming" && <span className="text-foreground">Review the changes above</span>}
 
           {barState === "sending" && (
-            <span className="flex items-center gap-2 text-sm text-body">
+            <span className="flex items-center gap-2 text-muted-foreground">
               <CircularSpinner size={14} />
               Sending…
             </span>
           )}
 
-          {barState === "success" && <span className="text-sm font-medium text-emerald-700">Sent to BharatConnect</span>}
+          {barState === "success" && <span className="font-medium text-green-600">Sent to BharatConnect</span>}
 
           {barState === "rejected" && (
-            <button
-              onClick={() => document.getElementById("settlement")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              className="text-left text-sm font-medium text-red-700 hover:text-red-800"
-            >
+            <Button variant="link" className="!text-destructive" onClick={() => scrollTo("settlement")}>
               Fix: {form.rejectedMessage}
-            </button>
-          )}
-
-          {barState !== "confirming" && (
-            <button
-              onClick={pressSave}
-              disabled={barState === "clean" || barState === "invalid" || barState === "sending" || barState === "rejected"}
-              className="rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {barState === "sending" ? "Sending…" : "Save"}
-            </button>
+            </Button>
           )}
         </div>
+
+        <div className="flex shrink-0 items-center gap-2.5">
+          {barState === "confirming" ? (
+            <>
+              <Button variant="outline" size="sm" onClick={cancelConfirm}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" onClick={confirmSend}>
+                Confirm &amp; Send
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={pressSave}
+              disabled={barState === "clean" || barState === "invalid" || barState === "sending" || barState === "rejected"}
+            >
+              {barState === "sending" ? "Sending…" : "Save Changes"}
+            </Button>
+          )}
         </div>
       </div>
     </div>

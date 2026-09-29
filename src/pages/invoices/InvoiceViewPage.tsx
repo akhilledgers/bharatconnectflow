@@ -1,4 +1,5 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Copy, Download, Edit3, Link2, Printer, Trash2 } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { statusLabel, statusClass, confirmationMeta } from "../../lib/invoiceStatus";
@@ -7,6 +8,7 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { ConnectBharatConnectCard } from "../../components/ConnectBharatConnectCTA";
 import { configFor, money } from "./kindConfig";
 import { LedgersLogo } from "../../components/layout/LedgersLogo";
+import { ReviewAndSendCallout } from "./ReviewAndSendCallout";
 
 export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   const config = configFor(kind);
@@ -18,6 +20,9 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   const respondToBill = useStore((s) => s.respondToBill);
   const inviteToBharatConnect = useStore((s) => s.inviteToBharatConnect);
   const connected = business.connectionState === "connected";
+  // Set by InvoiceCreatePage when it navigates here after Create.
+  const justCreated = (useLocation().state as { justCreated?: boolean } | null)?.justCreated === true;
+  const [calloutDismissed, setCalloutDismissed] = useState(false);
 
   if (!invoice) {
     return (
@@ -42,6 +47,8 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
     await sendInvoiceViaBharatConnect(invoice!.id);
   }
 
+  const showCallout = justCreated && kind === "sales" && !calloutDismissed;
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -57,16 +64,14 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
           <button className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-body hover:bg-gray-50">
             TDS
           </button>
-          {connected && (
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200"
-              title="Sent over BharatConnect"
-            >
-              <BharatConnectMark size={16} />
-            </span>
-          )}
         </div>
       </div>
+
+      {showCallout && (
+        <div className="mb-5">
+          <ReviewAndSendCallout invoice={invoice} onDismiss={() => setCalloutDismissed(true)} />
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-8">
@@ -100,17 +105,10 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
               </div>
             ) : (
               connected && (
-                <div className="mt-1 flex items-center gap-2 text-sm">
-                  <span className="flex items-center gap-1.5 text-faint">
-                    <BharatConnectMark size={12} className="grayscale opacity-60" />
-                    Not on BharatConnect
-                  </span>
-                  <button
-                    onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
-                    className="font-medium text-primary hover:text-primary-hover"
-                  >
-                    Invite
-                  </button>
+                // Status only — the page's single Invite action lives in the callout or the BharatConnect card.
+                <div className="mt-1 flex items-center gap-1.5 text-sm text-faint">
+                  <BharatConnectMark size={12} className="grayscale opacity-60" />
+                  Not on BharatConnect
                 </div>
               )
             )}
@@ -199,9 +197,15 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                 {kind === "sales" ? (
                   invoice.bcSendStatus === "not_sent" ? (
                     invoice.counterpartyB2bId ? (
+                      // Outline while the review-and-send callout carries the filled Send button,
+                      // so the page keeps one filled button.
                       <button
                         onClick={handleSend}
-                        className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                        className={
+                          showCallout
+                            ? "w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
+                            : "w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                        }
                       >
                         Send via BharatConnect
                       </button>
@@ -216,12 +220,15 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                         <p className="mt-1.5 text-xs text-faint">
                           {invoice.counterpartyName} hasn't joined BharatConnect yet.
                         </p>
-                        <button
-                          onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
-                          className="mt-2 w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary-soft"
-                        >
-                          Invite to BharatConnect
-                        </button>
+                        {/* Hidden while the review-and-send callout shows its own Invite button. */}
+                        {!showCallout && (
+                          <button
+                            onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
+                            className="mt-2 w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary-soft"
+                          >
+                            Invite to BharatConnect
+                          </button>
+                        )}
                       </div>
                     )
                   ) : invoice.bcSendStatus === "sending" ? (
