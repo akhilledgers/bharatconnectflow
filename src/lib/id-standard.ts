@@ -19,7 +19,7 @@ export function panDigits(pan: string): string {
 }
 
 /**
- * The base BharatConnect ID for a business's first registration, before any
+ * The base Bharat Connect ID for a business's first registration, before any
  * extra "." ending. Individuals get the AAAA.BBBB.CCCC.DDD shape; everyone
  * else gets PAN@BCB or GSTIN@BCB.
  */
@@ -97,7 +97,7 @@ export function breakdown(
       { value: namePrefix(business.name), label: "From business name" },
       { value: namePrefix(business.proprietorName ?? ""), label: "From proprietor name" },
       { value: panDigits(business.pan), label: "PAN characters 6-9" },
-      { value: "001", label: "Assigned by BharatConnect on registration" },
+      { value: "001", label: "Assigned by Bharat Connect on registration" },
       { value: "@BCB", label: "Fixed suffix" },
     ];
   }

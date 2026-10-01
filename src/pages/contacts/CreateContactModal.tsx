@@ -39,7 +39,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    // Native GST-portal autofill — works regardless of BharatConnect connection.
+    // Native GST-portal autofill — works regardless of Bharat Connect connection.
     const gstMatch = lookupGstRegistry(value);
     if (gstMatch) {
       if (gstMatch.name && !contactName) setContactName(gstMatch.name);
@@ -48,7 +48,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
       if (gstMatch.address) setBillingAddress(gstMatch.address);
     }
 
-    // BharatConnect status is only searched once this business is itself connected.
+    // Bharat Connect status is only searched once this business is itself connected.
     if (!connected) return;
     setBcCheck({ state: "checking" });
     setTimeout(() => {
@@ -92,7 +92,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-card shadow-2xl">
         <div className="flex items-center justify-between px-8 pb-4 pt-6">
           <div className="flex gap-1.5">
             {TABS.map((t) => (
@@ -100,21 +100,21 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
                 key={t}
                 onClick={() => setTab(t)}
                 className={`rounded-lg px-3.5 py-2 text-sm font-medium ${
-                  tab === t ? "border border-gray-200 bg-white text-ink shadow-sm" : "text-faint hover:text-body"
+                  tab === t ? "border border-border bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t}
               </button>
             ))}
           </div>
-          <button onClick={onClose} className="text-faint hover:text-body">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-8 pb-6">
           {tab !== "Information" ? (
-            <div className="flex h-48 items-center justify-center text-sm text-faint">
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
               You can add this after creating the contact.
             </div>
           ) : (
@@ -131,73 +131,73 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
                   onChange={(e) => handleGstinChange(e.target.value.toUpperCase())}
                   maxLength={15}
                   placeholder="Enter GSTIN to auto-fill name, PAN, address & more"
-                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
 
                 {connected && (
                   <div className="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-700">
                     <BharatConnectMark size={11} />
-                    We'll also check if they're on BharatConnect
+                    We'll also check if they're on Bharat Connect
                   </div>
                 )}
 
                 {bcCheck.state === "checking" && (
-                  <div className="mt-2 flex items-center gap-2 text-xs text-faint">
-                    <CircularSpinner size={12} /> Checking BharatConnect…
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <CircularSpinner size={12} /> Checking Bharat Connect…
                   </div>
                 )}
                 {bcCheck.state === "found" && (
-                  <div className="mt-2 rounded-md border border-emerald-200 bg-white p-2.5">
+                  <div className="mt-2 rounded-md border border-emerald-200 bg-card p-2.5">
                     <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      On BharatConnect
-                      <span className="font-mono text-emerald-800">{bcCheck.bcId}</span>
+                      On Bharat Connect
+                      <span className="tabular-nums text-emerald-800">{bcCheck.bcId}</span>
                     </div>
-                    <p className="mt-1 text-[11px] text-faint">
+                    <p className="mt-1 text-[11px] text-muted-foreground">
                       Email and mobile aren't shared by default — you can request them once saved.
                     </p>
                     <button
                       onClick={() => requestContactDetails(contactName || businessName || "them")}
-                      className="mt-1.5 text-[11px] font-medium text-primary hover:text-primary-hover"
+                      className="mt-1.5 text-[11px] font-medium text-primary hover:text-primary/80"
                     >
                       Request contact details
                     </button>
                   </div>
                 )}
                 {bcCheck.state === "not_found" && (
-                  <div className="mt-2 rounded-md border border-gray-200 bg-white p-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-body">
+                  <div className="mt-2 rounded-md border border-border bg-card p-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                       <BharatConnectMark size={12} className="grayscale opacity-60" />
-                      Not on BharatConnect yet
+                      Not on Bharat Connect yet
                     </div>
-                    <label className="mt-1.5 flex items-center gap-2 text-xs text-faint">
+                    <label className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
                       <input
                         type="checkbox"
                         checked={invite}
                         onChange={(e) => setInvite(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                        className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
                       />
-                      Invite them to BharatConnect once saved
+                      Invite them to Bharat Connect once saved
                     </label>
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 py-3.5 text-sm text-faint">
+              <div className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-input py-3.5 text-sm text-muted-foreground">
                 <Upload className="h-4 w-4" />
                 Or upload a visiting card to create a contact (.jpeg, .jpg, .png)
               </div>
 
               <div className="mt-5 grid grid-cols-3 gap-x-4 gap-y-5">
                 <div className="col-span-1">
-                  <label className="mb-1 block text-xs font-medium text-body">
+                  <label className="mb-1 block text-xs font-medium text-foreground">
                     Contact Name <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-1.5">
                     <select
                       value={salutation}
                       onChange={(e) => setSalutation(e.target.value)}
-                      className="rounded-md border border-gray-300 px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="rounded-md border border-input px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                       {["Mr", "Ms", "Mrs", "M/s"].map((s) => (
                         <option key={s}>{s}</option>
@@ -207,82 +207,82 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
                       value={contactName}
                       onChange={(e) => setContactName(e.target.value)}
                       placeholder="Enter Contact Name"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Display Name</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground">Display Name</label>
                   <input
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Enter Display Name"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Entity</label>
-                  <select className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                  <label className="mb-1 block text-xs font-medium text-foreground">Entity</label>
+                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
                     <option>Individual</option>
                     <option>Company</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Business Name</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground">Business Name</label>
                   <input
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     placeholder="Enter Business Name"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Business Country</label>
-                  <select className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                  <label className="mb-1 block text-xs font-medium text-foreground">Business Country</label>
+                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
                     <option>INDIA</option>
                   </select>
                 </div>
                 <div />
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Email</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground">Email</label>
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter Email"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Mobile</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground">Mobile</label>
                   <div className="flex gap-1.5">
-                    <span className="flex items-center rounded-md border border-gray-300 px-2 text-sm text-body">
+                    <span className="flex items-center rounded-md border border-input px-2 text-sm text-foreground">
                       +91
                     </span>
                     <input
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
                       placeholder="Enter Mobile Number"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
                 </div>
                 <div />
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">PAN</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground">PAN</label>
                   <input
                     value={pan}
                     onChange={(e) => setPan(e.target.value.toUpperCase())}
                     maxLength={10}
                     placeholder="Enter PAN"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-body">Reverse Charge Applicable</label>
-                  <select className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                  <label className="mb-1 block text-xs font-medium text-foreground">Reverse Charge Applicable</label>
+                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
                     <option>No</option>
                     <option>Yes</option>
                   </select>
@@ -292,8 +292,8 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-gray-100 px-8 py-5">
-          <button onClick={onClose} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-body hover:bg-gray-50">
+        <div className="flex justify-end gap-2 border-t border-border px-8 py-5">
+          <button onClick={onClose} className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">
             Cancel
           </button>
           <button

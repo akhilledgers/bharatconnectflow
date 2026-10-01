@@ -4,6 +4,7 @@ import type { Business } from "../../../../types";
 import { Button } from "../../../../components/ui/button";
 import { Dialog } from "../../../../components/ui/dialog";
 import { DocumentsCard } from "./DocumentsCard";
+import { VerificationSteps } from "./VerificationSteps";
 
 export function FullVerificationNudge({ business }: { business: Business }) {
   const [open, setOpen] = useState(false);
@@ -24,8 +25,10 @@ export function FullVerificationNudge({ business }: { business: Business }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Reach full verification"
-        description="Upload these so BharatConnect can complete due diligence and let you receive payments on-platform. BharatConnect can ask for any of them again later."
+        description="Complete these so Bharat Connect can verify your business and let you receive payments on-platform."
       >
+        <VerificationSteps business={business} />
+        <div className="text-sm font-medium text-foreground">KYC Documents</div>
         <DocumentsCard business={business} />
       </Dialog>
     </>

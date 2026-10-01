@@ -16,7 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useStore } from "../../store/useStore";
-import { statusLabel, statusPillClass, confirmationMeta } from "../../lib/invoiceStatus";
+import { statusLabel, statusVariant, confirmationMeta } from "../../lib/invoiceStatus";
+import { Badge } from "../../components/ui/badge";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { ConnectBharatConnectBanner } from "../../components/ConnectBharatConnectCTA";
@@ -28,10 +29,10 @@ import type { Invoice } from "../../types";
 
 function StatCard({ label, value, className }: { label: string; value: string; className: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
-      <div className="text-sm text-body">{label}</div>
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="text-sm text-foreground">{label}</div>
       <div className={`mt-2 text-xl font-semibold ${className}`}>{value}</div>
-      <div className="mt-1 text-xs text-faint">01-04-2026 - 31-03-2027</div>
+      <div className="mt-1 text-xs text-muted-foreground">01-04-2026 - 31-03-2027</div>
     </div>
   );
 }
@@ -39,7 +40,7 @@ function StatCard({ label, value, className }: { label: string; value: string; c
 type BcFilter = "all" | "not_sent" | "awaiting" | "accepted" | "failure" | "pending";
 
 const SALES_BC_FILTERS: { value: BcFilter; label: string }[] = [
-  { value: "all", label: "All BharatConnect statuses" },
+  { value: "all", label: "All Bharat Connect statuses" },
   { value: "not_sent", label: "Pending to send" },
   { value: "awaiting", label: "Awaiting confirmation" },
   { value: "accepted", label: "Accepted" },
@@ -47,7 +48,7 @@ const SALES_BC_FILTERS: { value: BcFilter; label: string }[] = [
 ];
 
 const PURCHASE_BC_FILTERS: { value: BcFilter; label: string }[] = [
-  { value: "all", label: "All BharatConnect statuses" },
+  { value: "all", label: "All Bharat Connect statuses" },
   { value: "pending", label: "Pending to accept" },
   { value: "accepted", label: "Accepted" },
   { value: "failure", label: "Failed" },
@@ -94,10 +95,10 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">{config.pageTitle}</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{config.pageTitle}</h1>
         <button
           onClick={() => navigate(`${config.basePath}/create`)}
-          className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-gray-50"
+          className="flex items-center gap-1.5 rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
         >
           <span className="text-base leading-none">+</span>
           {config.createLabel}
@@ -107,8 +108,8 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
       <ConnectBharatConnectBanner
         message={
           kind === "sales"
-            ? "Get paid faster — connect BharatConnect and send invoices instantly."
-            : "Connect BharatConnect to receive and confirm bills the moment they land."
+            ? "Get paid faster — onboard to Bharat Connect and send invoices instantly."
+            : "Onboard to Bharat Connect to receive and confirm bills the moment they land."
         }
       />
       {connected && (
@@ -121,14 +122,14 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
         ))}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-100 p-4">
+      <div className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <input
             placeholder={`Search ${config.singular}...`}
-            className="w-72 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-72 rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-faint hover:bg-gray-50">
+            <button className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent">
               <Calendar className="h-4 w-4" />
               Select Date range
             </button>
@@ -140,14 +141,14 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 options={kind === "sales" ? SALES_BC_FILTERS : PURCHASE_BC_FILTERS}
               />
             ) : (
-              <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+              <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
                 <Filter className="h-4 w-4" />
               </button>
             )}
-            <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+            <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
               <Layers className="h-4 w-4" />
             </button>
-            <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+            <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
               <Share2 className="h-4 w-4" />
             </button>
           </div>
@@ -155,20 +156,20 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-body">
+            <tr className="border-b border-border text-left text-foreground">
               <th className="w-10 px-4 py-3">
-                <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
+                <input type="checkbox" className="h-4 w-4 rounded border-input" />
               </th>
               <th className="px-2 py-3 font-medium">{config.singular} Number</th>
               <th className="px-2 py-3 font-medium">{config.singular} Date</th>
               <th className="px-2 py-3 font-medium">{config.counterpartyLabel}</th>
               <th className="px-2 py-3 text-right font-medium">Amount</th>
               <th className="px-2 py-3 font-medium">{config.singular} Status</th>
-              {connected && <th className="px-2 py-3 font-medium">BharatConnect</th>}
+              {connected && <th className="px-2 py-3 font-medium">Bharat Connect</th>}
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {filteredRows.map((inv) => (
               <InvoiceRow
                 key={inv.id}
@@ -186,25 +187,25 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-faint">
+                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-muted-foreground">
                   {rows.length === 0
                     ? `No ${config.pageTitle.toLowerCase()} yet.`
-                    : `No ${config.pageTitle.toLowerCase()} match this BharatConnect filter.`}
+                    : `No ${config.pageTitle.toLowerCase()} match this Bharat Connect filter.`}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-faint">
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted-foreground">
           <span>
             Showing Records 1 to {filteredRows.length} of {filteredRows.length} total records
           </span>
           <div className="flex gap-2">
-            <button className="rounded-md border border-gray-200 px-3 py-1.5 text-body hover:bg-gray-50" disabled>
+            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
               Previous
             </button>
-            <button className="rounded-md border border-gray-200 px-3 py-1.5 text-body hover:bg-gray-50" disabled>
+            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
               Next
             </button>
           </div>
@@ -228,8 +229,8 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-        danger ? "text-red-600" : "text-ink"
+      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
+        danger ? "text-red-600" : "text-foreground"
       }`}
     >
       <Icon className="h-4 w-4" strokeWidth={1.75} />
@@ -269,27 +270,27 @@ function InvoiceRow({
   const counterpartyOnBc = !!invoice.counterpartyB2bId;
 
   return (
-    <tr className="relative hover:bg-gray-50/60">
+    <tr className="relative hover:bg-accent/60">
       <td className="px-4 py-4">
-        <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
+        <input type="checkbox" className="h-4 w-4 rounded border-input" />
       </td>
       <td className="px-2 py-4">
-        <button onClick={onView} className="font-medium text-blue-600 hover:underline">
+        <button onClick={onView} className="font-medium text-primary hover:underline">
           {invoice.id}
         </button>
       </td>
-      <td className="px-2 py-4 text-body">{invoice.date}</td>
+      <td className="px-2 py-4 text-foreground">{invoice.date}</td>
       <td className="px-2 py-4">
-        <button onClick={onView} className="text-blue-600 hover:underline">
+        <button onClick={onView} className="text-primary hover:underline">
           {invoice.counterpartyName}
         </button>
-        {invoice.counterpartyEmail && <div className="text-xs text-faint">{invoice.counterpartyEmail}</div>}
+        {invoice.counterpartyEmail && <div className="text-xs text-muted-foreground">{invoice.counterpartyEmail}</div>}
       </td>
-      <td className="px-2 py-4 text-right text-ink">{money(invoice.amount)}</td>
+      <td className="px-2 py-4 text-right text-foreground">{money(invoice.amount)}</td>
       <td className="px-2 py-4">
-        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(invoice.status)}`}>
+        <Badge variant={statusVariant(invoice.status)}>
           {statusLabel(invoice.status)}
-        </span>
+        </Badge>
       </td>
       {connected && (
         <td className="px-2 py-4">
@@ -297,19 +298,19 @@ function InvoiceRow({
             counterpartyOnBc ? (
               <button
                 onClick={onSend}
-                className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:text-primary-hover"
+                className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:text-primary/80"
               >
                 Send via <BharatConnectMark size={12} />
               </button>
             ) : (
               <InviteBcTooltip counterpartyName={invoice.counterpartyName}>
-                <span className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap text-xs font-medium text-faint opacity-50">
+                <span className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap text-xs font-medium text-muted-foreground opacity-50">
                   Send via <BharatConnectMark size={12} className="grayscale" />
                 </span>
               </InviteBcTooltip>
             )
           ) : showSending ? (
-            <span className="flex items-center gap-2 text-xs text-faint">
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <CircularSpinner size={12} /> Sending…
             </span>
           ) : showAcceptReject ? (
@@ -331,35 +332,35 @@ function InvoiceRow({
             </div>
           ) : showRetry ? (
             <div className="flex items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confirmation!.className}`}>
+              <Badge variant={confirmation!.variant}>
                 {confirmation!.label}
-              </span>
-              <button onClick={onSend} className="text-xs font-medium text-primary hover:text-primary-hover">
+              </Badge>
+              <button onClick={onSend} className="text-xs font-medium text-primary hover:text-primary/80">
                 Retry
               </button>
             </div>
           ) : confirmation ? (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confirmation.className}`}>
+            <Badge variant={confirmation.variant}>
               {confirmation.label}
-            </span>
+            </Badge>
           ) : config.kind === "purchase" ? (
-            // A bill entered by hand: it didn't come over BharatConnect. "Not sent" would be wrong —
+            // A bill entered by hand: it didn't come over Bharat Connect. "Not sent" would be wrong —
             // bills are received, never sent.
             counterpartyOnBc ? (
-              <span className="text-xs text-faint">Not via BharatConnect</span>
+              <span className="text-xs text-muted-foreground">Not via Bharat Connect</span>
             ) : (
               <InviteBcTooltip
                 counterpartyName={invoice.counterpartyName}
-                message={`${invoice.counterpartyName} hasn't joined BharatConnect yet. Invite them so their future bills reach you over BharatConnect.`}
+                message={`${invoice.counterpartyName} hasn't joined Bharat Connect yet. Invite them so their future bills reach you over Bharat Connect.`}
               >
-                <span className="flex cursor-default items-center gap-1 whitespace-nowrap text-xs text-faint">
+                <span className="flex cursor-default items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
                   <BharatConnectMark size={12} className="grayscale opacity-60" />
-                  Not on BharatConnect
+                  Not on Bharat Connect
                 </span>
               </InviteBcTooltip>
             )
           ) : (
-            <span className="text-xs text-faint">Not sent</span>
+            <span className="text-xs text-muted-foreground">Not sent</span>
           )}
         </td>
       )}
@@ -367,7 +368,7 @@ function InvoiceRow({
         <div className="relative inline-block">
           <button
             onClick={onToggleMenu}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-gray-100 hover:text-body"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
@@ -375,7 +376,7 @@ function InvoiceRow({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
-              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-100 bg-white p-1.5 shadow-lg">
+              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-border bg-card p-1.5 shadow-lg">
                 <MenuItem
                   icon={Eye}
                   label="View Details"
@@ -389,7 +390,7 @@ function InvoiceRow({
                 <MenuItem icon={Copy} label="Copy invoice" onClick={onCloseMenu} />
                 <MenuItem icon={Printer} label="Print" onClick={onCloseMenu} />
                 <MenuItem icon={Download} label="Download" onClick={onCloseMenu} />
-                <div className="my-1 border-t border-gray-100" />
+                <div className="my-1 border-t border-border" />
                 <MenuItem icon={Trash2} label="Delete" danger onClick={onCloseMenu} />
               </div>
             </>

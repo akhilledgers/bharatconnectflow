@@ -22,7 +22,7 @@ export function BusinessSection({
   const [mccExpanded, setMccExpanded] = useState(false);
 
   return (
-    <ProfileSection id="business" title="Business details" description="Shared with businesses you trade with on BharatConnect.">
+    <ProfileSection id="business" title="Business Details" description="Shared with businesses you trade with on Bharat Connect.">
         <ReadonlyRow meta={FIELD_CONFIG.legalName} value={business.name} />
         <ReadonlyRow meta={FIELD_CONFIG.businessType} value={businessTypeLabel} />
 
@@ -32,7 +32,7 @@ export function BusinessSection({
 
         {mccRequired || mccExpanded ? (
           <FieldShell
-            meta={{ ...FIELD_CONFIG.mcc, label: mccRequired ? "Business category (MCC)" : FIELD_CONFIG.mcc.label }}
+            meta={{ ...FIELD_CONFIG.mcc, label: mccRequired ? "Business Category (MCC)" : FIELD_CONFIG.mcc.label }}
             changed={changedFieldIds.includes("mcc")}
             hint={mccRequired ? "Needed for full verification." : "Needed before you enable payments, not for invoicing."}
           >
@@ -47,7 +47,7 @@ export function BusinessSection({
           </FieldShell>
         ) : (
           <div className="flex min-h-[50px] items-center justify-between gap-6 py-2">
-            <span className="text-2sm text-muted-foreground">Business category (MCC) — needed once you enable payments</span>
+            <span className="text-2sm text-muted-foreground">Business Category (MCC) — needed once you enable payments</span>
             <Button variant="outline" size="sm" onClick={() => setMccExpanded(true)}>
               Add Now
             </Button>

@@ -147,7 +147,7 @@ export function Sidebar() {
           ))}
 
           <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
-            <span>BharatConnect</span>
+            <span>Bharat Connect</span>
             {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
           </NavLink>
         </div>

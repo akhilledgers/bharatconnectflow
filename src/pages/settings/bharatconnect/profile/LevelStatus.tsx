@@ -48,8 +48,8 @@ export function LevelStatus({ business }: { business: Business }) {
               const met = level >= group.level;
               return (
                 <div key={group.level} className="mb-3 last:mb-0">
-                  <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {group.title} <span className="normal-case tracking-normal">· {group.eligibility}</span>
+                  <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    {group.title} <span className="font-normal">· {group.eligibility}</span>
                   </div>
                   <div className="space-y-1">
                     {group.checks.map((check) => (

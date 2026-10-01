@@ -3,6 +3,9 @@ import { ChevronRight, Plus, PowerOff, RotateCcw } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import { CreateIdDrawer } from "./CreateIdDrawer";
 import type { BharatConnectId } from "../../../types";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { tableCls, thCls, tdCls, trCls } from "../../../components/ui/table";
 
 export function IdsPage() {
   const business = useStore((s) => s.currentBusiness());
@@ -28,69 +31,54 @@ export function IdsPage() {
 
   return (
     <div>
-      <div className="mb-1 flex items-center gap-1.5 text-sm text-faint">
-        <a href="#/settings/bharatconnect" className="hover:text-body">
-          BharatConnect
+      <div className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+        <a href="#/settings/bharatconnect" className="hover:text-foreground">
+          Bharat Connect
         </a>
         <ChevronRight className="h-3.5 w-3.5" />
-        <span>IDs</span>
+        <span>B2B IDs</span>
       </div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">BharatConnect IDs</h1>
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-        >
-          <Plus className="h-4 w-4" />
-          Create ID
-        </button>
+      <div className="mb-5 flex items-center justify-between">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Bharat Connect B2B IDs</h1>
+        <Button variant="outline" onClick={() => setDrawerOpen(true)}>
+          <Plus />
+          Create B2B ID
+        </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <table className="w-full text-sm">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs shadow-black/5">
+        <table className={tableCls}>
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-faint">
-              <th className="px-5 py-3">ID</th>
-              <th className="px-5 py-3">Visibility</th>
-              <th className="px-5 py-3">Linked to</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Actions</th>
+            <tr>
+              <th className={thCls}>B2B ID</th>
+              <th className={thCls}>Visibility</th>
+              <th className={thCls}>Linked To</th>
+              <th className={thCls}>Status</th>
+              <th className={thCls}>Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {business.bharatConnectIds.map((id) => (
-              <tr key={id.id}>
-                <td className="px-5 py-4">
-                  <div className="font-mono font-medium text-ink">{id.id}</div>
+              <tr key={id.id} className={trCls}>
+                <td className={tdCls}>
+                  <div className="tabular-nums font-medium text-foreground">{id.id}</div>
                   <div className="mt-1 flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        id.legacyFormat
-                          ? "bg-amber-50 text-amber-700"
-                          : id.label === "Default"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-gray-100 text-body"
-                      }`}
-                    >
-                      {id.legacyFormat ? "Legacy format" : id.label}
-                    </span>
-                    <span className="text-xs text-faint">
+                    <Badge variant={id.legacyFormat ? "warning" : id.label === "Default" ? "primary" : "secondary"}>
+                      {id.legacyFormat ? "Legacy Format" : id.label}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
                       {id.settlementAccountId ? "Settlement account linked" : "No settlement account"}
                     </span>
                   </div>
                 </td>
-                <td className="px-5 py-4 capitalize text-body">{id.visibility}</td>
-                <td className="px-5 py-4 text-body">{id.basedOn}</td>
-                <td className="px-5 py-4">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      id.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-faint"
-                    }`}
-                  >
+                <td className={`${tdCls} capitalize`}>{id.visibility}</td>
+                <td className={tdCls}>{id.basedOn}</td>
+                <td className={tdCls}>
+                  <Badge variant={id.status === "active" ? "success" : "secondary"}>
                     {id.status === "active" ? "Active" : "Deactivated"}
-                  </span>
+                  </Badge>
                 </td>
-                <td className="px-5 py-4">
+                <td className={tdCls}>
                   {/* Editing an ID (visibility, identifier, settlement account — reqEditId) is phase 2. */}
                   <div className="flex items-center gap-3">
                     {id.status === "active" ? (
@@ -98,7 +86,7 @@ export function IdsPage() {
                         onClick={() => handleDeactivate(id)}
                         title={blockReason(id) ?? undefined}
                         className={`flex items-center gap-1 text-sm font-medium ${
-                          blockReason(id) ? "cursor-not-allowed text-faint" : "text-red-600 hover:text-red-700"
+                          blockReason(id) ? "cursor-not-allowed text-muted-foreground" : "text-red-600 hover:text-red-700"
                         }`}
                       >
                         <PowerOff className="h-3.5 w-3.5" />
@@ -107,7 +95,7 @@ export function IdsPage() {
                     ) : (
                       <button
                         onClick={() => reactivateId(business.id, id.id)}
-                        className="flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
+                        className="flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         Reactivate
@@ -119,8 +107,8 @@ export function IdsPage() {
             ))}
             {business.bharatConnectIds.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-10 text-center text-sm text-faint">
-                  No BharatConnect IDs yet. Connect this business first.
+                <td colSpan={5} className="px-5 py-10 text-center text-xs text-muted-foreground">
+                  No B2B IDs yet. Onboard this business first.
                 </td>
               </tr>
             )}
@@ -128,10 +116,10 @@ export function IdsPage() {
         </table>
       </div>
 
-      <div className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="mb-2 text-sm font-medium text-ink">Good to know</h2>
-        <p className="text-sm text-body">
-          All IDs route to the same business and end in @BCB. BharatConnect sets the format: your first ID comes
+      <div className="mt-5 rounded-xl border border-border bg-card p-5">
+        <h2 className="mb-2 text-sm font-medium text-foreground">Good to know</h2>
+        <p className="text-sm text-foreground">
+          All IDs route to the same business and end in @BCB. Bharat Connect sets the format: your first ID comes
           from your PAN or GSTIN, and extra IDs add a 2 to 5 character ending you choose, such as a city or branch.
           Older IDs can still be in the earlier free-form format. A deactivated ID can't transact, and deactivation
           is blocked while invoices against it are unpaid or partly paid, or financing is active.

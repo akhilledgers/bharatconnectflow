@@ -37,16 +37,16 @@ export function ExpenseDonut({ total, segments }: { total: string; segments: Seg
           })}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="text-base font-semibold text-ink">{total}</div>
-          <div className="text-[9px] font-medium uppercase tracking-wide text-faint">Total</div>
+          <div className="text-base font-semibold text-foreground">{total}</div>
+          <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Total</div>
         </div>
       </div>
       <div className="space-y-2">
         {segments.map((seg) => (
           <div key={seg.label} className="flex items-center gap-2 text-sm">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: seg.color }} />
-            <span className="text-body">{seg.label}</span>
-            <span className="ml-auto font-medium text-ink">{seg.value.toLocaleString("en-IN")}</span>
+            <span className="text-foreground">{seg.label}</span>
+            <span className="ml-auto font-medium text-foreground">{seg.value.toLocaleString("en-IN")}</span>
           </div>
         ))}
       </div>

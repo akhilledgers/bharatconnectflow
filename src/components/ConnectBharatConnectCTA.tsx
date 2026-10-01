@@ -5,7 +5,7 @@ import { isBannerSnoozed } from "../lib/status";
 import { BharatConnectMark } from "./layout/BharatConnectMark";
 
 export function ConnectBharatConnectBanner({
-  message = "Get paid faster — connect BharatConnect and send invoices instantly.",
+  message = "Get paid faster — onboard to Bharat Connect and send invoices instantly.",
 }: {
   message?: string;
 }) {
@@ -26,9 +26,9 @@ export function ConnectBharatConnectBanner({
       <div className="flex shrink-0 items-center gap-3">
         <button
           onClick={() => navigate("/settings/bharatconnect")}
-          className="rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
+          className="rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
         >
-          Connect now
+          Onboard Now
         </button>
         <button
           onClick={() => snoozeBanner(business.id)}
@@ -45,19 +45,17 @@ export function ConnectBharatConnectBanner({
 export function ConnectBharatConnectCard({ kind }: { kind: "sales" | "purchase" }) {
   const navigate = useNavigate();
   return (
-    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5 text-center">
+    <div className="rounded-xl border border-dashed border-input bg-muted/50 p-5 text-center">
       <BharatConnectMark size={20} className="mx-auto mb-2" />
-      <div className="text-sm font-medium text-ink">Not connected to BharatConnect</div>
-      <p className="mt-1 text-xs text-faint">
-        {kind === "sales"
-          ? "Connect BharatConnect and this invoice could be in their hands in seconds."
-          : "Connect BharatConnect so bills like this land here automatically."}
-      </p>
+      {/* Heading carries the reason; no extra grey sentence between it and the button. */}
+      <div className="text-sm font-medium text-foreground">
+        {kind === "sales" ? "Send this invoice in seconds" : "Receive bills like this automatically"}
+      </div>
       <button
         onClick={() => navigate("/settings/bharatconnect")}
-        className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+        className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
       >
-        Connect BharatConnect
+        Onboard to Bharat Connect
       </button>
     </div>
   );

@@ -77,7 +77,7 @@ function ProfilePageInner({ business }: { business: Business }) {
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">BharatConnect profile</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">Bharat Connect profile</h1>
           <LevelStatus business={business} />
         </div>
         <FullVerificationNudge business={business} />

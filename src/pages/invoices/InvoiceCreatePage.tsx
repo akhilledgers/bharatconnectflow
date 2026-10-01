@@ -63,35 +63,35 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
     setSaving(false);
     pushToast(`${config.singular} ${invoice.id} created`);
     // Creating never sends. The user lands on the new document to review it, and sends it
-    // via BharatConnect from there (InvoiceViewPage shows a review-and-send callout for it).
+    // via Bharat Connect from there (InvoiceViewPage shows a review-and-send callout for it).
     navigate(`${config.basePath}/${invoice.id}`, { state: { justCreated: true } });
   }
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold text-ink">Create {config.singular}</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-foreground">Create {config.singular}</h1>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <div className="flex items-start justify-between border-b border-gray-100 pb-5">
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex items-start justify-between border-b border-border pb-5">
           <div>
-            <div className="flex items-center gap-1.5 font-semibold text-ink">
+            <div className="flex items-center gap-1.5 font-semibold text-foreground">
               {business.name}
-              <Pencil className="h-3 w-3 text-faint" />
+              <Pencil className="h-3 w-3 text-muted-foreground" />
             </div>
-            <div className="text-sm text-faint">
+            <div className="text-sm text-muted-foreground">
               {business.registeredAddress.city}, {business.registeredAddress.state}
             </div>
-            <div className="text-sm text-faint">GSTIN: {business.gstin}</div>
+            <div className="text-sm text-muted-foreground">GSTIN: {business.gstin}</div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <span className="text-faint">Date:</span>
-            <span className="text-ink">{new Date().toLocaleDateString("en-GB")}</span>
-            <span className="text-faint">Due Date:</span>
-            <span className="text-ink">—</span>
+            <span className="text-muted-foreground">Date:</span>
+            <span className="text-foreground">{new Date().toLocaleDateString("en-GB")}</span>
+            <span className="text-muted-foreground">Due Date:</span>
+            <span className="text-foreground">—</span>
           </div>
         </div>
 
-        <div className="relative border-b border-gray-100 py-5">
+        <div className="relative border-b border-border py-5">
           <input
             value={query}
             onChange={(e) => {
@@ -99,32 +99,32 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
               setCounterparty(null);
             }}
             placeholder={`Search ${kind === "sales" ? "customer" : "supplier"}...`}
-            className="w-80 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-80 rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {matches.length > 0 && !counterparty && (
-            <div className="absolute z-10 mt-1 w-96 rounded-lg border border-gray-200 bg-white p-1.5 shadow-lg">
+            <div className="absolute z-10 mt-1 w-96 rounded-lg border border-border bg-card p-1.5 shadow-lg">
               {matches.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => selectCounterparty(m.registeredName, m.legacyFormat ? null : m.bcId)}
-                  className="flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-sm hover:bg-gray-50"
+                  className="flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
                 >
-                  <span className="text-ink">{m.registeredName}</span>
-                  {!m.legacyFormat && <span className="font-mono text-xs text-faint">{m.bcId}</span>}
+                  <span className="text-foreground">{m.registeredName}</span>
+                  {!m.legacyFormat && <span className="tabular-nums text-muted-foreground">{m.bcId}</span>}
                 </button>
               ))}
             </div>
           )}
           {counterparty?.bcId && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-faint">
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
               <BharatConnectMark size={12} />
-              <span className="font-mono">{counterparty.bcId}</span>
+              <span className="tabular-nums">{counterparty.bcId}</span>
             </div>
           )}
         </div>
 
-        <div className="border-b border-gray-100 py-5">
-          <div className="mb-2 grid grid-cols-[1fr_120px_80px_100px_120px_100px] gap-3 text-xs font-medium uppercase tracking-wide text-faint">
+        <div className="border-b border-border py-5">
+          <div className="mb-2 grid grid-cols-[1fr_120px_80px_100px_120px_100px] gap-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <span>Item</span>
             <span>Price</span>
             <span>Qty</span>
@@ -137,23 +137,23 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
               placeholder="Item name"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <input
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="0.00"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <input
               value={qty}
               onChange={(e) => setQty(e.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <select
               value={gstPercent}
               onChange={(e) => setGstPercent(e.target.value)}
-              className="rounded-md border border-gray-300 px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-input px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {[0, 5, 12, 18, 28].map((g) => (
                 <option key={g} value={g}>
@@ -165,16 +165,16 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
               value={hsnSac}
               onChange={(e) => setHsnSac(e.target.value)}
               placeholder="Item code"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <span className="text-right font-medium text-ink">INR {money(total)}</span>
+            <span className="text-right font-medium text-foreground">INR {money(total)}</span>
           </div>
         </div>
 
         {connected && kind === "sales" && counterparty?.bcId && (
-          <div className="flex items-center gap-2 border-b border-gray-100 py-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 border-b border-border py-4 text-xs text-muted-foreground">
             <BharatConnectMark size={13} />
-            After you create it, you can review this invoice and send it to {counterparty.name} via BharatConnect.
+            After you create it, you can review this invoice and send it to {counterparty.name} via Bharat Connect.
           </div>
         )}
 
@@ -182,20 +182,20 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
           <textarea
             defaultValue={TERMS}
             rows={5}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-faint focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="rounded-md border border-input px-3 py-2 text-sm text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-faint">Subtotal</span>
-              <span className="text-ink">INR {money(subtotal)}</span>
+              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-foreground">INR {money(subtotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-faint">GST</span>
-              <span className="text-ink">INR {money(gstAmount)}</span>
+              <span className="text-muted-foreground">GST</span>
+              <span className="text-foreground">INR {money(gstAmount)}</span>
             </div>
-            <div className="flex justify-between border-t border-gray-100 pt-2 text-base font-semibold">
-              <span className="text-ink">Total</span>
-              <span className="text-ink">INR {money(total)}</span>
+            <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
+              <span className="text-foreground">Total</span>
+              <span className="text-foreground">INR {money(total)}</span>
             </div>
           </div>
         </div>
@@ -204,7 +204,7 @@ export function InvoiceCreatePage({ kind }: { kind: "sales" | "purchase" }) {
           <button
             onClick={handleCreate}
             disabled={!counterparty || !itemName || saving}
-            className="rounded-md bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-40"
+            className="rounded-md bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-40"
           >
             {saving ? "Creating…" : config.createLabel}
           </button>

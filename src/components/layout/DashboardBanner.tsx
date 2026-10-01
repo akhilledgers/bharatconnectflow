@@ -16,30 +16,30 @@ function bannerCopy(business: Business): BannerCopy | null {
   switch (business.connectionState) {
     case "not_connected":
       return {
-        title: "Claim your B2B ID on BharatConnect for Business",
-        body: "Send and receive invoices instantly from your contacts.",
-        actionLabel: "Get My ID",
+        title: "Onboard on Bharat Connect for Business. Get your B2B ID in a few clicks.",
+        body: "Exchange invoices digitally, collect faster, and reconcile automatically.",
+        actionLabel: "Get My B2B ID",
         action: "connect",
       };
     case "existing_id_found":
       return {
-        title: "We found your BharatConnect ID",
-        body: "An active ID already exists for this PAN, just not linked to this business yet. One click links it.",
-        actionLabel: "Link existing ID",
+        title: "Bharat Connect B2B ID already exists for your Business",
+        body: "Connect B2B ID with LEDGERS.",
+        actionLabel: "Connect B2B ID",
         action: "link",
       };
     case "needs_attention":
       return {
-        title: "Something needs your attention on BharatConnect",
-        body: business.lastRejection?.message ?? "A recent update was rejected or a sync failed.",
-        actionLabel: "Fix now",
+        title: "Onboarding on Bharat Connect for Business not completed",
+        body: "Fix the issues.",
+        actionLabel: "Fix Now",
         action: "fix",
       };
     case "assisted_setup":
       return {
-        title: "We couldn't verify your PAN automatically",
-        body: "Your PAN isn't on the Income Tax portal yet, so automatic setup isn't possible. Our team can help.",
-        actionLabel: "Contact us",
+        title: "We couldn't complete your onboarding automatically",
+        body: "Our team will help you complete your onboarding.",
+        actionLabel: "Contact Us",
         action: "contact",
       };
     default:
@@ -82,25 +82,26 @@ export function DashboardBanner() {
   }
 
   return (
-    <div className="mb-6 flex items-start gap-4 rounded-xl border border-primary/15 bg-primary-soft px-5 py-4">
-      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+    <div className="mb-6 flex items-start gap-4 rounded-xl border border-primary/15 bg-primary/10 px-5 py-4">
+      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card shadow-sm">
         <BharatConnectMark size={16} />
       </div>
       <div className="flex-1">
-        <div className="font-medium text-ink">{copy.title}</div>
-        <div className="mt-0.5 text-sm text-body">{copy.body}</div>
+        <div className="font-medium text-foreground">{copy.title}</div>
+        <div className="mt-0.5 text-sm text-foreground">{copy.body}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-4 pt-0.5">
+      {/* Primary action on top, "Remind me later" as a quieter link directly beneath it. */}
+      <div className="flex shrink-0 flex-col items-stretch gap-2.5">
         <button
           onClick={handleAction}
           disabled={linking}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+          className="cursor-pointer whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60"
         >
           {linking ? "Linking…" : copy.actionLabel}
         </button>
         <button
           onClick={() => snoozeBanner(business.id)}
-          className="text-sm font-medium text-primary hover:text-primary-hover"
+          className="cursor-pointer text-center text-xs font-medium text-primary hover:underline"
         >
           Remind me later
         </button>

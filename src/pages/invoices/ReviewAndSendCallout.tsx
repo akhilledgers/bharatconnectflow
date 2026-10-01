@@ -10,7 +10,7 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 
 /**
  * Shown on a sales invoice's view page right after it's created: the user reviews the document
- * below, then sends it via BharatConnect from here. Follows the invoice through sending → sent,
+ * below, then sends it via Bharat Connect from here. Follows the invoice through sending → sent,
  * so the result of the click is visible in the same place.
  */
 export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice; onDismiss: () => void }) {
@@ -36,14 +36,12 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
           <>
             {/* Outline: the sidebar's connect card already carries the page's filled Connect button. */}
             <Link to="/settings/bharatconnect" className={buttonVariants({ variant: "outline", size: "sm" })}>
-              Connect BharatConnect
+              Onboard to Bharat Connect
             </Link>
             {dismiss}
           </>
         }
-      >
-        Connect BharatConnect to send invoices straight to your buyers, instead of emailing a PDF.
-      </Callout>
+      />
     );
   }
 
@@ -52,11 +50,11 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
       <Callout
         tone="primary"
         icon={<BharatConnectMark size={22} className="grayscale opacity-60" />}
-        title={`Invoice ${invoice.id} created. ${invoice.counterpartyName} isn't on BharatConnect yet.`}
+        title={`Invoice ${invoice.id} created. ${invoice.counterpartyName} isn't on Bharat Connect yet.`}
         actions={
           <>
             <Button variant="primary" size="sm" onClick={() => inviteToBharatConnect(invoice.counterpartyName)}>
-              Invite to BharatConnect
+              Invite to Bharat Connect
             </Button>
             {dismiss}
           </>
@@ -71,7 +69,7 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
     return (
       <Callout tone="primary" icon={mark} title={`Sending ${invoice.id} to ${invoice.counterpartyName}…`}>
         <span className="inline-flex items-center gap-1.5">
-          <CircularSpinner size={12} /> Delivering to <span className="font-mono">{invoice.counterpartyB2bId}</span>
+          <CircularSpinner size={12} /> Delivering to <span className="tabular-nums">{invoice.counterpartyB2bId}</span>
         </span>
       </Callout>
     );
@@ -82,10 +80,10 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
       <Callout
         tone="success"
         icon={<CheckCircle2 className="size-5 text-green-600" />}
-        title={`Sent via BharatConnect to ${invoice.counterpartyName}.`}
+        title={`Sent via Bharat Connect to ${invoice.counterpartyName}.`}
         actions={dismiss}
       >
-        Waiting for them to confirm. You'll see the confirmation status in the BharatConnect card on the right.
+        Waiting for them to confirm. You'll see the confirmation status in the Bharat Connect card on the right.
       </Callout>
     );
   }
@@ -98,13 +96,13 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
       actions={
         <>
           <Button variant="primary" size="sm" onClick={() => sendInvoiceViaBharatConnect(invoice.id)}>
-            Send via BharatConnect
+            Send via Bharat Connect
           </Button>
           {dismiss}
         </>
       }
     >
-      It will be delivered to their BharatConnect ID <span className="font-mono">{invoice.counterpartyB2bId}</span>.
+      It will be delivered to their Bharat Connect B2B ID <span className="tabular-nums">{invoice.counterpartyB2bId}</span>.
     </Callout>
   );
 }

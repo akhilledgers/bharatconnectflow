@@ -1,35 +1,16 @@
 import type { ReactNode } from "react";
 import type { FieldMeta } from "./fieldConfig";
-import { Badge } from "../../../../components/ui/badge";
 import { Input, Select } from "../../../../components/ui/input";
 import { cn } from "../../../../lib/cn";
 
-// Every field — read-only or editable — is the same two-column row: label (with its source or
-// "Edited" badge) on the left, value or control on the right. The only thing marking a field
-// editable is its input box, not the layout.
+// Every field — read-only or editable — is the same two-column row: plain label on the left, value
+// or control on the right. The only thing marking a field editable is its input box, not the
+// layout. Unsaved changes are summarised in the save bar ("N fields changed"), not per field, and
+// fieldConfig's source tags aren't shown on this page.
 const ROW = "grid grid-cols-[minmax(0,300px)_minmax(0,1fr)] items-center gap-6 border-b border-border py-2 min-h-[50px] last:border-b-0";
 
-/** Source tags read as short badges ("GST portal"), not bracketed text. */
-function sourceLabel(tag: string): string {
-  return tag.replace(/^From /, "");
-}
-
-function RowLabel({ meta, changed }: { meta: FieldMeta; changed?: boolean }) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 text-2sm text-muted-foreground">
-      <span>{meta.label}</span>
-      {meta.tag && (
-        <Badge variant="secondary" className="h-5 text-[11px]">
-          {sourceLabel(meta.tag)}
-        </Badge>
-      )}
-      {changed && (
-        <Badge variant="warning" className="h-5 text-[11px]">
-          Edited
-        </Badge>
-      )}
-    </div>
-  );
+function RowLabel({ meta }: { meta: FieldMeta }) {
+  return <div className="min-w-0 text-2sm text-muted-foreground">{meta.label}</div>;
 }
 
 /** Plain label/value row — same shape as the connected overview page's detail rows. */
@@ -52,11 +33,13 @@ interface FieldShellProps {
   children: ReactNode;
 }
 
-export function FieldShell({ meta, changed, error, hint, layout = "row", children }: FieldShellProps) {
+// `changed` is still passed by every section (kept in the props so callers don't need touching) but
+// no longer drawn per field.
+export function FieldShell({ meta, error, hint, layout = "row", children }: FieldShellProps) {
   return (
     <div className={cn(ROW, layout === "block" && "items-start py-3")}>
       <div className={layout === "block" ? "pt-2" : undefined}>
-        <RowLabel meta={meta} changed={changed} />
+        <RowLabel meta={meta} />
       </div>
       <div className={cn("flex w-full flex-col gap-1.5 justify-self-end", layout === "row" ? "max-w-[360px]" : "max-w-[520px]")}>
         {children}

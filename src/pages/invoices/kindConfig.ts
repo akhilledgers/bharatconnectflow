@@ -19,7 +19,7 @@ export const SALES_CONFIG: KindConfig = {
   basePath: "/sales/invoices",
   counterpartyLabel: "Customer Name",
   statCardLabels: ["Total Invoice", "Receivables", "Overdue", "TDS"],
-  bcSendActionLabel: "Send via BharatConnect",
+  bcSendActionLabel: "Send via Bharat Connect",
 };
 
 export const PURCHASE_CONFIG: KindConfig = {
@@ -30,7 +30,7 @@ export const PURCHASE_CONFIG: KindConfig = {
   basePath: "/expenses/bills",
   counterpartyLabel: "Supplier Name",
   statCardLabels: ["Total Bills", "Payables", "Overdue", "TDS"],
-  bcSendActionLabel: "Send via BharatConnect",
+  bcSendActionLabel: "Send via Bharat Connect",
 };
 
 export function configFor(kind: "sales" | "purchase"): KindConfig {

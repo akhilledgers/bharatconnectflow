@@ -197,7 +197,7 @@ export function useProfileForm(business: Business) {
       dispatch({
         type: "SEND_REJECTED",
         fieldId: "settlementAccountId",
-        message: "BharatConnect couldn't verify this settlement account with the bank.",
+        message: "Bharat Connect couldn't verify this settlement account with the bank.",
       });
       return;
     }

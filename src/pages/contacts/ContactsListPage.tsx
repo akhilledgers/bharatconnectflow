@@ -38,28 +38,28 @@ export function ContactsListPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Contacts</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Contacts</h1>
         <button
           onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-gray-50"
+          className="flex items-center gap-1.5 rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
         >
           <span className="text-base leading-none">+</span>
           Create Contact
         </button>
       </div>
 
-      <ConnectBharatConnectBanner message="Turn your contacts into a live network — connect BharatConnect." />
+      <ConnectBharatConnectBanner message="Turn your contacts into a live network — onboard to Bharat Connect." />
 
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-100 p-4">
+      <div className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search contacts..."
-            className="w-72 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-72 rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-gray-200 p-0.5 text-sm">
+            <div className="flex rounded-lg border border-border p-0.5 text-sm">
               {([
                 ["all", "All"],
                 ["customer", "Customer"],
@@ -69,7 +69,7 @@ export function ContactsListPage() {
                   key={value}
                   onClick={() => setTypeFilter(value)}
                   className={`rounded-md px-3 py-1.5 ${
-                    typeFilter === value ? "bg-gray-100 font-medium text-ink" : "text-faint hover:text-body"
+                    typeFilter === value ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {label}
@@ -82,17 +82,17 @@ export function ContactsListPage() {
                 defaultValue="all"
                 onChange={setBcFilter}
                 options={[
-                  { value: "all", label: "All BharatConnect statuses" },
+                  { value: "all", label: "All Bharat Connect statuses" },
                   { value: "connected", label: "Connected" },
                   { value: "not_connected", label: "Not connected" },
                 ]}
               />
             ) : (
-              <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+              <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
                 <Filter className="h-4 w-4" />
               </button>
             )}
-            <button className="rounded-lg border border-gray-200 p-2 text-faint hover:bg-gray-50">
+            <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
               <SlidersHorizontal className="h-4 w-4" />
             </button>
           </div>
@@ -100,9 +100,9 @@ export function ContactsListPage() {
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-body">
+            <tr className="border-b border-border text-left text-foreground">
               <th className="w-10 px-4 py-3">
-                <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
+                <input type="checkbox" className="h-4 w-4 rounded border-input" />
               </th>
               <th className="px-2 py-3 font-medium">Name</th>
               <th className="px-2 py-3 font-medium">Business Name</th>
@@ -113,7 +113,7 @@ export function ContactsListPage() {
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {rows.map((c) => (
               <ContactRow
                 key={c.id}
@@ -127,7 +127,7 @@ export function ContactsListPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-faint">
+                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                   No contacts match this filter.
                 </td>
               </tr>
@@ -135,15 +135,15 @@ export function ContactsListPage() {
           </tbody>
         </table>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-faint">
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted-foreground">
           <span>
             Showing Records 1 to {rows.length} of {rows.length} total records
           </span>
           <div className="flex gap-2">
-            <button className="rounded-md border border-gray-200 px-3 py-1.5 text-body hover:bg-gray-50" disabled>
+            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
               Previous
             </button>
-            <button className="rounded-md border border-gray-200 px-3 py-1.5 text-body hover:bg-gray-50" disabled>
+            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
               Next
             </button>
           </div>
@@ -169,8 +169,8 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-        danger ? "text-red-600" : "text-ink"
+      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
+        danger ? "text-red-600" : "text-foreground"
       }`}
     >
       <Icon className="h-4 w-4" strokeWidth={1.75} />
@@ -195,16 +195,16 @@ function ContactRow({
   onView: () => void;
 }) {
   return (
-    <tr className="relative hover:bg-gray-50/60">
+    <tr className="relative hover:bg-accent/60">
       <td className="px-4 py-4">
-        <input type="checkbox" className="h-4 w-4 rounded border-gray-300" />
+        <input type="checkbox" className="h-4 w-4 rounded border-input" />
       </td>
       <td className="px-2 py-4">
         <div className="flex items-center gap-1.5">
           {connected && (
             <span className="flex w-[13px] shrink-0 justify-center">
               {contact.b2bId ? (
-                <span title="Connected to BharatConnect">
+                <span title="Connected to Bharat Connect">
                   <BharatConnectMark size={13} />
                 </span>
               ) : contact.b2bId === null ? (
@@ -214,27 +214,27 @@ function ContactRow({
                   </span>
                 </InviteBcTooltip>
               ) : (
-                <span title="No GSTIN or PAN on file — can't check BharatConnect status">
+                <span title="No GSTIN or PAN on file — can't check Bharat Connect status">
                   <BharatConnectMark size={13} className="grayscale opacity-20" />
                 </span>
               )}
             </span>
           )}
-          <button onClick={onView} className="font-medium text-blue-600 hover:underline">
+          <button onClick={onView} className="font-medium text-primary hover:underline">
             {contact.salutation} {contact.name}
           </button>
         </div>
       </td>
-      <td className="px-2 py-4 text-body">{contact.businessName ?? "—"}</td>
-      <td className="px-2 py-4 text-body">{contact.email ?? "—"}</td>
-      <td className="px-2 py-4 text-body">{contact.mobile ?? "—"}</td>
-      <td className="px-2 py-4 text-body">{contact.gstin ?? "—"}</td>
-      <td className="px-2 py-4 text-body">{contact.region}</td>
+      <td className="px-2 py-4 text-foreground">{contact.businessName ?? "—"}</td>
+      <td className="px-2 py-4 text-foreground">{contact.email ?? "—"}</td>
+      <td className="px-2 py-4 text-foreground">{contact.mobile ?? "—"}</td>
+      <td className="px-2 py-4 text-foreground">{contact.gstin ?? "—"}</td>
+      <td className="px-2 py-4 text-foreground">{contact.region}</td>
       <td className="px-4 py-4 text-right">
         <div className="relative inline-block">
           <button
             onClick={onToggleMenu}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-gray-100 hover:text-body"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
@@ -242,7 +242,7 @@ function ContactRow({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
-              <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-gray-100 bg-white p-1.5 shadow-lg">
+              <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-border bg-card p-1.5 shadow-lg">
                 <MenuItem
                   icon={Eye}
                   label="View Details"
@@ -253,7 +253,7 @@ function ContactRow({
                 />
                 <MenuItem icon={Edit3} label="Edit" onClick={onCloseMenu} />
                 <MenuItem icon={Copy} label="Duplicate" onClick={onCloseMenu} />
-                <div className="my-1 border-t border-gray-100" />
+                <div className="my-1 border-t border-border" />
                 <MenuItem icon={Trash2} label="Delete" danger onClick={onCloseMenu} />
               </div>
             </>

@@ -109,6 +109,8 @@ export interface Business {
 
   connectionState: ConnectionState;
   ownershipVerified: boolean;
+  /** GSTIN connected to LEDGERS through the GSP (GST portal username + OTP to the GSTIN's registered mobile). */
+  gstConnected: boolean;
   bharatConnectIds: BharatConnectId[];
   verification: VerificationStatus;
   lastSyncedAt: string | null;
@@ -142,7 +144,7 @@ export interface Invoice {
   counterpartyName: string;
   counterpartyEmail?: string;
   counterpartyGstin?: string;
-  /** BharatConnect B2B ID of the counterparty, if known — null means not on the network. */
+  /** Bharat Connect B2B ID of the counterparty, if known — null means not on the network. */
   counterpartyB2bId?: string | null;
   amount: number;
   status: "unpaid" | "partly_paid" | "paid";
@@ -151,7 +153,7 @@ export interface Invoice {
   createdBy?: string;
   lineItems: InvoiceLineItem[];
 
-  /** Sales side: has this business sent it over BharatConnect. */
+  /** Sales side: has this business sent it over Bharat Connect. */
   bcSendStatus: BcSendStatus;
   /** Either side: how the counterparty (sales) or this business (purchase, inbound) responded. */
   bcConfirmationStatus: BcConfirmationStatus | null;
@@ -173,8 +175,8 @@ export interface LedgerContact {
   region: string;
   billingAddress?: Address;
   /**
-   * BharatConnect B2B ID resolved from this contact's GSTIN, if any.
-   * undefined = no GSTIN on file, never checked. null = checked, not on BharatConnect. string = connected.
+   * Bharat Connect B2B ID resolved from this contact's GSTIN, if any.
+   * undefined = no GSTIN on file, never checked. null = checked, not on Bharat Connect. string = connected.
    */
   b2bId?: string | null;
 }

@@ -64,7 +64,7 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
       {barState === "confirming" && (
         <div className="scrollbar-thin max-h-[320px] overflow-y-auto border-b border-border px-5 py-4">
           <h3 className="mb-1 text-sm font-semibold tracking-tight text-foreground">Confirm changes before sending</h3>
-          <p className="mb-3 text-xs text-muted-foreground">These changes need your confirmation before BharatConnect gets them.</p>
+          <p className="mb-3 text-xs text-muted-foreground">These changes need your confirmation before Bharat Connect gets them.</p>
           <div>
             {diffRows(business, form).map((row) => (
               <div key={row.id} className="grid grid-cols-[minmax(0,300px)_minmax(0,1fr)] gap-6 border-b border-border py-2.5 text-2sm last:border-b-0">
@@ -105,7 +105,7 @@ export function SaveBar({ business, form }: { business: Business; form: ReturnTy
             </span>
           )}
 
-          {barState === "success" && <span className="font-medium text-green-600">Sent to BharatConnect</span>}
+          {barState === "success" && <span className="font-medium text-green-600">Sent to Bharat Connect</span>}
 
           {barState === "rejected" && (
             <Button variant="link" className="!text-destructive" onClick={() => scrollTo("settlement")}>

@@ -26,6 +26,8 @@ export function DevPanel() {
   const simulateInvoiceConfirmation = useStore((s) => s.simulateInvoiceConfirmation);
   const devProfileSaveOutcome = useStore((s) => s.devProfileSaveOutcome);
   const setDevProfileSaveOutcome = useStore((s) => s.setDevProfileSaveOutcome);
+  const setGstConnected = useStore((s) => s.setGstConnected);
+  const devSetBankState = useStore((s) => s.devSetBankState);
 
   const awaitingConfirmation = invoices.filter(
     (i) => i.kind === "sales" && i.bcSendStatus === "sent" && i.bcConfirmationStatus === "pending",
@@ -34,14 +36,14 @@ export function DevPanel() {
   return (
     <div className="fixed bottom-16 left-[262px] z-40 w-80 overflow-y-auto scrollbar-thin rounded-xl border border-border bg-popover p-4 text-sm shadow-2xl" style={{ maxHeight: "calc(100vh - 6rem)" }}>
       <div className="mb-3 flex items-center justify-between">
-        <div className="font-semibold text-ink">Dev panel</div>
-        <button onClick={() => toggleDevPanel(false)} className="text-faint hover:text-body">
+        <div className="font-semibold text-foreground">Dev panel</div>
+        <button onClick={() => toggleDevPanel(false)} className="text-muted-foreground hover:text-foreground">
           Close
         </button>
       </div>
 
       <div className="mb-4">
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Business</div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Business</div>
         <div className="flex gap-1.5">
           {[STOCK_HOLDING_ID, SHARMA_TRADERS_ID].map((id) => (
             <button
@@ -49,8 +51,8 @@ export function DevPanel() {
               onClick={() => switchBusiness(id)}
               className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
                 currentBusinessId === id
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-gray-200 text-body hover:bg-gray-50"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-foreground hover:bg-accent"
               }`}
             >
               {id === STOCK_HOLDING_ID ? "Stock Holding (co.)" : "Sharma Traders (prop.)"}
@@ -60,7 +62,7 @@ export function DevPanel() {
       </div>
 
       <div className="mb-4">
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Force connection state</div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Force connection state</div>
         <div className="grid grid-cols-2 gap-1.5">
           {STATES.map((state) => (
             <button
@@ -71,8 +73,8 @@ export function DevPanel() {
               }}
               className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs ${
                 business.connectionState === state
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-gray-200 text-body hover:bg-gray-50"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-foreground hover:bg-accent"
               }`}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_META[state].dotClass}`} />
@@ -83,7 +85,7 @@ export function DevPanel() {
       </div>
 
       <div className="mb-4">
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Verification level</div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Verification level</div>
         <div className="grid grid-cols-3 gap-1.5">
           {([1, 2, 3] as const).map((level) => (
             <button
@@ -91,15 +93,15 @@ export function DevPanel() {
               onClick={() => setVerificationLevel(business.id, level)}
               className={`rounded-md border px-2 py-1.5 text-xs ${
                 business.verification.level === level
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-gray-200 text-body hover:bg-gray-50"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-foreground hover:bg-accent"
               }`}
             >
               Level {level}
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[11px] text-faint">
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
           {business.verification.level === 1 && "Invoicing only. MCC hidden, no documents card."}
           {business.verification.level === 2 && "+ Paying others. MCC required, documents card appears."}
           {business.verification.level === 3 && "+ Receiving payments. Full verification reached."}
@@ -107,7 +109,53 @@ export function DevPanel() {
       </div>
 
       <div className="mb-4">
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Profile page — next save</div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">GST connected in LEDGERS</div>
+        <div className="flex gap-1.5">
+          {([
+            [true, "Connected"],
+            [false, "Not connected"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={label}
+              onClick={() => setGstConnected(business.id, value)}
+              className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium ${
+                business.gstConnected === value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Bank account</div>
+        <div className="flex gap-1.5">
+          {([
+            ["verified", "Verified"],
+            ["unverified", "Unverified"],
+            ["none", "None"],
+          ] as const).map(([value, label]) => {
+            const current =
+              business.bankAccounts.some((a) => a.verified) ? "verified" : business.bankAccounts.length > 0 ? "unverified" : "none";
+            return (
+              <button
+                key={value}
+                onClick={() => devSetBankState(business.id, value)}
+                className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium ${
+                  current === value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-accent"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Shown in the Reach Full Verification dialog (below Level 3).</p>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Profile page — next save</div>
         <div className="flex gap-1.5">
           {([
             [null, "Succeeds"],
@@ -128,7 +176,7 @@ export function DevPanel() {
       </div>
 
       <div>
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">Simulate webhook</div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Simulate webhook</div>
         <div className="flex gap-1.5">
           <button
             onClick={() => simulateWebhookConfirm(business.id)}
@@ -145,19 +193,19 @@ export function DevPanel() {
         </div>
       </div>
 
-      <div className="mt-4 border-t border-gray-100 pt-4">
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-faint">
+      <div className="mt-4 border-t border-border pt-4">
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Simulate invoice confirmation
         </div>
         {awaitingConfirmation.length === 0 ? (
-          <p className="text-[11px] text-faint">No sent invoices are awaiting confirmation right now.</p>
+          <p className="text-[11px] text-muted-foreground">No sent invoices are awaiting confirmation right now.</p>
         ) : (
           <div className="space-y-1.5">
             {awaitingConfirmation.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-2 py-1.5">
+              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
                 <div className="min-w-0">
-                  <div className="truncate text-xs font-medium text-ink">{inv.id}</div>
-                  <div className="truncate text-[11px] text-faint">{inv.counterpartyName}</div>
+                  <div className="truncate text-xs font-medium text-foreground">{inv.id}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{inv.counterpartyName}</div>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button

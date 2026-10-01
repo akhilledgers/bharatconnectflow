@@ -8,7 +8,7 @@ import { Button } from "../../../../components/ui/button";
 const STATUS_META: Record<KycDocument["status"], { label: string; variant: BadgeVariant }> = {
   not_uploaded: { label: "Not uploaded", variant: "secondary" },
   uploaded: { label: "Uploaded — pending review", variant: "primary" },
-  requested: { label: "Requested by BharatConnect", variant: "warning" },
+  requested: { label: "Requested by Bharat Connect", variant: "warning" },
   verified: { label: "Verified", variant: "success" },
 };
 
@@ -59,7 +59,7 @@ export function DocumentsCard({ business }: { business: Business }) {
     <div>
       {requested && (
         <div className="mb-3 rounded-lg border border-amber-200 bg-[var(--color-warning-soft)] px-3 py-2 text-xs text-[var(--color-warning-accent)]">
-          BharatConnect asked you to re-upload <span className="font-medium">{requested.label}</span>.
+          Bharat Connect asked you to re-upload <span className="font-medium">{requested.label}</span>.
         </div>
       )}
 
@@ -73,7 +73,7 @@ export function DocumentsCard({ business }: { business: Business }) {
       <button
         onClick={() => devRequestKycDocument(business.id)}
         className="mt-4 cursor-pointer rounded-md border border-dashed border-input px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent"
-        title="Dev: simulate BharatConnect asking for a document again"
+        title="Dev: simulate Bharat Connect asking for a document again"
       >
         Dev · Simulate re-request
       </button>

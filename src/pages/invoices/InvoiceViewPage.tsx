@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Copy, Download, Edit3, Link2, Printer, Trash2 } from "lucide-react";
 import { useStore } from "../../store/useStore";
-import { statusLabel, statusClass, confirmationMeta } from "../../lib/invoiceStatus";
+import { statusLabel, statusVariant, confirmationMeta } from "../../lib/invoiceStatus";
+import { Badge } from "../../components/ui/badge";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { ConnectBharatConnectCard } from "../../components/ConnectBharatConnectCTA";
@@ -26,11 +27,11 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
 
   if (!invoice) {
     return (
-      <div className="rounded-xl border border-dashed border-gray-300 bg-white px-8 py-16 text-center">
-        <div className="text-lg font-medium text-ink">{config.singular} not found</div>
+      <div className="rounded-xl border border-dashed border-input bg-card px-8 py-16 text-center">
+        <div className="text-lg font-medium text-foreground">{config.singular} not found</div>
         <button
           onClick={() => navigate(config.basePath)}
-          className="mt-3 text-sm font-medium text-primary hover:text-primary-hover"
+          className="mt-3 text-sm font-medium text-primary hover:text-primary/80"
         >
           Back to {config.pageTitle.toLowerCase()}
         </button>
@@ -52,16 +53,16 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-ink">
+        <h1 className="text-xl font-semibold text-foreground">
           View {config.singular} - # {invoice.id}
         </h1>
         <div className="flex items-center gap-1.5">
           {[Link2, Edit3, Copy, Trash2, Printer, Download].map((Icon, i) => (
-            <button key={i} className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-body hover:bg-gray-50">
+            <button key={i} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground hover:bg-accent">
               <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
-          <button className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-body hover:bg-gray-50">
+          <button className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent">
             TDS
           </button>
         </div>
@@ -74,41 +75,41 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
       )}
 
       <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-8">
+        <div className="col-span-2 rounded-xl border border-border bg-card p-8">
           <LedgersLogo size={40} />
-          <div className="mt-4 flex items-start justify-between border-b border-gray-100 pb-4">
+          <div className="mt-4 flex items-start justify-between border-b border-border pb-4">
             <div>
-              <div className="font-semibold text-ink">{business.name}</div>
-              <div className="text-sm text-faint">
+              <div className="font-semibold text-foreground">{business.name}</div>
+              <div className="text-sm text-muted-foreground">
                 {business.registeredAddress.line1}, {business.registeredAddress.city}
               </div>
-              <div className="text-sm text-faint">GSTIN: {business.gstin}</div>
+              <div className="text-sm text-muted-foreground">GSTIN: {business.gstin}</div>
             </div>
             <div className="text-right text-sm">
-              <div className="text-lg font-semibold text-ink">{config.singular.toUpperCase()}</div>
-              <div className="text-faint">Number: {invoice.id}</div>
-              <div className="text-faint">Date: {invoice.date}</div>
-              {invoice.dueDate && <div className="text-faint">Due Date: {invoice.dueDate}</div>}
+              <div className="text-lg font-semibold text-foreground">{config.singular.toUpperCase()}</div>
+              <div className="text-muted-foreground">Number: {invoice.id}</div>
+              <div className="text-muted-foreground">Date: {invoice.date}</div>
+              {invoice.dueDate && <div className="text-muted-foreground">Due Date: {invoice.dueDate}</div>}
             </div>
           </div>
 
-          <div className="mt-4 border-b border-gray-100 pb-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-faint">
+          <div className="mt-4 border-b border-border pb-4">
+            <div className="text-xs font-medium text-muted-foreground">
               {kind === "sales" ? "Customer" : "Supplier"}
             </div>
-            <div className="mt-1 font-medium text-ink">{invoice.counterpartyName}</div>
-            {invoice.counterpartyGstin && <div className="text-sm text-faint">GSTIN: {invoice.counterpartyGstin}</div>}
+            <div className="mt-1 font-medium text-foreground">{invoice.counterpartyName}</div>
+            {invoice.counterpartyGstin && <div className="text-sm text-muted-foreground">GSTIN: {invoice.counterpartyGstin}</div>}
             {invoice.counterpartyB2bId ? (
-              <div className="mt-1 flex items-center gap-1.5 text-sm text-faint">
+              <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                 <BharatConnectMark size={12} />
-                <span className="font-mono">{invoice.counterpartyB2bId}</span>
+                <span className="tabular-nums">{invoice.counterpartyB2bId}</span>
               </div>
             ) : (
               connected && (
-                // Status only — the page's single Invite action lives in the callout or the BharatConnect card.
-                <div className="mt-1 flex items-center gap-1.5 text-sm text-faint">
+                // Status only — the page's single Invite action lives in the callout or the Bharat Connect card.
+                <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <BharatConnectMark size={12} className="grayscale opacity-60" />
-                  Not on BharatConnect
+                  Not on Bharat Connect
                 </div>
               )
             )}
@@ -116,7 +117,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
 
           <table className="mt-4 w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-faint">
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-2">Description</th>
                 <th className="py-2 text-right">Rate</th>
                 <th className="py-2 text-right">Qty</th>
@@ -124,24 +125,24 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                 <th className="py-2 text-right">Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {invoice.lineItems.map((li) => (
                 <tr key={li.id}>
                   <td className="py-2.5">
-                    <div className="text-ink">{li.name}</div>
-                    <div className="text-xs text-faint">
+                    <div className="text-foreground">{li.name}</div>
+                    <div className="text-xs text-muted-foreground">
                       GST: {li.gstPercent}% {li.hsnSac && `| HSN: ${li.hsnSac}`}
                     </div>
                   </td>
                   <td className="py-2.5 text-right">{money(li.price)}</td>
                   <td className="py-2.5 text-right">{li.qty}</td>
                   <td className="py-2.5 text-right">{money((li.price * li.qty * li.gstPercent) / 100)}</td>
-                  <td className="py-2.5 text-right font-medium text-ink">
+                  <td className="py-2.5 text-right font-medium text-foreground">
                     {money(li.price * li.qty * (1 + li.gstPercent / 100))}
                   </td>
                 </tr>
               ))}
-              <tr className="border-t border-gray-200 font-semibold text-ink">
+              <tr className="border-t border-border font-semibold text-foreground">
                 <td className="py-2.5">Grand Total</td>
                 <td className="py-2.5 text-right">{money(taxable)}</td>
                 <td className="py-2.5" />
@@ -152,7 +153,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
           </table>
 
           {account && (
-            <div className="mt-4 flex gap-8 border-t border-gray-100 pt-3 text-xs text-faint">
+            <div className="mt-4 flex gap-8 border-t border-border pt-3 text-xs text-muted-foreground">
               <span>Bank: {account.beneficiaryName}</span>
               <span>IFSC: {account.ifsc}</span>
               <span>A/C ending: {account.accountEnding}</span>
@@ -166,32 +167,32 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
               <div className="font-semibold text-red-700">
                 INR {money(invoice.amount)} {invoice.status !== "paid" && "Due"}
               </div>
-              <span className={`rounded-full bg-white px-2.5 py-1 text-xs font-medium ${statusClass(invoice.status)}`}>
+              <Badge variant={statusVariant(invoice.status)}>
                 {statusLabel(invoice.status)}
-              </span>
+              </Badge>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="mb-3 text-sm font-medium text-ink">GST filings</div>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="mb-3 text-sm font-medium text-foreground">GST filings</div>
             <div className="flex items-center justify-between py-2 text-sm">
-              <span className="text-faint">GST eInvoice</span>
-              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-body hover:bg-gray-50">
+              <span className="text-muted-foreground">GST eInvoice</span>
+              <button className="rounded-md border border-input px-3 py-1 text-xs font-medium text-foreground hover:bg-accent">
                 Generate
               </button>
             </div>
             <div className="flex items-center justify-between py-2 text-sm">
-              <span className="text-faint">GST eway bill</span>
-              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-body hover:bg-gray-50">
+              <span className="text-muted-foreground">GST eway bill</span>
+              <button className="rounded-md border border-input px-3 py-1 text-xs font-medium text-foreground hover:bg-accent">
                 Generate
               </button>
             </div>
 
             {connected && (
-              <div className="mt-2 border-t border-gray-100 pt-3">
-                <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-ink">
+              <div className="mt-2 border-t border-border pt-3">
+                <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
                   <BharatConnectMark size={14} />
-                  BharatConnect
+                  Bharat Connect
                 </div>
 
                 {kind === "sales" ? (
@@ -204,51 +205,51 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                         className={
                           showCallout
                             ? "w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
-                            : "w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                            : "w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
                         }
                       >
-                        Send via BharatConnect
+                        Send via Bharat Connect
                       </button>
                     ) : (
                       <div>
                         <button
                           disabled
-                          className="w-full cursor-not-allowed rounded-md bg-gray-200 px-3 py-2 text-sm font-medium text-faint opacity-70"
+                          className="w-full cursor-not-allowed rounded-md bg-secondary px-3 py-2 text-sm font-medium text-muted-foreground opacity-70"
                         >
-                          Send via BharatConnect
+                          Send via Bharat Connect
                         </button>
-                        <p className="mt-1.5 text-xs text-faint">
-                          {invoice.counterpartyName} hasn't joined BharatConnect yet.
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          {invoice.counterpartyName} hasn't joined Bharat Connect yet.
                         </p>
                         {/* Hidden while the review-and-send callout shows its own Invite button. */}
                         {!showCallout && (
                           <button
                             onClick={() => inviteToBharatConnect(invoice.counterpartyName)}
-                            className="mt-2 w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary-soft"
+                            className="mt-2 w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
                           >
-                            Invite to BharatConnect
+                            Invite to Bharat Connect
                           </button>
                         )}
                       </div>
                     )
                   ) : invoice.bcSendStatus === "sending" ? (
-                    <div className="flex items-center gap-2 text-sm text-faint">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <CircularSpinner size={14} /> Sending…
                     </div>
                   ) : (
                     <div className="text-sm">
                       <div className="flex items-center justify-between py-1">
-                        <span className="text-faint">Status</span>
-                        <span className="font-medium text-ink">Sent</span>
+                        <span className="text-muted-foreground">Status</span>
+                        <span className="font-medium text-foreground">Sent</span>
                       </div>
                       <div className="flex items-center justify-between py-1">
-                        <span className="text-faint">Confirmation</span>
+                        <span className="text-muted-foreground">Confirmation</span>
                         {confirmation ? (
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confirmation.className}`}>
+                          <Badge variant={confirmation.variant}>
                             {confirmation.label}
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="text-faint">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </div>
 
@@ -259,7 +260,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                           </p>
                           <button
                             onClick={handleSend}
-                            className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                            className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
                           >
                             Send Again
                           </button>
@@ -283,11 +284,11 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                     </button>
                   </div>
                 ) : confirmation ? (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confirmation.className}`}>
+                  <Badge variant={confirmation.variant}>
                     {confirmation.label}
-                  </span>
+                  </Badge>
                 ) : (
-                  <span className="text-sm text-faint">Not received over BharatConnect.</span>
+                  <span className="text-sm text-muted-foreground">Not received over Bharat Connect.</span>
                 )}
               </div>
             )}

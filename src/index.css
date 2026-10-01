@@ -107,14 +107,6 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* TEMPORARY migration aliases — old prototype token names pointed at DS values so
-     unconverted screens stay usable. Removed in the final sweep (plan Task 7). */
-  --color-ink: var(--foreground);
-  --color-body: var(--foreground);
-  --color-faint: var(--muted-foreground);
-  --color-canvas: var(--background);
-  --color-primary-hover: color-mix(in oklab, var(--primary) 90%, black);
-
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

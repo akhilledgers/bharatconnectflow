@@ -68,7 +68,7 @@ export function ContactsSection({
   const { draft, changedFieldIds, setField } = form;
 
   return (
-    <ProfileSection id="contacts" title="Contacts & notifications" description="Where BharatConnect sends OTPs and notifications for this business.">
+    <ProfileSection id="contacts" title="Contacts & Notifications" description="Where Bharat Connect sends OTPs and notifications for this business.">
       <FieldShell
         meta={FIELD_CONFIG.primaryMobile}
         changed={changedFieldIds.includes("primaryMobile")}

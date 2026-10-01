@@ -18,7 +18,7 @@ export function SettlementSection({
   const rejected = rejectedFieldId === "settlementAccountId";
 
   return (
-    <ProfileSection id="settlement" title="Settlement account" description="Where payments you receive over BharatConnect are settled.">
+    <ProfileSection id="settlement" title="Settlement Account" description="Where payments you receive over Bharat Connect are settled.">
         <FieldShell
           meta={FIELD_CONFIG.settlementAccount}
           changed={changedFieldIds.includes("settlementAccountId")}
@@ -49,7 +49,7 @@ export function SettlementSection({
           meta={FIELD_CONFIG.paymentAddress}
           value={
             selected ? (
-              <span className="font-mono text-xs">{generatePaymentAddress(business, selected.accountEnding)}</span>
+              <span className="tabular-nums">{generatePaymentAddress(business, selected.accountEnding)}</span>
             ) : (
               <span className="text-muted-foreground">Select an account to generate one</span>
             )

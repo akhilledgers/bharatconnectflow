@@ -75,7 +75,7 @@ interface StoreState {
   submitConnect: (businessId: string) => Promise<void>;
   resetConnectFlow: (businessId: string) => void;
 
-  // BharatConnect IDs
+  // Bharat Connect IDs
   createId: (businessId: string, id: BharatConnectId) => void;
   deactivateId: (businessId: string, idValue: string) => void;
   reactivateId: (businessId: string, idValue: string) => void;
@@ -94,6 +94,26 @@ interface StoreState {
 
   // Dev-panel: force a verification level to test level-gated UI
   setVerificationLevel: (businessId: string, level: VerificationLevel) => void;
+
+  // Full verification: GST connection (ownership) and bank account
+  /** Mocks the GSP call that sends an OTP to the GSTIN's registered mobile. */
+  sendGstOtp: (businessId: string, username: string, gstin: string) => Promise<void>;
+  /** Verifies the GSP OTP — connects the GSTIN and counts as ownership verification. */
+  verifyGstOtp: (businessId: string, code: string) => Promise<boolean>;
+  /** Adds a bank account and verifies it with a ₹1 penny-drop. */
+  addBankAccount: (businessId: string, account: { acNum: string; ifsc: string; beneficiaryName: string }) => Promise<void>;
+  /** Verifies an existing unverified LEDGERS bank account with a ₹1 penny-drop. */
+  verifyBankAccount: (businessId: string, accountId: string) => Promise<void>;
+  /** Dev panel: toggle whether the business has GST connected in LEDGERS. */
+  setGstConnected: (businessId: string, connected: boolean) => void;
+  /** Dev panel: set the business's bank account to verified, unverified, or none (to demo the bank step). */
+  devSetBankState: (businessId: string, state: "verified" | "unverified" | "none") => void;
+  /**
+   * Moves the business up to the highest level it now qualifies for (never down):
+   * Level 2 = ownership verified + a verified bank account; Level 3 = Level 2 + every KYC document
+   * verified (handbook Annexure Q). Called after each verification step completes.
+   */
+  promoteVerificationLevel: (businessId: string) => void;
 
   // Invoices / Bills
   sendInvoiceViaBharatConnect: (invoiceId: string) => Promise<void>;
@@ -209,7 +229,7 @@ export const useStore = create<StoreState>((set, get) => ({
         },
       },
     }));
-    get().pushToast("Linked to your existing BharatConnect ID.");
+    get().pushToast("Linked to your existing Bharat Connect ID.");
   },
 
   getConnectFlow: (businessId) => {
@@ -430,10 +450,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
     await delay(undefined, 500, 900);
     setStatus("uploaded");
-    // BharatConnect's own review is async and out of LEDGERS' control — simulate it
+    // Bharat Connect's own review is async and out of LEDGERS' control — simulate it
     // resolving a little later, same as the connect/profile-send webhooks do.
     await delay(undefined, 1800, 2600);
     setStatus("verified");
+    get().promoteVerificationLevel(businessId);
   },
 
   devRequestKycDocument: (businessId) =>
@@ -467,6 +488,97 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
+  sendGstOtp: async (_businessId, _username, _gstin) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 700, 1000);
+    get().pushToast("OTP sent to the mobile registered on your GSTIN.");
+  },
+
+  verifyGstOtp: async (businessId, code) => {
+    const { mockOtpVerify } = await import("../mock/api");
+    const res = await mockOtpVerify(code);
+    if (!res.ok) return false;
+    set((s) => ({
+      businesses: {
+        ...s.businesses,
+        [businessId]: { ...s.businesses[businessId], gstConnected: true, ownershipVerified: true },
+      },
+    }));
+    get().pushToast("GSTIN connected.");
+    get().promoteVerificationLevel(businessId);
+    return true;
+  },
+
+  addBankAccount: async (businessId, account) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 1200, 1600); // penny-drop round trip
+    const newAccount = {
+      id: `bank-${Date.now()}`,
+      beneficiaryName: account.beneficiaryName,
+      ifsc: account.ifsc.toUpperCase(),
+      accountEnding: account.acNum.slice(-4),
+      verified: true,
+    };
+    set((s) => ({
+      businesses: {
+        ...s.businesses,
+        [businessId]: { ...s.businesses[businessId], bankAccounts: [...s.businesses[businessId].bankAccounts, newAccount] },
+      },
+    }));
+    get().pushToast("Bank account verified with ₹1.");
+    get().promoteVerificationLevel(businessId);
+  },
+
+  verifyBankAccount: async (businessId, accountId) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 1200, 1600);
+    set((s) => ({
+      businesses: {
+        ...s.businesses,
+        [businessId]: {
+          ...s.businesses[businessId],
+          bankAccounts: s.businesses[businessId].bankAccounts.map((a) => (a.id === accountId ? { ...a, verified: true } : a)),
+        },
+      },
+    }));
+    get().pushToast("Bank account verified with ₹1.");
+    get().promoteVerificationLevel(businessId);
+  },
+
+  setGstConnected: (businessId, connected) =>
+    set((s) => ({
+      businesses: { ...s.businesses, [businessId]: { ...s.businesses[businessId], gstConnected: connected } },
+    })),
+
+  devSetBankState: (businessId, state) =>
+    set((s) => {
+      const b = s.businesses[businessId];
+      // Reuse the business's first account if it has one, otherwise a demo account.
+      const base = b.bankAccounts[0] ?? {
+        id: `bank-demo-${businessId}`,
+        beneficiaryName: b.name,
+        ifsc: "HDFC0001234",
+        accountEnding: "4321",
+        verified: false,
+      };
+      const bankAccounts = state === "none" ? [] : [{ ...base, verified: state === "verified" }];
+      return { businesses: { ...s.businesses, [businessId]: { ...b, bankAccounts } } };
+    }),
+
+  promoteVerificationLevel: (businessId) => {
+    const b = get().businesses[businessId];
+    const level2 = b.ownershipVerified && b.bankAccounts.some((a) => a.verified);
+    const level3 = level2 && b.kycDocuments.length > 0 && b.kycDocuments.every((d) => d.status === "verified");
+    const target: VerificationLevel = level3 ? 3 : level2 ? 2 : 1;
+    if (target <= b.verification.level) return;
+    get().setVerificationLevel(businessId, target);
+    get().pushToast(
+      target === 3
+        ? "You're fully verified. You can now receive payments on Bharat Connect."
+        : "You're now verified for Level 2. You can pay other businesses on Bharat Connect.",
+    );
+  },
+
   sendInvoiceViaBharatConnect: async (invoiceId) => {
     const { delay } = await import("../mock/api");
     set((s) => ({
@@ -478,7 +590,7 @@ export const useStore = create<StoreState>((set, get) => ({
         i.id === invoiceId ? { ...i, bcSendStatus: "sent" as const, bcConfirmationStatus: "pending" as const } : i,
       ),
     }));
-    get().pushToast("Sent via BharatConnect. Waiting for the buyer to confirm.");
+    get().pushToast("Sent via Bharat Connect. Waiting for the buyer to confirm.");
   },
 
   respondToBill: async (invoiceId, decision) => {
@@ -507,8 +619,8 @@ export const useStore = create<StoreState>((set, get) => ({
     const invoice = get().invoices.find((i) => i.id === invoiceId);
     get().pushToast(
       outcome === "accepted"
-        ? `${invoice?.counterpartyName ?? "Buyer"} accepted ${invoiceId} via BharatConnect.`
-        : `${invoice?.counterpartyName ?? "Buyer"} rejected ${invoiceId} via BharatConnect.`,
+        ? `${invoice?.counterpartyName ?? "Buyer"} accepted ${invoiceId} via Bharat Connect.`
+        : `${invoice?.counterpartyName ?? "Buyer"} rejected ${invoiceId} via Bharat Connect.`,
       outcome === "accepted" ? "success" : "error",
     );
   },
@@ -516,7 +628,7 @@ export const useStore = create<StoreState>((set, get) => ({
   inviteToBharatConnect: async (counterpartyName) => {
     const { delay } = await import("../mock/api");
     await delay(undefined, 500, 900);
-    get().pushToast(`Invited ${counterpartyName} to join BharatConnect.`);
+    get().pushToast(`Invited ${counterpartyName} to join Bharat Connect.`);
   },
 
   requestContactDetails: async (counterpartyName) => {
@@ -530,7 +642,7 @@ export const useStore = create<StoreState>((set, get) => ({
     await delay(undefined, 500, 900);
     set((s) => ({ contacts: [contact, ...s.contacts] }));
     if (contact.b2bId) {
-      get().pushToast(`${contact.name} added. Already on BharatConnect.`);
+      get().pushToast(`${contact.name} added. Already on Bharat Connect.`);
     } else if (contact.b2bId === null && inviteIfUnconnected) {
       await get().inviteToBharatConnect(contact.name);
     } else {

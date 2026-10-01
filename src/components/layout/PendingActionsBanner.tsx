@@ -24,15 +24,15 @@ export function PendingActionsBanner({ kind, onReview }: { kind: "sales" | "purc
   const verb = kind === "sales" ? "pending to send" : "pending to accept";
 
   return (
-    <div className="mb-6 flex items-start gap-4 rounded-xl border border-primary/15 bg-primary-soft px-5 py-4">
-      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+    <div className="mb-6 flex items-start gap-4 rounded-xl border border-primary/15 bg-primary/10 px-5 py-4">
+      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card shadow-sm">
         <BharatConnectMark size={16} />
       </div>
       <div className="flex-1">
-        <div className="font-medium text-ink">
-          {count} {noun} {verb} via BharatConnect.
+        <div className="font-medium text-foreground">
+          {count} {noun} {verb} via Bharat Connect.
         </div>
-        <div className="mt-0.5 text-sm text-body">
+        <div className="mt-0.5 text-sm text-foreground">
           {kind === "sales"
             ? "Your buyers can't confirm what hasn't been sent yet."
             : "Your suppliers are waiting on you to confirm these."}
@@ -41,14 +41,14 @@ export function PendingActionsBanner({ kind, onReview }: { kind: "sales" | "purc
       <div className="flex shrink-0 items-center gap-4 pt-0.5">
         <button
           onClick={onReview}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
         >
           Show {noun}
         </button>
         <button
           onClick={() => snoozeInvoiceBanner(business.id, kind)}
           title="Remind me in 3 days"
-          className="text-faint hover:text-body"
+          className="text-muted-foreground hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>

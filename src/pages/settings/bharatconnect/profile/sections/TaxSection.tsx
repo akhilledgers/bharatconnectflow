@@ -10,7 +10,7 @@ export function TaxSection({ business }: { business: Business }) {
   return (
     <ProfileSection
       id="tax"
-      title="Tax & legal IDs"
+      title="Tax & Legal IDs"
       aside={
         business.bharatConnectIds.length > 0 && (
           <Badge variant="secondary">
@@ -20,14 +20,14 @@ export function TaxSection({ business }: { business: Business }) {
         )
       }
     >
-        <ReadonlyRow meta={FIELD_CONFIG.pan} value={<span className="font-mono text-xs">{business.pan}</span>} />
-        <ReadonlyRow meta={FIELD_CONFIG.gstin} value={business.gstin ? <span className="font-mono text-xs">{business.gstin}</span> : "Not on file"} />
+        <ReadonlyRow meta={FIELD_CONFIG.pan} value={<span className="tabular-nums">{business.pan}</span>} />
+        <ReadonlyRow meta={FIELD_CONFIG.gstin} value={business.gstin ? <span className="tabular-nums">{business.gstin}</span> : "Not on file"} />
         <ReadonlyRow
           meta={FIELD_CONFIG.defaultBcId}
           value={
             defaultId ? (
               <span className="inline-flex items-center gap-3">
-                <span className="font-mono text-xs">{defaultId.id}</span>
+                <span className="tabular-nums">{defaultId.id}</span>
                 <Link to="/settings/bharatconnect/ids" className="text-xs font-medium text-primary hover:underline">
                   Manage
                 </Link>

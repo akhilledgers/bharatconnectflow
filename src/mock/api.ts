@@ -1,5 +1,5 @@
 /**
- * Every mocked BharatConnect/LEDGERS endpoint this prototype pretends to call.
+ * Every mocked Bharat Connect/LEDGERS endpoint this prototype pretends to call.
  * See README.md for the full endpoint-to-UI-state map.
  */
 

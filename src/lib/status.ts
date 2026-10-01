@@ -8,8 +8,8 @@ export interface StatusMeta {
 
 export const STATUS_META: Record<ConnectionState, StatusMeta> = {
   not_connected: { label: "Not connected", dotClass: "bg-gray-400", needsAction: true },
-  existing_id_found: { label: "ID found", dotClass: "bg-blue-500", needsAction: true },
-  setting_up: { label: "Setting up", dotClass: "bg-amber-500", needsAction: false },
+  existing_id_found: { label: "ID found", dotClass: "bg-orange-500", needsAction: true },
+  setting_up: { label: "Setting up", dotClass: "bg-yellow-400", needsAction: false },
   connected: { label: "Connected", dotClass: "bg-emerald-500", needsAction: false },
   needs_attention: { label: "Needs attention", dotClass: "bg-red-500", needsAction: true },
   assisted_setup: { label: "Assisted setup", dotClass: "bg-blue-500", needsAction: true },

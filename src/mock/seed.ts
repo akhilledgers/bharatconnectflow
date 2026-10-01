@@ -38,6 +38,7 @@ export function makeSeedBusinesses(): Record<string, Business> {
       identifierPath: "gstin",
       connectionState: "not_connected",
       ownershipVerified: true,
+      gstConnected: true, // existing GST-activated LEDGERS customer
       bharatConnectIds: [],
       verification: { level: 2, invoicing: true, payments: false },
       lastSyncedAt: null,
@@ -88,6 +89,7 @@ export function makeSeedBusinesses(): Record<string, Business> {
       identifierPath: "gstin",
       connectionState: "needs_attention",
       ownershipVerified: true,
+      gstConnected: false, // new to LEDGERS: GST not connected yet
       bharatConnectIds: [
         {
           id: "SHAR.RAME.5678.001@BCB",
@@ -426,14 +428,14 @@ export const COUNTERPARTY_DIRECTORY = [
     level: null,
     levelLabel: null,
     levelDetail: null,
-    capability: "Not yet on BharatConnect. Invite them to exchange invoices directly.",
+    capability: "Not yet on Bharat Connect. Invite them to exchange invoices directly.",
   },
 ];
 
 /**
- * Mock of what the native GST portal lookup (unrelated to BharatConnect) returns for a
+ * Mock of what the native GST portal lookup (unrelated to Bharat Connect) returns for a
  * GSTIN — this is the "autofill name, PAN, address & more" promise, and works regardless
- * of whether the business is connected to BharatConnect or the counterparty is on it.
+ * of whether the business is connected to Bharat Connect or the counterparty is on it.
  */
 export const GST_REGISTRY_BY_GSTIN: Record<string, { name: string; pan: string; address: Address }> = {
   "27PQRPR5678K1ZQ": {
