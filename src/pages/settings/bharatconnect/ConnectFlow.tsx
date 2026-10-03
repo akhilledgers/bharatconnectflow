@@ -8,53 +8,14 @@ import type { Business, ConnectSubmitPhase } from "../../../types";
 
 const SUCCESS_HOLD_MS = 1500;
 
+/** Screen-reader text for the submit button's progress icon — the form stays visible, no overlay or blur. */
 const PHASE_LABEL: Partial<Record<ConnectSubmitPhase, string>> = {
   sending: "Sending your details…",
-  creating_id: "Creating your Bharat Connect B2B ID…",
+  creating_id: "Creating your B2B ID…",
   waiting_confirmation: "Confirming…",
 };
 
-/** Blurs the form in place and shows one continuous status, ending in a brief
- * success beat before handing off to the connected overview — no separate
- * progress page, no second countdown. */
-function ConnectingOverlay({ business }: { business: Business }) {
-  const flow = useStore((s) => s.getConnectFlow(business.id));
-  const resetConnectFlow = useStore((s) => s.resetConnectFlow);
-  const pushToast = useStore((s) => s.pushToast);
-
-  useEffect(() => {
-    if (flow.submitPhase !== "success") return;
-    const timer = setTimeout(() => {
-      const id = business.bharatConnectIds[0];
-      pushToast(id ? `Connected to Bharat Connect. Your ID is ${id.id}.` : "Connected to Bharat Connect.");
-      resetConnectFlow(business.id);
-    }, SUCCESS_HOLD_MS);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flow.submitPhase]);
-
-  const success = flow.submitPhase === "success";
-
-  return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-card/80 backdrop-blur-sm">
-      {success ? (
-        <>
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-            <Check className="h-5 w-5" strokeWidth={3} />
-          </div>
-          <div className="text-sm font-medium text-foreground">Connected</div>
-        </>
-      ) : (
-        <>
-          <CircularSpinner size={32} className="mb-3" />
-          <div className="text-sm font-medium text-foreground">{PHASE_LABEL[flow.submitPhase]}</div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function BusinessSummary({ business }: { business: Business }) {
+function BusinessSummary({ business, locked }: { business: Business; locked?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <section className="border-b border-border px-6 py-5">
@@ -62,7 +23,8 @@ function BusinessSummary({ business }: { business: Business }) {
         <h2 className="font-medium text-foreground">Your Business</h2>
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="text-sm font-medium text-primary hover:text-primary/80"
+          disabled={locked}
+          className="text-sm font-medium text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
         >
           {expanded ? "Show Less" : "Show More"}
         </button>
@@ -126,7 +88,7 @@ function formatMobile(mobile: string): string {
   return m ? `+91 ${m[2]} ${m[3]}` : mobile;
 }
 
-function IdSection({ business }: { business: Business }) {
+function IdSection({ business, locked }: { business: Business; locked?: boolean }) {
   const flow = useStore((s) => s.getConnectFlow(business.id));
   const setConnectBasis = useStore((s) => s.setConnectBasis);
   const toggleChangingBasis = useStore((s) => s.toggleChangingBasis);
@@ -142,7 +104,8 @@ function IdSection({ business }: { business: Business }) {
         <h2 className="font-medium text-foreground">Your Bharat Connect B2B ID</h2>
         <button
           onClick={() => toggleChangingBasis(business.id)}
-          className="text-sm font-medium text-primary hover:text-primary/80"
+          disabled={locked}
+          className="text-sm font-medium text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
         >
           {flow.changingBasis ? "Done" : "Change"}
         </button>
@@ -219,6 +182,20 @@ function IdSection({ business }: { business: Business }) {
 export function ConnectFlow({ business }: { business: Business }) {
   const flow = useStore((s) => s.getConnectFlow(business.id));
   const submitConnect = useStore((s) => s.submitConnect);
+  const resetConnectFlow = useStore((s) => s.resetConnectFlow);
+  const pushToast = useStore((s) => s.pushToast);
+
+  // Brief success beat on the button, then hand off to the connected overview.
+  useEffect(() => {
+    if (flow.submitPhase !== "success") return;
+    const timer = setTimeout(() => {
+      const id = business.bharatConnectIds[0];
+      pushToast(id ? `Onboarded to Bharat Connect. Your B2B ID is ${id.id}.` : "Onboarded to Bharat Connect.");
+      resetConnectFlow(business.id);
+    }, SUCCESS_HOLD_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.submitPhase]);
 
   const missing = useMemo(() => {
     const items: string[] = [];
@@ -229,6 +206,7 @@ export function ConnectFlow({ business }: { business: Business }) {
   }, [flow.consentChecked]);
 
   const inProgress = flow.submitPhase !== "idle";
+  const success = flow.submitPhase === "success";
 
   return (
     <div>
@@ -239,8 +217,8 @@ export function ConnectFlow({ business }: { business: Business }) {
       <p className="mb-6 text-sm text-muted-foreground">We've filled in your details from LEDGERS. Just confirm and you're done.</p>
 
       <div className="relative rounded-xl border border-border bg-card">
-        <BusinessSummary business={business} />
-        <IdSection business={business} />
+        <BusinessSummary business={business} locked={inProgress} />
+        <IdSection business={business} locked={inProgress} />
         <div className="bg-muted/50 px-6 py-5">
           <div className="flex items-start gap-3 text-sm" title="Confirmed by signing in as an admin of this business">
             <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary text-white">
@@ -253,20 +231,28 @@ export function ConnectFlow({ business }: { business: Business }) {
           <div className="mt-4 flex items-center gap-3">
             <button
               onClick={() => submitConnect(business.id)}
-              disabled={missing.length > 0}
-              className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-40"
+              disabled={missing.length > 0 || inProgress}
+              aria-label={success ? "Onboarded" : inProgress ? PHASE_LABEL[flow.submitPhase] : undefined}
+              className={`inline-flex min-w-56 items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium text-white transition-colors ${
+                success ? "bg-green-600" : "bg-primary hover:bg-primary/90"
+              } ${inProgress ? "cursor-default" : "disabled:opacity-40"}`}
             >
-              Onboard to Bharat Connect
+              {/* Icon only while working: spinner, then a tick. The step names stay as the aria-label. */}
+              {success ? (
+                <Check className="size-5" strokeWidth={3} />
+              ) : inProgress ? (
+                <CircularSpinner size={18} className="!text-white" />
+              ) : (
+                "Onboard to Bharat Connect"
+              )}
             </button>
-            {missing.length > 0 && (
+            {missing.length > 0 && !inProgress && (
               <span className="text-sm text-amber-700">
                 {missing[0][0].toUpperCase() + missing[0].slice(1)} to continue.
               </span>
             )}
           </div>
         </div>
-
-        {inProgress && <ConnectingOverlay business={business} />}
       </div>
     </div>
   );

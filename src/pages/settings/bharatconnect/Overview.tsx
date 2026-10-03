@@ -1,10 +1,16 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
-import { AlertTriangle, Check, Copy, Pencil } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, Check, Copy, Pencil, Plus } from "lucide-react";
 import { useStore } from "../../../store/useStore";
 import type { Business } from "../../../types";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card";
+import { tableCls, thCls, tdCls, trCls } from "../../../components/ui/table";
+import { CreateIdDrawer } from "./CreateIdDrawer";
+import { Callout } from "../../../components/ui/popover";
+import { BharatConnectLogo } from "../../../components/layout/BharatConnectLogo";
+import { LevelStatus } from "./profile/LevelStatus";
 
 function CopyId({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
@@ -18,7 +24,7 @@ function CopyId({ id }: { id: string }) {
       }}
       title={copied ? "Copied" : "Copy B2B ID"}
       aria-label={copied ? "Copied" : "Copy B2B ID"}
-      className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-foreground"
     >
       {copied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
     </button>
@@ -29,129 +35,188 @@ export function Overview({ business }: { business: Business }) {
   const navigate = useNavigate();
   const invoices = useStore((s) => s.invoices);
   const hasOpenInvoices = invoices.some((i) => i.status !== "paid");
-  const activeIds = business.bharatConnectIds.filter((i) => i.status === "active");
-  const defaultId = activeIds[0];
+  const defaultId = business.bharatConnectIds.find((i) => i.status === "active");
   const settlement = business.bankAccounts[0];
+  const address = business.registeredAddress;
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
-    <div>
+    <div className="space-y-5">
       {business.connectionState === "needs_attention" && business.lastRejection && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3.5">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-          <div className="flex-1 text-sm">
-            <div className="font-medium text-red-800">{business.lastRejection.message}</div>
-            <div className="mt-0.5 text-red-700">Field: {business.lastRejection.field}</div>
-          </div>
-          <button
-            onClick={() => navigate(`/settings/bharatconnect/profile/${business.lastRejection!.tab}`)}
-            className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-          >
-            Fix Now
-          </button>
-        </div>
+        <Callout
+          tone="destructive"
+          icon={<AlertTriangle className="size-4 text-destructive" />}
+          title={business.lastRejection.message}
+          actions={
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => navigate(`/settings/bharatconnect/profile/${business.lastRejection!.tab}`)}
+            >
+              Fix Now
+            </Button>
+          }
+        >
+          Field: {business.lastRejection.field}
+        </Callout>
       )}
 
-      <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">Bharat Connect</h1>
-          <Badge variant="success">Connected</Badge>
-        </div>
-        <Button variant="outline" onClick={() => navigate("/settings/bharatconnect/profile/business_details")}>
-          <Pencil />
-          Edit Profile
-        </Button>
-      </div>
-
-      <div className="mb-8">
-        <div className="text-sm text-muted-foreground">Your Bharat Connect B2B ID</div>
-        <div className="mt-1 flex items-center gap-3">
-          <span className="tabular-nums text-3xl font-semibold tracking-tight text-foreground">{defaultId?.id ?? "—"}</span>
-          {defaultId && <CopyId id={defaultId.id} />}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Share this ID so buyers and suppliers can send you invoices.</p>
-      </div>
-
-      <div className="mb-8 grid grid-cols-2 gap-8 border-t border-border pt-6">
-        <div>
-          <div className="text-sm text-muted-foreground">Invoicing</div>
-          <div className="mt-1 font-medium text-foreground">{business.verification.invoicing ? "On" : "Not Set Up"}</div>
-        </div>
-        <div>
-          <div className="text-sm text-muted-foreground">Payments</div>
-          <div className="mt-1 flex items-center gap-2 font-medium text-foreground">
-            {business.verification.payments ? "On" : "Not Set Up"}
-            {!business.verification.payments && (
-              <a
-                href="#/settings/bharatconnect/profile/settlement_accounts"
-                className="text-sm font-medium text-primary hover:text-primary/80"
-              >
-                Set Up
-              </a>
-            )}
+      {/* Branded header: the one tinted card on the page, so Bharat Connect reads as its own product
+          inside LEDGERS rather than another settings screen. */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <BharatConnectLogo width={110} />
+              <Badge variant="success">Connected</Badge>
+              <LevelStatus business={business} />
+            </div>
+            <Button variant="outline" onClick={() => navigate("/settings/bharatconnect/profile/business_details")}>
+              <Pencil />
+              Edit Profile
+            </Button>
           </div>
-        </div>
-      </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Your Bharat Connect B2B ID</div>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-xl font-semibold tracking-tight tabular-nums text-foreground">{defaultId?.id ?? "—"}</span>
+              {defaultId && <CopyId id={defaultId.id} />}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Share this ID so buyers and suppliers can send you invoices.</p>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="border-t border-border pt-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-medium text-foreground">Business Details</h2>
-          <a
-            href="#/settings/bharatconnect/profile/business_details"
-            className="text-sm font-medium text-primary hover:text-primary/80"
-          >
-            Edit
-          </a>
-        </div>
-        <dl className="divide-y divide-border">
-          <DetailRow label="Business Name" value={business.name} />
-          <DetailRow label="PAN" value={business.pan} />
-          <DetailRow label="GSTIN" value={business.gstin ?? "None yet."} />
-          <DetailRow
-            label="Registered Address"
-            value={`${business.registeredAddress.line1}, ${business.registeredAddress.city}, ${business.registeredAddress.state} ${business.registeredAddress.pincode}`}
-          />
-          {/* The business's own mobile and email, in full. */}
-          <DetailRow label="Mobile" value={formatMobile(business.contacts.mobile)} />
-          <DetailRow label="Email" value={business.contacts.email} />
-          <DetailRow
-            label="Settlement Account"
-            value={
-              settlement
+      {/* Same split as LEDGERS' Basic Settings: narrow stacked details on the left, the list on the right. */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
+      <Card>
+        <CardHeader>
+          <div className="space-y-1">
+            <CardTitle>Business Details</CardTitle>
+            <CardDescription>Shared with businesses you trade with on Bharat Connect.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <dl className="space-y-5">
+            <Detail label="Business Name">{business.name}</Detail>
+            <Detail label="PAN">{business.pan}</Detail>
+            <Detail label="GSTIN">{business.gstin ?? "None yet"}</Detail>
+            <Detail label="Invoicing">{business.verification.invoicing ? "On" : "Not Set Up"}</Detail>
+            <Detail label="Payments">
+              {business.verification.payments ? (
+                "On"
+              ) : (
+                <span className="flex items-center gap-2">
+                  Not Set Up
+                  <a
+                    href="#/settings/bharatconnect/profile/settlement_accounts"
+                    className="font-medium text-primary hover:text-primary/80"
+                  >
+                    Set Up
+                  </a>
+                </span>
+              )}
+            </Detail>
+            <Detail label="Mobile">{formatMobile(business.contacts.mobile)}</Detail>
+            <Detail label="Email">{business.contacts.email}</Detail>
+            <Detail label="Settlement Account" muted={!settlement}>
+              {settlement
                 ? `${settlement.beneficiaryName} · ${settlement.ifsc} ending ${settlement.accountEnding}`
-                : "None yet. Needed to receive payments."
-            }
-            muted={!settlement}
-          />
-        </dl>
+                : "None yet. Needed to receive payments."}
+            </Detail>
+            <Detail label="Registered Address">
+              {`${address.line1}, ${address.city}, ${address.state} ${address.pincode}`}
+            </Detail>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <div className="space-y-1">
+            <CardTitle>B2B IDs</CardTitle>
+            <CardDescription>All your IDs reach this business.</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            Create B2B ID
+          </Button>
+        </CardHeader>
+        <table className={tableCls}>
+          <thead>
+            <tr>
+              <th className={thCls}>B2B ID</th>
+              <th className={thCls}>Visibility</th>
+              <th className={thCls}>Linked To</th>
+              <th className={thCls}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {business.bharatConnectIds.map((id) => (
+              <tr key={id.id} className={trCls}>
+                <td className={tdCls}>
+                  <div className="font-medium tabular-nums text-foreground">{id.id}</div>
+                  <Badge
+                    className="mt-1"
+                    variant={id.legacyFormat ? "warning" : id.label === "Default" ? "primary" : "secondary"}
+                  >
+                    {id.legacyFormat ? "Legacy Format" : id.label}
+                  </Badge>
+                </td>
+                <td className={`${tdCls} capitalize`}>{id.visibility}</td>
+                <td className={tdCls}>{id.basedOn}</td>
+                <td className={tdCls}>
+                  <Badge variant={id.status === "active" ? "success" : "secondary"}>
+                    {id.status === "active" ? "Active" : "Deactivated"}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <CardFooter className="justify-end">
+          <a href="#/settings/bharatconnect/ids" className="text-sm font-medium text-primary hover:text-primary/80">
+            View All
+          </a>
+        </CardFooter>
+      </Card>
       </div>
 
-      <div className="mt-8 flex items-center justify-end border-t border-border pt-5 text-sm text-muted-foreground">
-        <div className="flex items-center gap-4">
-          {business.profileDraft.dirtySinceSend && (
-            <a
-              href="#/settings/bharatconnect/profile/review_send"
-              className="font-medium text-primary hover:text-primary/80"
-            >
-              Unsent draft, changes to review
-            </a>
-          )}
-          <span
-            title={hasOpenInvoices ? "Disconnect is blocked while any invoice is unpaid or partly paid." : undefined}
-            className={hasOpenInvoices ? "cursor-not-allowed text-muted-foreground/70" : "cursor-pointer hover:text-foreground"}
-          >
-            Disconnect
-          </span>
-        </div>
+      {createOpen && <CreateIdDrawer business={business} onClose={() => setCreateOpen(false)} />}
+
+      <div className="flex items-center justify-end gap-4 text-sm text-muted-foreground">
+        {business.profileDraft.dirtySinceSend && (
+          <a href="#/settings/bharatconnect/profile/review_send" className="font-medium text-primary hover:text-primary/80">
+            Unsent draft, changes to review
+          </a>
+        )}
+        <span
+          title={hasOpenInvoices ? "Disconnect is blocked while any invoice is unpaid or partly paid." : undefined}
+          className={hasOpenInvoices ? "cursor-not-allowed text-muted-foreground/70" : "cursor-pointer hover:text-foreground"}
+        >
+          Disconnect
+        </span>
       </div>
     </div>
   );
 }
 
-function DetailRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+/** Label above value, as on LEDGERS' Basic Settings detail card. */
+function Detail({
+  label,
+  children,
+  muted,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  muted?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="flex items-center justify-between py-3 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={muted ? "text-muted-foreground" : "text-foreground"}>{value}</span>
+    <div className={className}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={`mt-1 text-2sm ${muted ? "text-muted-foreground" : "font-medium text-foreground"}`}>{children}</dd>
     </div>
   );
 }
