@@ -61,6 +61,9 @@ function BusinessSummary({ business, locked }: { business: Business; locked?: bo
                   ? `${business.bankAccounts[0].beneficiaryName} · ${business.bankAccounts[0].ifsc} ending ${business.bankAccounts[0].accountEnding}`
                   : "None yet"
               }
+              // Bank accounts are verified inside LEDGERS, so a verified one carries the same tick as the
+              // identifiers and contacts.
+              verified={business.bankAccounts[0]?.verified}
             />
           </>
         )}
