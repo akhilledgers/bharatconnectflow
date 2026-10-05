@@ -5,7 +5,7 @@ import { useBankingStore } from "../../store/useBankingStore";
 import { STATUS_META } from "../../lib/status";
 import { STOCK_HOLDING_ID, SHARMA_TRADERS_ID } from "../../mock/seed";
 import { BharatConnectMark } from "../layout/BharatConnectMark";
-import { PAY_FROM_BANKS, type ApprovalMode, type BankingScenario } from "../../pages/banking/data";
+import { CONNECTED_BANKING, last4, type ApprovalMode, type BankConnection } from "../../pages/banking/data";
 import type { ConnectionState } from "../../types";
 
 const STATES: ConnectionState[] = [
@@ -95,8 +95,8 @@ export function DevPanel() {
 
 function SectionMenu({ onOpen }: { onOpen: (s: Section) => void }) {
   const business = useStore((s) => s.currentBusiness());
-  const scenario = useBankingStore((s) => s.scenario);
-  const banks = PAY_FROM_BANKS.filter((b) => scenario.connected[b.key]).map((b) => b.short);
+  const accounts = useBankingStore((s) => s.accounts);
+  const connectedCount = accounts.filter((a) => a.active && a.connection === "connected").length;
 
   const items: { key: Section; icon: ReactNode; label: string; summary: string }[] = [
     {
@@ -109,7 +109,7 @@ function SectionMenu({ onOpen }: { onOpen: (s: Section) => void }) {
       key: "banking",
       icon: <Landmark className="size-4 text-muted-foreground" />,
       label: "Banking",
-      summary: banks.length ? `${banks.join(", ")} connected` : "No bank connected",
+      summary: connectedCount ? `${connectedCount} account${connectedCount === 1 ? "" : "s"} connected` : "No account connected",
     },
   ];
 
@@ -297,54 +297,63 @@ const APPROVAL_OPTIONS = [
   ["single", "Single"],
 ] as const;
 
-function approvalHint(mode: ApprovalMode) {
-  return mode === "maker-checker" ? "Transfers need a checker in netbanking." : "Single operator approves at OTP.";
-}
+const CONNECTION_OPTIONS: readonly (readonly [BankConnection, string])[] = [
+  ["none", "Off"],
+  ["connected", "Connected"],
+  ["expired", "Expired"],
+];
 
-/** Banking → Fund Transfer scenarios (the design's "Simulate Scenario" panel). */
+/** Banking → Fund Transfer and Accounts scenarios (the design's "Simulate Scenario" panel). */
 function BankingOptions() {
   const scenario = useBankingStore((s) => s.scenario);
+  const accounts = useBankingStore((s) => s.accounts);
   const setScenario = useBankingStore((s) => s.setScenario);
+  const updateAccount = useBankingStore((s) => s.updateAccount);
   const resetData = useBankingStore((s) => s.resetData);
-
-  const connected = PAY_FROM_BANKS.filter((b) => scenario.connected[b.key]);
-  const connectedHint =
-    connected.length === 0
-      ? "No bank connected — Fund Transfer opens the Connect a Bank Account dialog."
-      : connected.some((b) => b.bulkSupported)
-        ? `${PAY_FROM_BANKS.filter((b) => b.bulkSupported).map((b) => b.short).join(" and ")} support bulk; ICICI is single transfer only.`
-        : "ICICI does not support bulk, so Bulk Transfer is unavailable.";
-  const setApproval = (key: keyof BankingScenario["approval"], mode: ApprovalMode) =>
-    setScenario({ approval: { ...scenario.approval, [key]: mode } });
+  const apiAccounts = accounts.filter((a) => a.bankKey && a.active);
+  const anyConnected = apiAccounts.some((a) => a.connection === "connected");
 
   return (
     <>
-      <Group label="Connected banks" hint={connectedHint}>
-        <div className="flex gap-1.5">
-          {PAY_FROM_BANKS.map((b) => (
-            <button
-              key={b.key}
-              aria-pressed={scenario.connected[b.key]}
-              onClick={() => setScenario({ connected: { ...scenario.connected, [b.key]: !scenario.connected[b.key] } })}
-              className={`flex-1 ${OPTION} ${scenario.connected[b.key] ? ON : OFF}`}
-            >
-              {b.short}
-            </button>
-          ))}
+      <Group
+        label="Connected Banking"
+        hint={
+          anyConnected
+            ? "Only connected accounts appear in Fund Transfer's Pay From. ICICI is single-transfer only."
+            : "Nothing connected — Fund Transfer opens the Connect a Bank Account dialog."
+        }
+      >
+        <div className="space-y-2.5">
+          {apiAccounts.map((a) => {
+            const meta = CONNECTED_BANKING[a.bankKey!];
+            return (
+              <div key={a.id} className="space-y-1.5">
+                <div className="text-xs text-foreground">
+                  {meta.short} {last4(a.number)}
+                  {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                </div>
+                <Choice
+                  value={a.connection}
+                  options={CONNECTION_OPTIONS}
+                  onChange={(connection) =>
+                    updateAccount(a.id, { connection, ...(connection !== "none" ? { verified: true, syncedMinutesAgo: connection === "expired" ? 2880 : 5 } : {}) })
+                  }
+                />
+                {meta.approvalChoice && a.connection !== "none" && (
+                  <Choice value={a.approval} options={APPROVAL_OPTIONS} onChange={(approval: ApprovalMode) => updateAccount(a.id, { approval })} />
+                )}
+              </div>
+            );
+          })}
         </div>
-      </Group>
-
-      <Group label="Axis approval mode" hint={approvalHint(scenario.approval.axis)}>
-        <Choice value={scenario.approval.axis} options={APPROVAL_OPTIONS} onChange={(m) => setApproval("axis", m)} />
-      </Group>
-
-      <Group label="IndusInd approval mode" hint={approvalHint(scenario.approval.indusind)}>
-        <Choice value={scenario.approval.indusind} options={APPROVAL_OPTIONS} onChange={(m) => setApproval("indusind", m)} />
       </Group>
 
       <Group
         label="Account balance"
-        hint={PAY_FROM_BANKS.map((b) => `${b.short} ₹${b.balances[scenario.balance === "low" ? 1 : 0].toLocaleString("en-IN")}`).join(" · ")}
+        hint={apiAccounts
+          .filter((a) => a.liveBalance)
+          .map((a) => `${CONNECTED_BANKING[a.bankKey!].short} ${last4(a.number)} ₹${a.liveBalance![scenario.balance === "low" ? 1 : 0].toLocaleString("en-IN")}`)
+          .join(" · ")}
       >
         <Choice
           value={scenario.balance}
@@ -356,7 +365,7 @@ function BankingOptions() {
         />
       </Group>
 
-      <Group label="Account verification" hint="Outcome of Verify Now on unverified beneficiaries.">
+      <Group label="Account verification" hint="Outcome of the penny-less check, for beneficiaries and your own accounts.">
         <Choice
           value={scenario.verify}
           options={[
@@ -368,7 +377,7 @@ function BankingOptions() {
         />
       </Group>
 
-      <Group label="Register Connected Banking" hint="How the bank's API answers when a user connects an account from Banking → Accounts.">
+      <Group label="Register Connected Banking" hint="How the bank's API answers Connect / Reconnect from Banking → Accounts.">
         <Choice
           value={scenario.register}
           options={[
@@ -379,9 +388,9 @@ function BankingOptions() {
         />
       </Group>
 
-      <Group label="Payees">
+      <Group label="Sample data">
         <button onClick={resetData} className={`w-full ${OPTION} ${OFF}`}>
-          Reset payees & employees
+          Reset accounts, payees & employees
         </button>
       </Group>
     </>

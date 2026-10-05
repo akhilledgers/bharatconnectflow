@@ -3,7 +3,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
-import { useBankingStore } from "../../store/useBankingStore";
+import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
 import {
   AccountForm,
   AmountInput,
@@ -39,7 +39,6 @@ import {
   fmtINR,
   maskIfsc,
   oldestBill,
-  payFromAccounts,
   type PayeeContact,
   type PickedPayee,
   type Purpose,
@@ -72,12 +71,11 @@ export function SingleTransferDrawer({
   onClose: () => void;
   onSwitchToBulk: (payFromId: string, carry: (PickedPayee & { amount: string }) | null) => void;
 }) {
-  const scenario = useBankingStore((s) => s.scenario);
   const contacts = useBankingStore((s) => s.contacts);
   const employees = useBankingStore((s) => s.employees);
   const store = useBankingStore.getState;
 
-  const accounts = payFromAccounts(scenario);
+  const accounts = usePayFromAccounts();
   const [payFromId, setPayFromId] = useState(accounts.find((a) => a.id === preset?.payFromId)?.id ?? accounts[0].id);
   const payFrom = accounts.find((a) => a.id === payFromId) ?? accounts[0];
 

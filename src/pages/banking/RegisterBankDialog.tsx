@@ -6,7 +6,7 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankLogo } from "./BankLogo";
-import { PAY_FROM_BANKS, type ApprovalMode, type BankKey } from "./data";
+import { CONNECTED_BANKING, last4, type ApprovalMode, type BankKey } from "./data";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
 
@@ -65,21 +65,26 @@ const APPROVAL_CHOICES: { value: ApprovalMode; title: string; body: string }[] =
 ];
 
 export function RegisterBankDialog({
-  bank,
+  accountId,
   onClose,
   onMakeTransfer,
 }: {
-  bank: BankKey;
+  accountId: string;
   onClose: () => void;
   onMakeTransfer: () => void;
 }) {
   const registerBank = useBankingStore((s) => s.registerBank);
-  const account = PAY_FROM_BANKS.find((b) => b.key === bank)!;
+  const stored = useBankingStore((s) => s.accounts.find((a) => a.id === accountId)!);
+  const bank: BankKey = stored.bankKey!;
+  const account = { bank: stored.bank, short: CONNECTED_BANKING[bank].short, masked: last4(stored.number) };
+  // Captured on open: the store flips the account to "connected" before the success screen shows.
+  const [reconnect] = useState(stored.connection === "expired");
+  const verb = reconnect ? "Reconnect" : "Connect";
   const form = BANK_FORMS[bank];
   useEscape(onClose);
 
   const [values, setValues] = useState<Partial<Record<FieldKey, string>>>({});
-  const [approval, setApproval] = useState<ApprovalMode | null>(form.approval ? null : "single");
+  const [approval, setApproval] = useState<ApprovalMode | null>(form.approval ? (stored.connection === "expired" ? stored.approval : null) : "single");
   const [phase, setPhase] = useState<"form" | "verifying" | "connected">("form");
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +102,7 @@ export function RegisterBankDialog({
   const submit = async () => {
     if (!canSubmit) return;
     setPhase("verifying");
-    const ok = await registerBank(bank, form.approval ? approval! : undefined);
+    const ok = await registerBank(accountId, form.approval ? approval! : undefined);
     if (ok) return setPhase("connected");
     setPhase("form");
     setError(
@@ -130,7 +135,7 @@ export function RegisterBankDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Connect ${account.bank}`}
+        aria-label={`${verb} ${account.bank}`}
         className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[512px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[fade-in_.15s_ease]"
       >
         <Button
@@ -150,7 +155,7 @@ export function RegisterBankDialog({
               <Check className="size-6" />
             </div>
             <div>
-              <div className="text-base font-semibold">{account.bank} connected</div>
+              <div className="text-base font-semibold">{account.bank} {reconnect ? "reconnected" : "connected"}</div>
               <p className="mt-1.5 text-2sm leading-relaxed text-muted-foreground">
                 Account {account.masked} is live in LEDGERS. Balance and statements now sync automatically.
                 {approval === "maker-checker"
@@ -174,9 +179,13 @@ export function RegisterBankDialog({
                 <BankLogo bank={bank} size="sm" />
                 <div>
                   <h2 className="text-base font-semibold text-foreground">
-                    Connect current account <span className="tabular-nums">{account.masked}</span>
+                    {verb} {stored.type.toLowerCase()} account <span className="tabular-nums">{account.masked}</span>
                   </h2>
-                  <p className="mt-1 text-2sm text-muted-foreground">Send payments, check balance and sync statements from LEDGERS.</p>
+                  <p className="mt-1 text-2sm text-muted-foreground">
+                    {reconnect
+                      ? `The connection expired, so balance and statements stopped syncing. Re-enter your ${account.short} details to resume.`
+                      : "Send payments, check balance and sync statements from LEDGERS."}
+                  </p>
                 </div>
               </div>
 
@@ -234,7 +243,7 @@ export function RegisterBankDialog({
                     <CircularSpinner size={14} className="!text-primary-foreground" /> Verifying with {account.short}…
                   </>
                 ) : (
-                  `Connect ${account.short}`
+                  `${verb} ${account.short}`
                 )}
               </Button>
             </div>

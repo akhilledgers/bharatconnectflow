@@ -4,7 +4,7 @@ import { Badge, type BadgeVariant } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { buttonVariants } from "../../components/ui/button-variants";
 import { cn } from "../../lib/cn";
-import { useBankingStore } from "../../store/useBankingStore";
+import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
 import {
   AccountForm,
   AmountInput,
@@ -31,7 +31,6 @@ import {
   demoUploadRows,
   fmtINR,
   maskIfsc,
-  payFromAccounts,
   type BulkRow,
   type PickedPayee,
 } from "./data";
@@ -53,8 +52,7 @@ function rowStatus(row: BulkRow, duplicate: boolean): RowStatus {
 }
 
 export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; onClose: () => void }) {
-  const scenario = useBankingStore((s) => s.scenario);
-  const all = payFromAccounts(scenario);
+  const all = usePayFromAccounts();
   const options = all.filter((a) => a.bulkSupported);
   const [payFromId, setPayFromId] = useState(preset?.payFromId ?? options[0]?.id ?? all[0].id);
   const payFrom = all.find((a) => a.id === payFromId) ?? options[0] ?? all[0];

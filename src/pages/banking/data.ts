@@ -68,43 +68,90 @@ export type ApprovalMode = "maker-checker" | "single";
 export type BankKey = "axis" | "icici" | "indusind";
 
 export interface BankingScenario {
-  /** Which of the company's current accounts are connected (none = the Connect a Bank Account dialog). */
-  connected: Record<BankKey, boolean>;
-  /** Axis and IndusInd can run maker-checker; ICICI is always single-operator. */
-  approval: Record<"axis" | "indusind", ApprovalMode>;
   balance: "normal" | "low";
+  /** Outcome of the penny-less verification API (beneficiaries and the company's own accounts). */
   verify: "random" | "pass" | "fail";
   /** How the bank's API answers a Register Connected Banking request. */
   register: "success" | "fail";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = {
-  connected: { axis: true, icici: true, indusind: false },
-  approval: { axis: "maker-checker", indusind: "maker-checker" },
-  balance: "normal",
-  verify: "random",
-  register: "success",
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success" };
+
+/** Banks LEDGERS has a Connected Banking integration with. */
+export const CONNECTED_BANKING: Record<BankKey, { short: string; bulk: boolean; approvalChoice: boolean }> = {
+  axis: { short: "Axis", bulk: true, approvalChoice: true },
+  icici: { short: "ICICI", bulk: false, approvalChoice: false },
+  indusind: { short: "IndusInd", bulk: true, approvalChoice: true },
 };
 
-/** The company's own current accounts LEDGERS can pay from. Balances are [normal, low]. */
-export const PAY_FROM_BANKS: {
-  key: BankKey;
-  id: string;
-  bank: string;
-  short: string;
-  masked: string;
-  balances: [number, number];
-  bulkSupported: boolean;
-}[] = [
-  { key: "axis", id: "p1", bank: "Axis Bank", short: "Axis", masked: "••9012", balances: [482300, 5000], bulkSupported: true },
-  { key: "icici", id: "p2", bank: "ICICI Bank", short: "ICICI", masked: "••4456", balances: [115000, 2500], bulkSupported: false },
-  { key: "indusind", id: "p3", bank: "IndusInd Bank", short: "IndusInd", masked: "••8251", balances: [268450, 3000], bulkSupported: true },
-];
-
 /** e.g. "Axis and IndusInd" — the banks that support bulk transfer. */
-export const BULK_BANKS_LABEL = PAY_FROM_BANKS.filter((b) => b.bulkSupported)
+export const BULK_BANKS_LABEL = Object.values(CONNECTED_BANKING)
+  .filter((b) => b.bulk)
   .map((b) => b.short)
   .join(" and ");
+
+export type BankConnection = "none" | "connected" | "expired";
+
+/** One of the company's own bank accounts (Banking → Accounts). */
+export interface CompanyAccount {
+  id: string;
+  bank: string;
+  /** Set when LEDGERS has a Connected Banking integration with this bank. */
+  bankKey: BankKey | null;
+  number: string;
+  ifsc: string;
+  nickname: string;
+  type: "Current" | "Savings";
+  primary: boolean;
+  active: boolean;
+  /** Ownership confirmed by the penny-less verification API (or by connecting). */
+  verified: boolean;
+  connection: BankConnection;
+  approval: ApprovalMode;
+  /** Live balance from the bank API, [normal, low] for the dev panel's balance switch. */
+  liveBalance?: [number, number];
+  /** Minutes since the last sync (connected) or since the connection lapsed (expired). */
+  syncedMinutesAgo?: number;
+  /** Balance from the last uploaded statement, for accounts without Connected Banking. */
+  statement?: { date: string; balance: number };
+}
+
+export function initialAccounts(): CompanyAccount[] {
+  const base = { active: true, primary: false, verified: false, connection: "none" as BankConnection, approval: "single" as ApprovalMode, type: "Current" as const, nickname: "" };
+  return [
+    { ...base, id: "p1", bank: "Axis Bank", bankKey: "axis", number: "921020023599012", ifsc: "UTIB0000004", nickname: "Main operating", primary: true, verified: true, connection: "connected", approval: "maker-checker", liveBalance: [482300, 5000], syncedMinutesAgo: 8 },
+    { ...base, id: "p2", bank: "ICICI Bank", bankKey: "icici", number: "123405004456", ifsc: "ICIC0000123", nickname: "Collections", verified: true, connection: "connected", liveBalance: [115000, 2500], syncedMinutesAgo: 22 },
+    { ...base, id: "p3", bank: "IndusInd Bank", bankKey: "indusind", number: "201000628251", ifsc: "INDB0000007", nickname: "Vendor payments", liveBalance: [268450, 3000] },
+    { ...base, id: "p4", bank: "Axis Bank", bankKey: "axis", number: "921020045675068", ifsc: "UTIB0000004", nickname: "Payroll", verified: true, connection: "expired", approval: "maker-checker", liveBalance: [96300, 1200], syncedMinutesAgo: 2 * 24 * 60 },
+    { ...base, id: "p5", bank: "Canara Bank", bankKey: null, number: "9938438484938484", ifsc: "CNRB0002456", statement: { date: "25-09-2026", balance: 124560 } },
+    { ...base, id: "p6", bank: "Federal Bank", bankKey: null, number: "12340100006942", ifsc: "FDRL0001234", type: "Savings", verified: true, statement: { date: "20-09-2026", balance: 48210.55 } },
+    { ...base, id: "p7", bank: "Ahmedabad Mercantile Co-operative Bank", bankKey: null, number: "7376726387623", ifsc: "AMCB0000003" },
+    { ...base, id: "p8", bank: "Citibank", bankKey: null, number: "78783983894894", ifsc: "CITI0000003", active: false, verified: true },
+  ];
+}
+
+export function last4(number: string) {
+  return "••" + number.slice(-4);
+}
+
+/** Banks recognised from the IFSC prefix when adding an account (prototype subset). */
+export const IFSC_BANKS: Record<string, { bank: string; bankKey: BankKey | null; branch: string }> = {
+  UTIB: { bank: "Axis Bank", bankKey: "axis", branch: "Mumbai, Worli" },
+  ICIC: { bank: "ICICI Bank", bankKey: "icici", branch: "Mumbai, Bandra Kurla Complex" },
+  INDB: { bank: "IndusInd Bank", bankKey: "indusind", branch: "Mumbai, Nariman Point" },
+  HDFC: { bank: "HDFC Bank", bankKey: null, branch: "Mumbai, Lower Parel" },
+  SBIN: { bank: "State Bank of India", bankKey: null, branch: "Mumbai Main Branch" },
+  CNRB: { bank: "Canara Bank", bankKey: null, branch: "Bengaluru, MG Road" },
+  FDRL: { bank: "Federal Bank", bankKey: null, branch: "Kochi, Marine Drive" },
+  KKBK: { bank: "Kotak Mahindra Bank", bankKey: null, branch: "Mumbai, Fort" },
+};
+
+export function syncedLabel(minutes: number) {
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} h ago`;
+  const d = Math.round(minutes / (24 * 60));
+  return `${d} day${d > 1 ? "s" : ""} ago`;
+}
 
 export const RTGS_MIN = 200000;
 
@@ -114,7 +161,7 @@ export const STATEMENTS = [
   ["UPI/110757762892/collect-pay-req/XX7504@ybl/KARNATAKA BANK /ICIacbe63e3233e4a7b", "24,661.00", "13,99,013.18", "XXXX4489"],
   ["UPI/130193639244/UPI/XXnair@okhdfcb/HDFC BANK LTD/HDF9d12b347e28a42e4aa88311", "3,421.00", "14,02,434.18", "XXXX4489"],
   ["UPI/110757876936/collect-pay-req/XX4729@ybl/StateBank Of I/ICI7618d93db10940ff8640", "5,781.00", "14,08,215.18", "XXXX4489"],
-  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX8251"],
+  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX4456"],
   ["MMT/IMPS/626810705563/from bateaco fo/BATEACO BL/State Bank of I", "20,000.00", "14,31,636.18", "XXXX4489"],
   ["UPI/110758009194/collect-pay-req/XXmp-2@oksbi/State Bank Of I/ICI567bff1337a3421c92", "8,000.00", "14,39,636.18", "XXXX4489"],
   ["UPI/110758021692/est179031306238/XX18cd@ptsbi/State Bank Of I/ICIe8b7c789518040d11", "1,769.00", "14,41,405.18", "XXXX4489"],
@@ -214,15 +261,18 @@ export function demoUploadRows(): BulkRow[] {
   ];
 }
 
-export function payFromAccounts(s: BankingScenario): PayFromAccount[] {
-  return PAY_FROM_BANKS.filter((b) => s.connected[b.key]).map((b) => ({
-    id: b.id,
-    bank: b.bank,
-    masked: b.masked,
-    balance: b.balances[s.balance === "low" ? 1 : 0],
-    approvalMode: b.key === "icici" ? "single" : s.approval[b.key],
-    bulkSupported: b.bulkSupported,
-  }));
+/** Accounts Fund Transfer can pay from: active and connected through a Connected Banking integration. */
+export function payFromAccounts(accounts: CompanyAccount[], s: BankingScenario): PayFromAccount[] {
+  return accounts
+    .filter((a) => a.active && a.bankKey && a.connection === "connected")
+    .map((a) => ({
+      id: a.id,
+      bank: a.bank,
+      masked: last4(a.number),
+      balance: a.liveBalance?.[s.balance === "low" ? 1 : 0] ?? 0,
+      approvalMode: a.bankKey === "icici" ? "single" : a.approval,
+      bulkSupported: CONNECTED_BANKING[a.bankKey!].bulk,
+    }));
 }
 
 export function approvalNote(mode: ApprovalMode) {

@@ -20,13 +20,13 @@ import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
 import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
-import { useBankingStore } from "../../store/useBankingStore";
+import { usePayFromAccounts } from "../../store/useBankingStore";
 import { BulkTransferDrawer, type BulkPreset } from "./BulkTransferDrawer";
 import { ConnectBankDialog } from "./ConnectBankDialog";
 import { SingleTransferDrawer, type SingleTransferPreset } from "./SingleTransferDrawer";
 import { AccountsTab } from "./AccountsTab";
 import { RegisterBankDialog } from "./RegisterBankDialog";
-import { PAY_FROM_BANKS, STATEMENTS, payFromAccounts, type BankKey } from "./data";
+import { STATEMENTS } from "./data";
 
 type Tab = "statements" | "accounts" | "payouts" | "uploads";
 const TABS: { value: Tab; label: string }[] = [
@@ -39,7 +39,7 @@ const TABS: { value: Tab; label: string }[] = [
 type Flow =
   | { kind: "none" }
   | { kind: "connect" }
-  | { kind: "register"; bank: BankKey }
+  | { kind: "register"; accountId: string }
   | { kind: "single"; preset?: SingleTransferPreset } | { kind: "bulk"; preset?: BulkPreset };
 
 const STATS = [
@@ -50,8 +50,7 @@ const STATS = [
 ];
 
 export function BankingPage() {
-  const scenario = useBankingStore((s) => s.scenario);
-  const accounts = payFromAccounts(scenario);
+  const accounts = usePayFromAccounts();
   const connected = accounts.length > 0;
   const bulkAvailable = accounts.some((a) => a.bulkSupported);
 
@@ -71,7 +70,7 @@ export function BankingPage() {
 
       <div className="flex min-w-0 flex-col gap-5 p-5">
         {tab === "accounts" ? (
-          <AccountsTab onConnect={(bank) => setFlow({ kind: "register", bank })} />
+          <AccountsTab onConnect={(accountId) => setFlow({ kind: "register", accountId })} />
         ) : tab !== "statements" ? (
           <Card className="items-center justify-center py-16 text-sm text-muted-foreground">
             {TABS.find((t) => t.value === tab)!.label} isn't part of this prototype yet.
@@ -245,7 +244,7 @@ export function BankingPage() {
         />
       )}
       {flow.kind === "register" && (
-        <RegisterBankDialog bank={flow.bank} onClose={close} onMakeTransfer={() => setFlow({ kind: "single", preset: { payFromId: PAY_FROM_BANKS.find((b) => b.key === flow.bank)!.id } })} />
+        <RegisterBankDialog accountId={flow.accountId} onClose={close} onMakeTransfer={() => setFlow({ kind: "single", preset: { payFromId: flow.accountId } })} />
       )}
       {flow.kind === "single" && (
         <SingleTransferDrawer

@@ -2,13 +2,16 @@ import { create } from "zustand";
 import {
   DEFAULT_SCENARIO,
   bankFromIfsc,
+  IFSC_BANKS,
+  initialAccounts,
   initialContacts,
   initialEmployees,
   maskAccount,
+  payFromAccounts,
   type ApprovalMode,
   type BankAccount,
-  type BankKey,
   type BankingScenario,
+  type CompanyAccount,
   type Employee,
   type PayeeContact,
 } from "../pages/banking/data";
@@ -26,8 +29,19 @@ function toAccount({ accountNumber, ifsc, verified }: NewAccountInput): BankAcco
 
 // Payees, employees and the dev-panel scenario for Banking → Fund Transfer. Kept apart from the main
 // store: this is the Fund Transfer prototype's own mock world, not the Bharat Connect business data.
+/** What Add bank account collects. */
+export interface NewCompanyAccountInput {
+  ifsc: string;
+  number: string;
+  nickname: string;
+  type: CompanyAccount["type"];
+  primary: boolean;
+}
+
 interface BankingState {
   scenario: BankingScenario;
+  /** The company's own bank accounts. */
+  accounts: CompanyAccount[];
   contacts: PayeeContact[];
   employees: Employee[];
 
@@ -44,16 +58,24 @@ interface BankingState {
    * Register Connected Banking: the bank verifies the IDs over its API and answers straight away.
    * On success the account goes live (and its approval mode is recorded); outcome follows the dev panel.
    */
-  registerBank: (bank: BankKey, approval?: ApprovalMode) => Promise<boolean>;
+  registerBank: (accountId: string, approval?: ApprovalMode) => Promise<boolean>;
+  /** Penny-less verification of one of the company's own accounts. */
+  verifyOwnAccount: (accountId: string) => Promise<boolean>;
+  addCompanyAccount: (input: NewCompanyAccountInput) => CompanyAccount;
+  updateAccount: (accountId: string, patch: Partial<CompanyAccount>) => void;
+  setPrimary: (accountId: string) => void;
+  syncAccount: (accountId: string) => Promise<void>;
+  uploadStatement: (accountId: string) => void;
 }
 
 export const useBankingStore = create<BankingState>((set, get) => ({
   scenario: DEFAULT_SCENARIO,
   contacts: initialContacts(),
   employees: initialEmployees(),
+  accounts: initialAccounts(),
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
-  resetData: () => set({ contacts: initialContacts(), employees: initialEmployees() }),
+  resetData: () => set({ contacts: initialContacts(), employees: initialEmployees(), accounts: initialAccounts() }),
 
   verifyAccount: () =>
     new Promise((resolve) => {
@@ -88,20 +110,69 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     return account;
   },
 
-  registerBank: (bank, approval) =>
+  registerBank: (accountId, approval) =>
     new Promise((resolve) => {
       setTimeout(() => {
         if (get().scenario.register === "fail") return resolve(false);
+        get().updateAccount(accountId, {
+          connection: "connected",
+          verified: true,
+          syncedMinutesAgo: 0,
+          ...(approval ? { approval } : {}),
+        });
         set((s) => ({
-          scenario: {
-            ...s.scenario,
-            connected: { ...s.scenario.connected, [bank]: true },
-            approval: approval && bank !== "icici" ? { ...s.scenario.approval, [bank]: approval } : s.scenario.approval,
-          },
+          accounts: s.accounts.map((a) => (a.id !== accountId || a.liveBalance ? a : { ...a, liveBalance: [215400, 2000] })),
         }));
         resolve(true);
       }, 1500);
     }),
+
+  verifyOwnAccount: async (accountId) => {
+    const ok = await get().verifyAccount();
+    if (ok) get().updateAccount(accountId, { verified: true });
+    return ok;
+  },
+
+  addCompanyAccount: ({ ifsc, number, nickname, type, primary }) => {
+    const known = IFSC_BANKS[ifsc.slice(0, 4)];
+    const account: CompanyAccount = {
+      id: `p${Date.now()}`,
+      bank: known?.bank ?? bankFromIfsc(ifsc),
+      bankKey: known?.bankKey ?? null,
+      number,
+      ifsc,
+      nickname,
+      type,
+      primary: false,
+      active: true,
+      verified: false,
+      connection: "none",
+      approval: "single",
+    };
+    set((s) => ({ accounts: [...s.accounts, account] }));
+    if (primary) get().setPrimary(account.id);
+    return account;
+  },
+
+  updateAccount: (accountId, patch) =>
+    set((s) => ({ accounts: s.accounts.map((a) => (a.id === accountId ? { ...a, ...patch } : a)) })),
+
+  setPrimary: (accountId) => set((s) => ({ accounts: s.accounts.map((a) => ({ ...a, primary: a.id === accountId })) })),
+
+  syncAccount: (accountId) =>
+    new Promise((resolve) => {
+      setTimeout(() => {
+        get().updateAccount(accountId, { syncedMinutesAgo: 0 });
+        resolve();
+      }, 900);
+    }),
+
+  uploadStatement: (accountId) => {
+    const today = new Date();
+    const date = [today.getDate(), today.getMonth() + 1, today.getFullYear()].map((n) => String(n).padStart(2, "0")).join("-");
+    const prev = get().accounts.find((a) => a.id === accountId)?.statement?.balance ?? 75000;
+    get().updateAccount(accountId, { statement: { date, balance: Math.round(prev * 1.04 * 100) / 100 } });
+  },
 
   setEmployeeAccount: (employeeId, input) => {
     const account = toAccount(input);
@@ -110,3 +181,10 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     return account;
   },
 }));
+
+/** Pay From options for Fund Transfer, derived from the accounts list. */
+export function usePayFromAccounts() {
+  const accounts = useBankingStore((s) => s.accounts);
+  const scenario = useBankingStore((s) => s.scenario);
+  return payFromAccounts(accounts, scenario);
+}
