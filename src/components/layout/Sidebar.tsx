@@ -44,7 +44,7 @@ const NAV_ITEMS: { label: string; icon: typeof House; to?: string; children?: Ch
   { label: "Expenses", icon: ShoppingBag, children: [{ label: "Bills", to: "/expenses/bills" }] },
   { label: "Accounting", icon: BookOpen, chevron: true },
   { label: "Taxation", icon: Percent, chevron: true },
-  { label: "Banking", icon: Landmark },
+  { label: "Banking", icon: Landmark, to: "/banking" },
   { label: "HRMS", icon: Layers, chevron: true },
   { label: "Users & Roles", icon: Users },
   { label: "Dataport", icon: DatabaseZap, chevron: true },

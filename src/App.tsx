@@ -9,6 +9,7 @@ import { InvoiceViewPage } from "./pages/invoices/InvoiceViewPage";
 import { InvoiceCreatePage } from "./pages/invoices/InvoiceCreatePage";
 import { ContactsListPage } from "./pages/contacts/ContactsListPage";
 import { ContactViewPage } from "./pages/contacts/ContactViewPage";
+import { BankingPage } from "./pages/banking/BankingPage";
 
 export default function App() {
   return (
@@ -29,6 +30,8 @@ export default function App() {
           <Route path="/expenses/bills" element={<InvoiceListPage kind="purchase" />} />
           <Route path="/expenses/bills/create" element={<InvoiceCreatePage kind="purchase" />} />
           <Route path="/expenses/bills/:id" element={<InvoiceViewPage kind="purchase" />} />
+
+          <Route path="/banking" element={<BankingPage />} />
         </Route>
       </Routes>
     </HashRouter>

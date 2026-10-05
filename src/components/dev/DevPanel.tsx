@@ -2,6 +2,8 @@ import { useStore } from "../../store/useStore";
 import { STATUS_META } from "../../lib/status";
 import { STOCK_HOLDING_ID, SHARMA_TRADERS_ID } from "../../mock/seed";
 import type { ConnectionState } from "../../types";
+import { useBankingStore } from "../../store/useBankingStore";
+import type { BankingScenario } from "../../pages/banking/data";
 
 const STATES: ConnectionState[] = [
   "not_connected",
@@ -193,6 +195,8 @@ export function DevPanel() {
         </div>
       </div>
 
+      <BankingScenarioSection />
+
       <div className="mt-4 border-t border-border pt-4">
         <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Simulate invoice confirmation
@@ -226,6 +230,75 @@ export function DevPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const BANKING_GROUPS: { key: keyof BankingScenario; label: string; options: [string, string][]; hint: (s: BankingScenario) => string }[] = [
+  {
+    key: "bank",
+    label: "Connected banking",
+    options: [["both", "Both"], ["axis", "Axis"], ["icici", "ICICI"], ["none", "None"]],
+    hint: (s) =>
+      s.bank === "none"
+        ? "Fund Transfer opens the Connect a Bank Account dialog."
+        : s.bank === "icici"
+          ? "ICICI does not support bulk, so Bulk Transfer is unavailable."
+          : "Axis supports bulk transfer.",
+  },
+  {
+    key: "approval",
+    label: "Axis approval mode",
+    options: [["maker-checker", "Maker-Checker"], ["single", "Single"]],
+    hint: (s) => (s.approval === "maker-checker" ? "Transfers need a checker in netbanking." : "Single operator approves at OTP."),
+  },
+  {
+    key: "balance",
+    label: "Account balance",
+    options: [["normal", "Normal"], ["low", "Low"]],
+    hint: (s) => (s.balance === "low" ? "Axis ₹5,000.00 · ICICI ₹2,500.00 — test the balance error." : "Axis ₹4,82,300.00 · ICICI ₹1,15,000.00"),
+  },
+  {
+    key: "verify",
+    label: "Account verification",
+    options: [["random", "Random"], ["pass", "Always pass"], ["fail", "Always fail"]],
+    hint: () => "Outcome of Verify Now on unverified beneficiaries.",
+  },
+];
+
+/** Banking → Fund Transfer scenarios (the design's "Simulate Scenario" panel). */
+function BankingScenarioSection() {
+  const scenario = useBankingStore((s) => s.scenario);
+  const setScenario = useBankingStore((s) => s.setScenario);
+  const resetData = useBankingStore((s) => s.resetData);
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-xs font-semibold text-foreground">Banking — Fund Transfer</div>
+        <button onClick={resetData} className="text-[11px] text-muted-foreground hover:text-foreground">
+          Reset payees
+        </button>
+      </div>
+      {BANKING_GROUPS.map((g) => (
+        <div key={g.key} className="mb-3">
+          <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{g.label}</div>
+          <div className="flex gap-1.5">
+            {g.options.map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setScenario({ [g.key]: value } as Partial<BankingScenario>)}
+                className={`flex-1 rounded-md border px-1.5 py-1.5 text-xs font-medium ${
+                  scenario[g.key] === value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-accent"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">{g.hint(scenario)}</p>
+        </div>
+      ))}
     </div>
   );
 }
