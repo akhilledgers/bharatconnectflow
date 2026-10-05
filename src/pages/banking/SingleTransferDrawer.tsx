@@ -55,9 +55,10 @@ type Beneficiary =
 type AddPanel = { type: "new-contact"; name: string } | { type: "contact-account"; contactId: string } | { type: "employee-account"; employeeId: string };
 
 export interface SingleTransferPreset {
-  beneficiary: Beneficiary;
-  billIds: string[];
-  amount: string;
+  payFromId?: string;
+  beneficiary?: Beneficiary;
+  billIds?: string[];
+  amount?: string;
 }
 
 const DEFAULT_PURPOSE: Record<BeneType, Purpose> = { contact: "vendor", employee: "salary", other: "other" };
@@ -77,7 +78,7 @@ export function SingleTransferDrawer({
   const store = useBankingStore.getState;
 
   const accounts = payFromAccounts(scenario);
-  const [payFromId, setPayFromId] = useState(accounts[0].id);
+  const [payFromId, setPayFromId] = useState(accounts.find((a) => a.id === preset?.payFromId)?.id ?? accounts[0].id);
   const payFrom = accounts.find((a) => a.id === payFromId) ?? accounts[0];
 
   const [beneType, setBeneTypeRaw] = useState<BeneType>("contact");
@@ -94,7 +95,7 @@ export function SingleTransferDrawer({
 
   const [modeExpanded, setModeExpanded] = useState(false);
   const [modeOverride, setModeOverride] = useState<TransferMode | null>(null);
-  const [purpose, setPurpose] = useState<Purpose | "">(preset ? "vendor" : "");
+  const [purpose, setPurpose] = useState<Purpose | "">(preset?.beneficiary ? "vendor" : "");
   const [purposeOpen, setPurposeOpen] = useState(false);
   const [purposeOther, setPurposeOther] = useState("");
 

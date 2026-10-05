@@ -7,7 +7,9 @@ import { Input } from "../../components/ui/input";
 import { popoverCls } from "../../components/ui/popover";
 import { useBankingStore, type NewAccountInput } from "../../store/useBankingStore";
 import { useEscape } from "./useEscape";
+import { BankIcon } from "./BankLogo";
 import {
+  bankKeyFromName,
   digitsOnly,
   fmtINR,
   maskIfsc,
@@ -112,7 +114,7 @@ export function PayFromSelect({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative flex flex-col gap-1.5">
+    <div className={cn("relative flex flex-col gap-1.5", open && "z-30")}>
       <FieldLabel>Pay From</FieldLabel>
       {open && <ClickAway onClose={() => setOpen(false)} />}
       <SelectButton onClick={() => setOpen(!open)} className={cn("py-2", open && "z-20")}>
@@ -141,11 +143,14 @@ export function PayFromSelect({
 
 function AccountLine({ account }: { account: PayFromAccount }) {
   return (
-    <div>
-      <div className="text-2sm font-semibold">
-        {account.bank} · {account.masked}
+    <div className="flex items-center gap-2.5">
+      {bankKeyFromName(account.bank) && <BankIcon bank={bankKeyFromName(account.bank)!} size={28} />}
+      <div>
+        <div className="text-2sm font-semibold">
+          {account.bank} · {account.masked}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">Available balance: {fmtINR(account.balance)}</div>
       </div>
-      <div className="mt-0.5 text-xs text-muted-foreground">Available balance: {fmtINR(account.balance)}</div>
     </div>
   );
 }

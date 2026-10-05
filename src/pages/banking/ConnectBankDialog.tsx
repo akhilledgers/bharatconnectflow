@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Landmark, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { BankIcon } from "./BankLogo";
 import { ONBOARDING_BANKS } from "./data";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
 
 /** Shown instead of the transfer drawers when no bank account is connected. */
-export function ConnectBankDialog({ onClose }: { onClose: () => void }) {
+export function ConnectBankDialog({ onClose, onConnectExisting }: { onClose: () => void; onConnectExisting: () => void }) {
   const [redirectBank, setRedirectBank] = useState<string | null>(null);
   const [statusShown, setStatusShown] = useState(false);
   useEscape(onClose);
@@ -50,9 +51,7 @@ export function ConnectBankDialog({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col gap-2.5">
               {ONBOARDING_BANKS.map((bank) => (
                 <div key={bank.key} className="flex items-center gap-3 rounded-lg border border-border px-4 py-3.5">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--color-primary-soft)] text-xs font-bold text-primary">
-                    {bank.initials}
-                  </div>
+                  <BankIcon bank={bank.key} size={36} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold">{bank.name}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">Current account onboarding</div>
@@ -65,6 +64,9 @@ export function ConnectBankDialog({ onClose }: { onClose: () => void }) {
             </div>
 
             <div className="flex flex-col gap-1.5 text-center">
+              <button type="button" onClick={onConnectExisting} className="cursor-pointer text-xs font-semibold text-primary hover:underline">
+                Already have a current account with one of these banks? Connect it
+              </button>
               <button type="button" onClick={() => setStatusShown(!statusShown)} className="cursor-pointer text-xs font-semibold text-primary hover:underline">
                 Already applied? Check your application status
               </button>

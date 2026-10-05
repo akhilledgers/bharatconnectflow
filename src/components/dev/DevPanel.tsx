@@ -368,6 +368,17 @@ function BankingOptions() {
         />
       </Group>
 
+      <Group label="Register Connected Banking" hint="How the bank's API answers when a user connects an account from Banking → Accounts.">
+        <Choice
+          value={scenario.register}
+          options={[
+            ["success", "Succeeds"],
+            ["fail", "Details rejected"],
+          ]}
+          onChange={(register) => setScenario({ register })}
+        />
+      </Group>
+
       <Group label="Payees">
         <button onClick={resetData} className={`w-full ${OPTION} ${OFF}`}>
           Reset payees & employees

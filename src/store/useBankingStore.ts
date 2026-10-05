@@ -5,7 +5,9 @@ import {
   initialContacts,
   initialEmployees,
   maskAccount,
+  type ApprovalMode,
   type BankAccount,
+  type BankKey,
   type BankingScenario,
   type Employee,
   type PayeeContact,
@@ -38,6 +40,11 @@ interface BankingState {
   addContact: (name: string, input: NewAccountInput) => { contact: PayeeContact; account: BankAccount };
   addContactAccount: (contactId: string, input: NewAccountInput) => BankAccount;
   setEmployeeAccount: (employeeId: string, input: NewAccountInput) => BankAccount;
+  /**
+   * Register Connected Banking: the bank verifies the IDs over its API and answers straight away.
+   * On success the account goes live (and its approval mode is recorded); outcome follows the dev panel.
+   */
+  registerBank: (bank: BankKey, approval?: ApprovalMode) => Promise<boolean>;
 }
 
 export const useBankingStore = create<BankingState>((set, get) => ({
@@ -80,6 +87,21 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     set((s) => ({ contacts: s.contacts.map((c) => (c.id !== contactId ? c : { ...c, accounts: [...c.accounts, account] })) }));
     return account;
   },
+
+  registerBank: (bank, approval) =>
+    new Promise((resolve) => {
+      setTimeout(() => {
+        if (get().scenario.register === "fail") return resolve(false);
+        set((s) => ({
+          scenario: {
+            ...s.scenario,
+            connected: { ...s.scenario.connected, [bank]: true },
+            approval: approval && bank !== "icici" ? { ...s.scenario.approval, [bank]: approval } : s.scenario.approval,
+          },
+        }));
+        resolve(true);
+      }, 1500);
+    }),
 
   setEmployeeAccount: (employeeId, input) => {
     const account = toAccount(input);

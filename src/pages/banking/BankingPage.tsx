@@ -24,7 +24,9 @@ import { useBankingStore } from "../../store/useBankingStore";
 import { BulkTransferDrawer, type BulkPreset } from "./BulkTransferDrawer";
 import { ConnectBankDialog } from "./ConnectBankDialog";
 import { SingleTransferDrawer, type SingleTransferPreset } from "./SingleTransferDrawer";
-import { STATEMENTS, payFromAccounts } from "./data";
+import { AccountsTab } from "./AccountsTab";
+import { RegisterBankDialog } from "./RegisterBankDialog";
+import { PAY_FROM_BANKS, STATEMENTS, payFromAccounts, type BankKey } from "./data";
 
 type Tab = "statements" | "accounts" | "payouts" | "uploads";
 const TABS: { value: Tab; label: string }[] = [
@@ -34,7 +36,11 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "uploads", label: "Upload Logs" },
 ];
 
-type Flow = { kind: "none" } | { kind: "connect" } | { kind: "single"; preset?: SingleTransferPreset } | { kind: "bulk"; preset?: BulkPreset };
+type Flow =
+  | { kind: "none" }
+  | { kind: "connect" }
+  | { kind: "register"; bank: BankKey }
+  | { kind: "single"; preset?: SingleTransferPreset } | { kind: "bulk"; preset?: BulkPreset };
 
 const STATS = [
   { label: "Total Transactions", value: "26", className: "" },
@@ -64,7 +70,9 @@ export function BankingPage() {
       <Tabs variant="line" items={TABS} value={tab} onChange={setTab} />
 
       <div className="flex min-w-0 flex-col gap-5 p-5">
-        {tab !== "statements" ? (
+        {tab === "accounts" ? (
+          <AccountsTab onConnect={(bank) => setFlow({ kind: "register", bank })} />
+        ) : tab !== "statements" ? (
           <Card className="items-center justify-center py-16 text-sm text-muted-foreground">
             {TABS.find((t) => t.value === tab)!.label} isn't part of this prototype yet.
           </Card>
@@ -93,7 +101,7 @@ export function BankingPage() {
                     <Calendar />
                     <span className="tabular-nums">25-09-2026 - 26-09-2026</span>
                   </Button>
-                  <Button size="icon" aria-label="Bank accounts">
+                  <Button size="icon" aria-label="Bank accounts" title="Bank accounts" onClick={() => setTab("accounts")}>
                     <Landmark />
                   </Button>
                   <Button size="icon" aria-label="Adjust">
@@ -227,7 +235,18 @@ export function BankingPage() {
         )}
       </div>
 
-      {flow.kind === "connect" && <ConnectBankDialog onClose={close} />}
+      {flow.kind === "connect" && (
+        <ConnectBankDialog
+          onClose={close}
+          onConnectExisting={() => {
+            setTab("accounts");
+            close();
+          }}
+        />
+      )}
+      {flow.kind === "register" && (
+        <RegisterBankDialog bank={flow.bank} onClose={close} onMakeTransfer={() => setFlow({ kind: "single", preset: { payFromId: PAY_FROM_BANKS.find((b) => b.key === flow.bank)!.id } })} />
+      )}
       {flow.kind === "single" && (
         <SingleTransferDrawer
           preset={flow.preset}

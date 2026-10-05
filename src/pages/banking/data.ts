@@ -74,13 +74,16 @@ export interface BankingScenario {
   approval: Record<"axis" | "indusind", ApprovalMode>;
   balance: "normal" | "low";
   verify: "random" | "pass" | "fail";
+  /** How the bank's API answers a Register Connected Banking request. */
+  register: "success" | "fail";
 }
 
 export const DEFAULT_SCENARIO: BankingScenario = {
-  connected: { axis: true, icici: true, indusind: true },
+  connected: { axis: true, icici: true, indusind: false },
   approval: { axis: "maker-checker", indusind: "maker-checker" },
   balance: "normal",
   verify: "random",
+  register: "success",
 };
 
 /** The company's own current accounts LEDGERS can pay from. Balances are [normal, low]. */
@@ -95,7 +98,7 @@ export const PAY_FROM_BANKS: {
 }[] = [
   { key: "axis", id: "p1", bank: "Axis Bank", short: "Axis", masked: "••9012", balances: [482300, 5000], bulkSupported: true },
   { key: "icici", id: "p2", bank: "ICICI Bank", short: "ICICI", masked: "••4456", balances: [115000, 2500], bulkSupported: false },
-  { key: "indusind", id: "p3", bank: "IndusInd Bank", short: "IndusInd", masked: "••7731", balances: [268450, 3000], bulkSupported: true },
+  { key: "indusind", id: "p3", bank: "IndusInd Bank", short: "IndusInd", masked: "••8251", balances: [268450, 3000], bulkSupported: true },
 ];
 
 /** e.g. "Axis and IndusInd" — the banks that support bulk transfer. */
@@ -111,14 +114,14 @@ export const STATEMENTS = [
   ["UPI/110757762892/collect-pay-req/XX7504@ybl/KARNATAKA BANK /ICIacbe63e3233e4a7b", "24,661.00", "13,99,013.18", "XXXX4489"],
   ["UPI/130193639244/UPI/XXnair@okhdfcb/HDFC BANK LTD/HDF9d12b347e28a42e4aa88311", "3,421.00", "14,02,434.18", "XXXX4489"],
   ["UPI/110757876936/collect-pay-req/XX4729@ybl/StateBank Of I/ICI7618d93db10940ff8640", "5,781.00", "14,08,215.18", "XXXX4489"],
-  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX7731"],
+  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX8251"],
   ["MMT/IMPS/626810705563/from bateaco fo/BATEACO BL/State Bank of I", "20,000.00", "14,31,636.18", "XXXX4489"],
   ["UPI/110758009194/collect-pay-req/XXmp-2@oksbi/State Bank Of I/ICI567bff1337a3421c92", "8,000.00", "14,39,636.18", "XXXX4489"],
   ["UPI/110758021692/est179031306238/XX18cd@ptsbi/State Bank Of I/ICIe8b7c789518040d11", "1,769.00", "14,41,405.18", "XXXX4489"],
   ["Razorpay Software Pvt Ltd Fu", "3,81,906.16", "1,92,53,671.25", "XXXX4826"],
 ].map(([details, amount, balance, acct], i) => ({ id: i, date: "25-09-2026", details, amount, balance, acct }));
 
-export const ONBOARDING_BANKS = [
+export const ONBOARDING_BANKS: { key: BankKey; name: string; initials: string }[] = [
   { key: "axis", name: "Axis Bank", initials: "AX" },
   { key: "icici", name: "ICICI Bank", initials: "IC" },
   { key: "indusind", name: "IndusInd Bank", initials: "IB" },
@@ -238,6 +241,14 @@ export function maskAccount(accountNumber: string) {
 
 export function fmtINR(n: number) {
   return "₹" + (Number.isFinite(n) ? n : 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function bankKeyFromName(name: string): BankKey | null {
+  const n = name.toLowerCase();
+  if (n.startsWith("axis")) return "axis";
+  if (n.startsWith("icici")) return "icici";
+  if (n.startsWith("indusind")) return "indusind";
+  return null;
 }
 
 export function bankFromIfsc(ifsc: string) {
