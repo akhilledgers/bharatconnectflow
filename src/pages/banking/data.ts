@@ -65,14 +65,43 @@ export interface BulkRow extends PickedPayee {
 export type TransferMode = "IMPS" | "NEFT" | "RTGS";
 export type ApprovalMode = "maker-checker" | "single";
 
+export type BankKey = "axis" | "icici" | "indusind";
+
 export interface BankingScenario {
-  bank: "both" | "axis" | "icici" | "none";
-  approval: ApprovalMode;
+  /** Which of the company's current accounts are connected (none = the Connect a Bank Account dialog). */
+  connected: Record<BankKey, boolean>;
+  /** Axis and IndusInd can run maker-checker; ICICI is always single-operator. */
+  approval: Record<"axis" | "indusind", ApprovalMode>;
   balance: "normal" | "low";
   verify: "random" | "pass" | "fail";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { bank: "both", approval: "maker-checker", balance: "normal", verify: "random" };
+export const DEFAULT_SCENARIO: BankingScenario = {
+  connected: { axis: true, icici: true, indusind: true },
+  approval: { axis: "maker-checker", indusind: "maker-checker" },
+  balance: "normal",
+  verify: "random",
+};
+
+/** The company's own current accounts LEDGERS can pay from. Balances are [normal, low]. */
+export const PAY_FROM_BANKS: {
+  key: BankKey;
+  id: string;
+  bank: string;
+  short: string;
+  masked: string;
+  balances: [number, number];
+  bulkSupported: boolean;
+}[] = [
+  { key: "axis", id: "p1", bank: "Axis Bank", short: "Axis", masked: "••9012", balances: [482300, 5000], bulkSupported: true },
+  { key: "icici", id: "p2", bank: "ICICI Bank", short: "ICICI", masked: "••4456", balances: [115000, 2500], bulkSupported: false },
+  { key: "indusind", id: "p3", bank: "IndusInd Bank", short: "IndusInd", masked: "••7731", balances: [268450, 3000], bulkSupported: true },
+];
+
+/** e.g. "Axis and IndusInd" — the banks that support bulk transfer. */
+export const BULK_BANKS_LABEL = PAY_FROM_BANKS.filter((b) => b.bulkSupported)
+  .map((b) => b.short)
+  .join(" and ");
 
 export const RTGS_MIN = 200000;
 
@@ -82,7 +111,7 @@ export const STATEMENTS = [
   ["UPI/110757762892/collect-pay-req/XX7504@ybl/KARNATAKA BANK /ICIacbe63e3233e4a7b", "24,661.00", "13,99,013.18", "XXXX4489"],
   ["UPI/130193639244/UPI/XXnair@okhdfcb/HDFC BANK LTD/HDF9d12b347e28a42e4aa88311", "3,421.00", "14,02,434.18", "XXXX4489"],
   ["UPI/110757876936/collect-pay-req/XX4729@ybl/StateBank Of I/ICI7618d93db10940ff8640", "5,781.00", "14,08,215.18", "XXXX4489"],
-  ["UPI/110757882565/collect-pay-req/XX2151@ibl/StateBank Of I/ICI5dfcfddb48e04df493d71", "3,421.00", "14,11,636.18", "XXXX4489"],
+  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX7731"],
   ["MMT/IMPS/626810705563/from bateaco fo/BATEACO BL/State Bank of I", "20,000.00", "14,31,636.18", "XXXX4489"],
   ["UPI/110758009194/collect-pay-req/XXmp-2@oksbi/State Bank Of I/ICI567bff1337a3421c92", "8,000.00", "14,39,636.18", "XXXX4489"],
   ["UPI/110758021692/est179031306238/XX18cd@ptsbi/State Bank Of I/ICIe8b7c789518040d11", "1,769.00", "14,41,405.18", "XXXX4489"],
@@ -92,6 +121,7 @@ export const STATEMENTS = [
 export const ONBOARDING_BANKS = [
   { key: "axis", name: "Axis Bank", initials: "AX" },
   { key: "icici", name: "ICICI Bank", initials: "IC" },
+  { key: "indusind", name: "IndusInd Bank", initials: "IB" },
 ];
 
 export const PURPOSES = [
@@ -148,6 +178,13 @@ export function initialContacts(): PayeeContact[] {
       accounts: [{ id: "a6", bank: "ICICI Bank", ifsc: "ICIC0009981", masked: "••••3345", verified: false }],
     },
     { id: "c6", name: "Priya Sharma", category: "other", accounts: [{ id: "a7", bank: "State Bank of India", ifsc: "SBIN0003344", masked: "••••8802", verified: true }] },
+    {
+      id: "c7",
+      name: "Vertex Packaging",
+      category: "vendor",
+      bills: [{ id: "b4", number: "INV-2207", date: "05-09-2026", amount: 14750, dueDate: "19-09-2026" }],
+      accounts: [{ id: "a8", bank: "IndusInd Bank", ifsc: "INDB0000412", masked: "••••6603", verified: true }],
+    },
   ];
 }
 
@@ -157,6 +194,7 @@ export function initialEmployees(): Employee[] {
     { id: "e2", name: "Arjun Nair", role: "Sales", account: null },
     { id: "e3", name: "Divya Menon", role: "Operations", account: { bank: "Axis Bank", ifsc: "UTIB0005566", masked: "••••3390", verified: false } },
     { id: "e4", name: "Karthik Subramaniam", role: "Engineering", account: { bank: "ICICI Bank", ifsc: "ICIC0007744", masked: "••••1128", verified: true } },
+    { id: "e5", name: "Neha Kapoor", role: "Finance", account: { bank: "IndusInd Bank", ifsc: "INDB0001187", masked: "••••4419", verified: false } },
   ];
 }
 
@@ -168,20 +206,20 @@ export function demoUploadRows(): BulkRow[] {
     { id: `f${t}2`, key: "file-orbit", name: "Orbit Supplies", bank: "HDFC Bank", maskedIfsc: "HDFC•••220", verified: false, amount: "15000", ifscValid: true },
     { id: `f${t}3`, key: "file-orbit", name: "Orbit Supplies", bank: "HDFC Bank", maskedIfsc: "HDFC•••220", verified: false, amount: "15000", ifscValid: true },
     { id: `f${t}4`, key: "file-kiran", name: "Kiran Enterprises", bank: "Partner Bank", maskedIfsc: "XXXX•••000", verified: false, amount: "12000", ifscValid: false },
+    { id: `f${t}6`, key: "file-zenith", name: "Zenith Fabrics", bank: "IndusInd Bank", maskedIfsc: "INDB•••412", verified: true, amount: "18000", ifscValid: true },
     { id: `f${t}5`, key: "file-vikram", name: "Vikram Rao", bank: "Axis Bank", maskedIfsc: "UTIB•••220", verified: true, amount: "", ifscValid: true },
   ];
 }
 
 export function payFromAccounts(s: BankingScenario): PayFromAccount[] {
-  const low = s.balance === "low";
-  const all: PayFromAccount[] = [
-    { id: "p1", bank: "Axis Bank", masked: "••9012", balance: low ? 5000 : 482300, approvalMode: s.approval, bulkSupported: true },
-    { id: "p2", bank: "ICICI Bank", masked: "••4456", balance: low ? 2500 : 115000, approvalMode: "single", bulkSupported: false },
-  ];
-  if (s.bank === "axis") return [all[0]];
-  if (s.bank === "icici") return [all[1]];
-  if (s.bank === "none") return [];
-  return all;
+  return PAY_FROM_BANKS.filter((b) => s.connected[b.key]).map((b) => ({
+    id: b.id,
+    bank: b.bank,
+    masked: b.masked,
+    balance: b.balances[s.balance === "low" ? 1 : 0],
+    approvalMode: b.key === "icici" ? "single" : s.approval[b.key],
+    bulkSupported: b.bulkSupported,
+  }));
 }
 
 export function approvalNote(mode: ApprovalMode) {
@@ -203,7 +241,7 @@ export function fmtINR(n: number) {
 }
 
 export function bankFromIfsc(ifsc: string) {
-  const map: Record<string, string> = { ICIC: "ICICI Bank", UTIB: "Axis Bank", HDFC: "HDFC Bank", SBIN: "State Bank of India" };
+  const map: Record<string, string> = { ICIC: "ICICI Bank", UTIB: "Axis Bank", INDB: "IndusInd Bank", HDFC: "HDFC Bank", SBIN: "State Bank of India" };
   return map[ifsc.slice(0, 4).toUpperCase()] ?? "Partner Bank";
 }
 

@@ -23,6 +23,7 @@ import {
   type BeneType,
 } from "./shared";
 import {
+  BULK_BANKS_LABEL,
   BULK_TEMPLATE_HREF,
   amountOnly,
   approvalNote,
@@ -111,7 +112,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
               <PayFromSelect
                 account={payFrom}
                 options={options}
-                note={`Bulk transfer is limited to supported banks (Axis, for now). ${approvalNote(payFrom.approvalMode)}`}
+                note={`Bulk transfer is limited to supported banks (${BULK_BANKS_LABEL}, for now). ${approvalNote(payFrom.approvalMode)}`}
                 onSelect={setPayFromId}
               />
             </div>
