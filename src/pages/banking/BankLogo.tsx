@@ -35,13 +35,15 @@ export function BankIcon({ bank, size = 32, className }: { bank: BankKey; size?:
 }
 
 /** Full logo for headers: the wordmark when we have one, otherwise icon + bank name. */
-export function BankLogo({ bank, className }: { bank: BankKey; className?: string }) {
+export function BankLogo({ bank, size = "md", className }: { bank: BankKey; size?: "sm" | "md"; className?: string }) {
   const meta = BANKS[bank];
-  if (meta.wordmark) return <img src={meta.wordmark} alt={meta.name} className={cn("h-6 w-auto self-start object-contain", className)} />;
+  const sm = size === "sm";
+  if (meta.wordmark)
+    return <img src={meta.wordmark} alt={meta.name} className={cn("w-auto self-start object-contain", sm ? "h-[18px]" : "h-6", className)} />;
   return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <BankIcon bank={bank} size={28} />
-      <span className="text-base font-semibold text-foreground">{meta.name}</span>
+    <span className={cn("inline-flex items-center gap-2 self-start", className)}>
+      <BankIcon bank={bank} size={sm ? 22 : 28} />
+      <span className={cn("font-semibold text-foreground", sm ? "text-sm" : "text-base")}>{meta.name}</span>
     </span>
   );
 }

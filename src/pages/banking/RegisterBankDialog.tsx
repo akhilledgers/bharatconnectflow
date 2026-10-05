@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { ArrowLeftRight, Check, FileText, Wallet, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
-import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankLogo } from "./BankLogo";
 import { PAY_FROM_BANKS, type ApprovalMode, type BankKey } from "./data";
@@ -29,7 +28,7 @@ const BANK_FORMS: Record<
   { intro?: string; ids: FieldSpec[]; approval: boolean; single: FieldSpec[]; makerChecker: FieldSpec[] }
 > = {
   indusind: {
-    ids: [{ key: "customerId", label: "Customer ID", placeholder: "e.g. 41238870", hint: "On your IndusInd welcome letter and in net banking under Profile." }],
+    ids: [{ key: "customerId", label: "Customer ID", placeholder: "e.g. 41238870", hint: "On your welcome letter or net banking profile." }],
     approval: true,
     single: [{ key: "userCode", label: "Net banking user code", placeholder: "User code" }],
     makerChecker: [
@@ -60,15 +59,9 @@ const BANK_FORMS: Record<
   },
 };
 
-const CAPABILITIES = [
-  { icon: ArrowLeftRight, label: "Send NEFT, RTGS & IMPS" },
-  { icon: Wallet, label: "Live balance" },
-  { icon: FileText, label: "Statement sync" },
-];
-
 const APPROVAL_CHOICES: { value: ApprovalMode; title: string; body: string }[] = [
-  { value: "single", title: "One user", body: "The same user raises and approves payments." },
-  { value: "maker-checker", title: "Maker & checker", body: "A maker raises payments and a checker approves them." },
+  { value: "single", title: "One user", body: "One user raises and approves payments." },
+  { value: "maker-checker", title: "Maker & checker", body: "A maker raises payments; a checker approves them." },
 ];
 
 export function RegisterBankDialog({
@@ -80,7 +73,6 @@ export function RegisterBankDialog({
   onClose: () => void;
   onMakeTransfer: () => void;
 }) {
-  const businessName = useStore((s) => s.currentBusiness().name);
   const registerBank = useBankingStore((s) => s.registerBank);
   const account = PAY_FROM_BANKS.find((b) => b.key === bank)!;
   const form = BANK_FORMS[bank];
@@ -179,56 +171,45 @@ export function RegisterBankDialog({
           <>
             <div className="flex flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
               <div className="flex flex-col gap-3 pe-8">
-                <BankLogo bank={bank} />
+                <BankLogo bank={bank} size="sm" />
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">Connect {account.bank}</h2>
-                  <p className="mt-0.5 text-2sm text-muted-foreground">
-                    Current account <span className="font-medium text-foreground tabular-nums">{account.masked}</span> · {businessName}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {CAPABILITIES.map(({ icon: Icon, label }) => (
-                    <span key={label} className="inline-flex h-6 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground">
-                      <Icon className="size-3.5 text-muted-foreground" />
-                      {label}
-                    </span>
-                  ))}
+                  <h2 className="text-base font-semibold text-foreground">
+                    Connect current account <span className="tabular-nums">{account.masked}</span>
+                  </h2>
+                  <p className="mt-1 text-2sm text-muted-foreground">Send payments, check balance and sync statements from LEDGERS.</p>
                 </div>
               </div>
-
-              <div className="h-px bg-border" />
 
               {form.intro && <p className="text-xs text-muted-foreground">{form.intro}</p>}
               {form.ids.map(field)}
 
               {form.approval && (
-                <fieldset className="flex flex-col gap-1.5" disabled={phase !== "form"}>
-                  <legend className="mb-1.5 text-xs font-medium text-foreground">How are payments approved in {account.short} net banking?</legend>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <div id="reg-approval" className="text-xs font-medium text-foreground">
+                    Payment approval
+                  </div>
+                  <div role="radiogroup" aria-labelledby="reg-approval" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
                     {APPROVAL_CHOICES.map((c) => (
-                      <label
+                      <button
                         key={c.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={approval === c.value}
+                        disabled={phase !== "form"}
+                        onClick={() => setApproval(c.value)}
                         className={cn(
-                          "flex cursor-pointer flex-col gap-1 rounded-md border p-3 transition-colors",
-                          approval === c.value ? "border-primary bg-[var(--color-primary-soft)]" : "border-input hover:bg-accent/60",
+                          "h-8 flex-1 cursor-pointer rounded-md px-3 text-2sm text-foreground",
+                          approval === c.value && "bg-background font-medium shadow-lg shadow-black/5",
                         )}
                       >
-                        <span className="flex items-center gap-2 text-2sm font-semibold">
-                          <input
-                            type="radio"
-                            name="approval"
-                            value={c.value}
-                            checked={approval === c.value}
-                            onChange={() => setApproval(c.value)}
-                            className="size-4 accent-primary"
-                          />
-                          {c.title}
-                        </span>
-                        <span className="ps-6 text-xs leading-snug text-muted-foreground">{c.body}</span>
-                      </label>
+                        {c.title}
+                      </button>
                     ))}
                   </div>
-                </fieldset>
+                  <p className="text-xs text-muted-foreground">
+                    {APPROVAL_CHOICES.find((c) => c.value === approval)?.body ?? `As set up in your ${account.short} net banking.`}
+                  </p>
+                </div>
               )}
 
               {approvalFields.length > 0 && (
