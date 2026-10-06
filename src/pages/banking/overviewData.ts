@@ -26,9 +26,6 @@ export const RECON: Record<string, ReconSnapshot> = {
   p6: { difference: -2700, bankOnly: { count: 0, amount: 0 }, booksOnly: { count: 1, amount: 2700 }, suggestions: 1, reconciledTo: "20-09-2026" },
 };
 
-/** Books balance for an account without a bank balance yet (IndusInd ••8251 before it's connected). */
-export const BOOKS_ONLY_BALANCE: Record<string, number> = { p3: 62000 };
-
 export type PayoutStatus = "awaiting" | "processing" | "failed";
 
 export interface InFlightPayout {
@@ -59,29 +56,6 @@ export function bankBalanceOf(a: CompanyAccount, mode: "normal" | "low"): { amou
   if (a.connection !== "none" && a.liveBalance) return { amount: a.liveBalance[mode === "low" ? 1 : 0], source: a.connection === "connected" ? "live" : "stale" };
   if (a.statement) return { amount: a.statement.balance, source: "statement" };
   return null;
-}
-
-/**
- * 30 daily totals ending at today's total. Deterministic so the chart doesn't change between renders:
- * a gentle walk with salary-day and vendor-payment dips, scaled to land on `end`.
- */
-export function balanceTrend(end: number, days = 30): { date: Date; value: number }[] {
-  const shape: number[] = [];
-  let v = 1;
-  for (let i = 0; i < days; i++) {
-    const wobble = Math.sin(i * 1.7) * 0.025 + Math.cos(i * 0.6) * 0.02;
-    const event = i === 4 ? -0.18 : i === 5 ? 0.04 : i === 17 ? 0.16 : i === 23 ? -0.09 : 0;
-    v = Math.max(0.4, v + wobble + event);
-    shape.push(v);
-  }
-  const scale = end / shape[days - 1];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return shape.map((s, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (days - 1 - i));
-    return { date: d, value: Math.round(s * scale) };
-  });
 }
 
 export function daysSince(dmy: string) {
