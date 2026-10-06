@@ -25,11 +25,13 @@ import { BulkTransferDrawer, type BulkPreset } from "./BulkTransferDrawer";
 import { ConnectBankDialog } from "./ConnectBankDialog";
 import { SingleTransferDrawer, type SingleTransferPreset } from "./SingleTransferDrawer";
 import { AccountsTab } from "./AccountsTab";
+import { OverviewTab } from "./OverviewTab";
 import { RegisterBankDialog } from "./RegisterBankDialog";
 import { STATEMENTS } from "./data";
 
-type Tab = "statements" | "accounts" | "payouts" | "uploads";
+type Tab = "overview" | "statements" | "accounts" | "payouts" | "uploads";
 const TABS: { value: Tab; label: string }[] = [
+  { value: "overview", label: "Overview" },
   { value: "statements", label: "Statements" },
   { value: "accounts", label: "Accounts" },
   { value: "payouts", label: "Payouts" },
@@ -54,7 +56,7 @@ export function BankingPage() {
   const connected = accounts.length > 0;
   const bulkAvailable = accounts.some((a) => a.bulkSupported);
 
-  const [tab, setTab] = useState<Tab>("statements");
+  const [tab, setTab] = useState<Tab>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [flow, setFlow] = useState<Flow>({ kind: "none" });
 
@@ -69,7 +71,14 @@ export function BankingPage() {
       <Tabs variant="line" items={TABS} value={tab} onChange={setTab} />
 
       <div className="flex min-w-0 flex-col gap-5 p-5">
-        {tab === "accounts" ? (
+        {tab === "overview" ? (
+          <OverviewTab
+            onGo={setTab}
+            onConnect={(accountId) => setFlow({ kind: "register", accountId })}
+            onPay={() => open({ kind: "single" })}
+            onBulkPay={() => (bulkAvailable || !connected ? open({ kind: "bulk" }) : open({ kind: "single" }))}
+          />
+        ) : tab === "accounts" ? (
           <AccountsTab onConnect={(accountId) => setFlow({ kind: "register", accountId })} />
         ) : tab !== "statements" ? (
           <Card className="items-center justify-center py-16 text-sm text-muted-foreground">
