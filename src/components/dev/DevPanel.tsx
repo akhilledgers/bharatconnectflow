@@ -310,6 +310,8 @@ function BankingOptions() {
   const setScenario = useBankingStore((s) => s.setScenario);
   const updateAccount = useBankingStore((s) => s.updateAccount);
   const resetData = useBankingStore((s) => s.resetData);
+  const approveAwaiting = useBankingStore((s) => s.approveAwaiting);
+  const failProcessing = useBankingStore((s) => s.failProcessing);
   const apiAccounts = accounts.filter((a) => a.bankKey && a.active);
   const anyConnected = apiAccounts.some((a) => a.connection === "connected");
 
@@ -388,9 +390,31 @@ function BankingOptions() {
         />
       </Group>
 
+      <Group label="Payouts" hint="Payouts with the bank settle as Paid after a few seconds.">
+        <div className="flex gap-1.5">
+          <button onClick={approveAwaiting} className={`flex-1 ${OPTION} ${OFF}`}>
+            Checker approves all
+          </button>
+          <button onClick={failProcessing} className={`flex-1 ${OPTION} ${OFF}`}>
+            Fail next payout
+          </button>
+        </div>
+      </Group>
+
+      <Group label="Overview layout" hint="Needs attention and Accounts side by side, or stacked as before.">
+        <Choice
+          value={scenario.overviewLayout}
+          options={[
+            ["split", "Side by side"],
+            ["stacked", "Stacked"],
+          ]}
+          onChange={(overviewLayout) => setScenario({ overviewLayout })}
+        />
+      </Group>
+
       <Group label="Sample data">
         <button onClick={resetData} className={`w-full ${OPTION} ${OFF}`}>
-          Reset accounts, payees & employees
+          Reset accounts, transactions, payouts & payees
         </button>
       </Group>
     </>

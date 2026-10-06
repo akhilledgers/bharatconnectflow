@@ -1,0 +1,211 @@
+// Sample bank lines, book entries, payouts and statement imports for Banking → Transactions, Payouts and
+// Accounts. Bank lines carry what the AI recon engine decided; book entries are the Bank Book side.
+
+export type LineStatus = "suggested" | "needs" | "auto" | "matched";
+export type MatchKind = "Receipt" | "Payment voucher" | "Bill payment" | "Expense" | "Journal" | "Transfer";
+
+export interface Match {
+  kind: MatchKind;
+  ref?: string;
+  party: string;
+  ledger?: string;
+  /** 0–100, from the recon engine. Absent when a person matched it. */
+  confidence?: number;
+  reason?: string;
+}
+
+export interface BankLine {
+  id: string;
+  accountId: string;
+  date: string;
+  narration: string;
+  /** Positive = money in, negative = money out. */
+  amount: number;
+  status: LineStatus;
+  match?: Match;
+}
+
+export interface BookEntry {
+  id: string;
+  accountId: string;
+  date: string;
+  ref: string;
+  kind: "Receipt" | "Payment voucher" | "Journal";
+  party: string;
+  amount: number;
+  daysOpen: number;
+  note: string;
+  /** Saved without a bank account, so LEDGERS assumed the primary one. */
+  assumedAccount?: boolean;
+}
+
+const L = (id: string, accountId: string, date: string, narration: string, amount: number, status: LineStatus, match?: Match): BankLine => ({
+  id,
+  accountId,
+  date,
+  narration,
+  amount,
+  status,
+  match,
+});
+
+export function initialBankLines(): BankLine[] {
+  return [
+    // Axis ••9012 — Main operating
+    L("l01", "p1", "05-10-2026", "NEFT-HDFCN52026100512-MEHTA EXPORTS PVT LTD-INV-2026-118", 123000, "suggested", { kind: "Receipt", ref: "REC 2026-66", party: "Mehta Exports", confidence: 98, reason: "Same amount · INV-2026-118 in the narration" }),
+    L("l02", "p1", "05-10-2026", "UPIAR/431900571242/DR/DEEPAK T/ICIC/deepaktradingc", -2400, "needs"),
+    L("l03", "p1", "04-10-2026", "UPI/432011873310/CR/ZENITH FABRIC/YESB/zenithfab@ybl", 29500, "suggested", { kind: "Receipt", ref: "REC 2026-65", party: "Zenith Fabrics", confidence: 95, reason: "Same amount and payer name" }),
+    L("l04", "p1", "04-10-2026", "UPIAR/431901241767/DR/CHANDER/YESB/paytmqr58jeao", -160, "needs"),
+    L("l05", "p1", "03-10-2026", "IMPS/P2A/627712004521/SHARMA RETAIL", 9628.35, "suggested", { kind: "Receipt", ref: "REC 2026-67", party: "Sharma Retail", confidence: 92, reason: "Equals the balance due on INV-2026-121" }),
+    L("l06", "p1", "03-10-2026", "NEFT-AXOMB27616-KAVYA TEXTILES", -18500, "suggested", { kind: "Bill payment", ref: "VOU 2026-38", party: "Kavya Textiles", confidence: 99, reason: "Paid from LEDGERS · UTR matches" }),
+    L("l07", "p1", "03-10-2026", "SMS ALERT CHARGES JUL-SEP 2026", -59, "needs"),
+    L("l08", "p1", "02-10-2026", "ACH/BESCOM ELECTRICITY/88231", -14236, "suggested", { kind: "Expense", party: "BESCOM", ledger: "Electricity", confidence: 88, reason: "Same payee every month" }),
+    L("l09", "p1", "01-10-2026", "UPI/431737559875/DR/WEWORK INDIA", -45000, "suggested", { kind: "Expense", party: "WeWork India", ledger: "Rent", confidence: 90, reason: "Same payee and amount as the last 3 months" }),
+    L("l10", "p1", "01-10-2026", "IMPS/P2A/626810705563/BATEACO BL", 20000, "needs"),
+    L("l11", "p1", "30-09-2026", "NEFT-ICICN52026093044-ORBIT SUPPLIES", 56200, "suggested", { kind: "Receipt", ref: "REC 2026-63", party: "Orbit Supplies", confidence: 94, reason: "Same amount and payer name" }),
+    L("l12", "p1", "30-09-2026", "CHQ DEP 000406 CTS CLG", 17510, "suggested", { kind: "Receipt", ref: "REC 2026-62", party: "Rohit Sharma", confidence: 86, reason: "Cheque no. 000406 recorded on the receipt" }),
+    L("l13", "p1", "29-09-2026", "UPI/431565923968/DR/AMAZON PAY", -2360, "suggested", { kind: "Expense", party: "Amazon", ledger: "Office supplies", confidence: 81, reason: "Like 4 earlier Amazon expenses" }),
+    L("l14", "p1", "28-09-2026", "NEFT-SUNRISE LOGISTICS-BILL 4471", -42000, "suggested", { kind: "Bill payment", ref: "BILL-4471", party: "Sunrise Logistics", confidence: 97, reason: "Bill number in the narration" }),
+    L("l15", "p1", "27-09-2026", "INT.PD:01-07-2026 TO 30-09-2026", 1158, "suggested", { kind: "Journal", party: "Axis Bank", ledger: "Interest income", confidence: 93, reason: "Quarterly interest credit" }),
+    L("l16", "p1", "26-09-2026", "UPI/431519366403/CR/PRIYA SHARMA", 7899, "suggested", { kind: "Receipt", ref: "REC 2026-61", party: "Priya Sharma", confidence: 84, reason: "Same amount, received 2 days after the invoice" }),
+    L("l17", "p1", "25-09-2026", "NEFT-AXOMB27601-ANANYA RAO", -12000, "auto", { kind: "Payment voucher", ref: "VOU 2026-35", party: "Ananya Rao", confidence: 99, reason: "Paid from LEDGERS · UTR matches" }),
+    L("l18", "p1", "24-09-2026", "IMPS-AXOMB27577-PRIYA SHARMA", -8000, "auto", { kind: "Payment voucher", ref: "VOU 2026-34", party: "Priya Sharma", confidence: 99, reason: "Paid from LEDGERS · UTR matches" }),
+    L("l19", "p1", "23-09-2026", "UPI/CR/MEHTA EXPORTS/HDFC", 40000, "auto", { kind: "Receipt", ref: "REC 2026-60", party: "Mehta Exports", confidence: 97, reason: "Same amount and payer name" }),
+    L("l20", "p1", "22-09-2026", "GST CHALLAN CPIN 26090012", -18240, "auto", { kind: "Journal", party: "GST", ledger: "GST payable", confidence: 98, reason: "CPIN matches the challan" }),
+    L("l21", "p1", "21-09-2026", "NEFT-RAZORPAY SOFTWARE-SETTLEMENT", 81906.16, "auto", { kind: "Receipt", ref: "REC 2026-59", party: "Razorpay", confidence: 96, reason: "Settlement report total" }),
+    L("l22", "p1", "20-09-2026", "ACH/LIC OF INDIA/PREMIUM", -5400, "matched", { kind: "Expense", party: "LIC of India", ledger: "Insurance" }),
+
+    // Axis ••5068 — Payroll
+    L("l30", "p4", "02-10-2026", "NEFT-AXOMB27588-ARJUN NAIR-SALARY", -38500, "suggested", { kind: "Payment voucher", ref: "VOU 2026-31", party: "Arjun Nair", ledger: "Salaries", confidence: 93, reason: "Salary run · same amount" }),
+    L("l31", "p4", "02-10-2026", "NEFT CHARGES INCL GST", -1250, "suggested", { kind: "Expense", party: "Axis Bank", ledger: "Bank charges", confidence: 89, reason: "Bank charge narration" }),
+    L("l32", "p4", "01-10-2026", "NEFT-AXOMB27587-MEERA IYER-SALARY", -42000, "auto", { kind: "Payment voucher", ref: "VOU 2026-30", party: "Meera Iyer", ledger: "Salaries", confidence: 99, reason: "Paid from LEDGERS · UTR matches" }),
+
+    // ICICI ••4456 — Collections
+    L("l40", "p2", "04-10-2026", "NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED", 18000, "auto", { kind: "Receipt", ref: "REC 2026-64", party: "Zenith Fabrics", confidence: 97, reason: "Same amount and payer name" }),
+    L("l41", "p2", "30-09-2026", "UPI/CR/BLUE OCEAN TRADERS", 32000, "auto", { kind: "Receipt", ref: "REC 2026-58", party: "Blue Ocean Traders", confidence: 95, reason: "Same amount and payer name" }),
+
+    // Federal ••6942
+    L("l50", "p6", "19-09-2026", "CHQ PAID 000318 VERTEX PACKAGING", -2700, "suggested", { kind: "Bill payment", ref: "VOU 2026-33", party: "Vertex Packaging", confidence: 91, reason: "Cheque no. 000318 on the voucher" }),
+
+    // Canara ••8484
+    L("l60", "p5", "24-09-2026", "NEFT-SBIN-ANANYA RAO", 24000, "auto", { kind: "Receipt", ref: "REC 2026-56", party: "Ananya Rao", confidence: 96, reason: "Same amount and payer name" }),
+  ];
+}
+
+export function initialBookEntries(): BookEntry[] {
+  return [
+    { id: "b1", accountId: "p1", date: "15-09-2026", ref: "VOU 2026-36", kind: "Payment voucher", party: "Shivam Trading", amount: -2000, daysOpen: 21, note: "Cheque 000412 not presented yet" },
+    { id: "b2", accountId: "p1", date: "30-09-2026", ref: "VOU 2026-39", kind: "Payment voucher", party: "Ananya Rao", amount: -3377, daysOpen: 6, note: "Recorded as paid, not seen at the bank" },
+    { id: "b3", accountId: "p1", date: "28-09-2026", ref: "REC 2026-57", kind: "Receipt", party: "Blue Ocean Traders", amount: 423, daysOpen: 8, note: "No bank account given", assumedAccount: true },
+    { id: "b4", accountId: "p4", date: "29-09-2026", ref: "VOU 2026-29", kind: "Payment voucher", party: "Divya Menon", amount: -3500, daysOpen: 7, note: "Salary advance, not seen at the bank" },
+    { id: "b5", accountId: "p6", date: "18-09-2026", ref: "VOU 2026-33", kind: "Payment voucher", party: "Vertex Packaging", amount: -2700, daysOpen: 18, note: "Cheque 000318" },
+    { id: "b6", accountId: "p3", date: "01-10-2026", ref: "REC 2026-55", kind: "Receipt", party: "Kiran Enterprises", amount: 40000, daysOpen: 5, note: "IndusInd isn't connected yet" },
+    { id: "b7", accountId: "p3", date: "02-10-2026", ref: "REC 2026-68", kind: "Receipt", party: "Sharma Retail", amount: 22000, daysOpen: 4, note: "IndusInd isn't connected yet" },
+  ];
+}
+
+export const LEDGERS = [
+  "Sales",
+  "Purchases",
+  "Rent",
+  "Salaries",
+  "Electricity",
+  "Office supplies",
+  "Bank charges",
+  "Interest income",
+  "Insurance",
+  "Transfer between accounts",
+  "Owner drawings",
+  "GST payable",
+];
+
+export const PARTIES = ["Deepak Trading", "Chander Stores", "Bateaco BL", "Axis Bank", "Mehta Exports", "Sharma Retail", "Kavya Textiles", "Sunrise Logistics"];
+
+// ---- payouts ----
+
+export type PayoutStatus = "awaiting" | "processing" | "paid" | "failed" | "rejected" | "returned" | "cancelled";
+
+export interface Payout {
+  id: string;
+  ref: string;
+  name: string;
+  detail: string;
+  amount: number;
+  fromAccountId: string;
+  mode: "IMPS" | "NEFT" | "RTGS";
+  status: PayoutStatus;
+  initiatedAt: string;
+  initiatedBy: string;
+  utr?: string;
+  reason?: string;
+  voucher?: string;
+  batch?: { count: number; paid: number; failed: number };
+  /** For a retry, the payout it replaces. */
+  retryOf?: string;
+}
+
+export function initialPayouts(): Payout[] {
+  const base = { initiatedBy: "Ravi Kumar" };
+  return [
+    { ...base, id: "po41", ref: "PO-1041", name: "September salaries", detail: "Salary run", amount: 386400, fromAccountId: "p1", mode: "NEFT", status: "awaiting", initiatedAt: "06 Oct 2026, 9:12 am", batch: { count: 14, paid: 0, failed: 0 } },
+    { ...base, id: "po40", ref: "PO-1040", name: "Kavya Textiles", detail: "INV-1042", amount: 18500, fromAccountId: "p1", mode: "NEFT", status: "awaiting", initiatedAt: "06 Oct 2026, 8:40 am" },
+    { ...base, id: "po39", ref: "PO-1039", name: "Sunrise Logistics", detail: "Vendor payment", amount: 42000, fromAccountId: "p2", mode: "NEFT", status: "processing", initiatedAt: "06 Oct 2026, 8:05 am" },
+    { ...base, id: "po38", ref: "PO-1038", name: "Blue Ocean Traders", detail: "INV-778", amount: 32000, fromAccountId: "p2", mode: "IMPS", status: "failed", initiatedAt: "05 Oct 2026, 6:20 pm", reason: "Beneficiary account closed" },
+    { ...base, id: "po37", ref: "PO-1037", name: "Mehta Exports", detail: "Refund · CN-0042", amount: 12000, fromAccountId: "p1", mode: "IMPS", status: "paid", initiatedAt: "05 Oct 2026, 11:02 am", utr: "AXISP26100412873", voucher: "VOU 2026-40" },
+    { ...base, id: "po36", ref: "PO-1036", name: "Ananya Rao", detail: "Reimbursement", amount: 8000, fromAccountId: "p1", mode: "IMPS", status: "paid", initiatedAt: "04 Oct 2026, 4:45 pm", utr: "AXISP26100498120", voucher: "VOU 2026-37" },
+    { ...base, id: "po35", ref: "PO-1035", name: "Rohan Mehta", detail: "Advance", amount: 5500, fromAccountId: "p2", mode: "IMPS", status: "returned", initiatedAt: "01 Oct 2026, 2:10 pm", utr: "ICICP26100155431", reason: "Returned on 03 Oct · beneficiary account frozen" },
+    { ...base, id: "po34", ref: "PO-1034", name: "Vendor batch · Sept 2", detail: "6 bills", amount: 184300, fromAccountId: "p1", mode: "NEFT", status: "paid", initiatedAt: "30 Sep 2026, 10:30 am", batch: { count: 6, paid: 6, failed: 0 }, voucher: "6 vouchers" },
+    { ...base, id: "po33", ref: "PO-1033", name: "Priya Sharma", detail: "Commission", amount: 7899, fromAccountId: "p1", mode: "IMPS", status: "rejected", initiatedAt: "29 Sep 2026, 5:55 pm", reason: "Checker rejected it in Axis net banking" },
+    { ...base, id: "po32", ref: "PO-1032", name: "WeWork India", detail: "Rent · October", amount: 45000, fromAccountId: "p1", mode: "NEFT", status: "paid", initiatedAt: "29 Sep 2026, 11:15 am", utr: "AXISN26092977110", voucher: "VOU 2026-32" },
+  ];
+}
+
+// ---- statement imports (was "Upload Logs") ----
+
+export interface StatementImport {
+  id: string;
+  accountId: string;
+  source: "api" | "upload";
+  file?: string;
+  period: string;
+  status: "processing" | "imported" | "failed";
+  lines?: number;
+  reason?: string;
+  at: string;
+}
+
+export function initialImports(): StatementImport[] {
+  return [
+    { id: "i1", accountId: "p1", source: "api", period: "05 Oct 2026", status: "imported", lines: 9, at: "Today, 7:16 am" },
+    { id: "i2", accountId: "p2", source: "api", period: "05 Oct 2026", status: "imported", lines: 2, at: "Today, 7:02 am" },
+    { id: "i3", accountId: "p5", source: "upload", file: "Canara_Sep2026.pdf", period: "1–25 Sep 2026", status: "imported", lines: 142, at: "25 Sep 2026" },
+    { id: "i4", accountId: "p6", source: "upload", file: "Federal_statement_Sep.xlsx", period: "1–20 Sep 2026", status: "imported", lines: 38, at: "20 Sep 2026" },
+    { id: "i5", accountId: "p7", source: "upload", file: "AMCB_Q2.pdf", period: "Jul–Sep 2026", status: "failed", reason: "The PDF is password-protected", at: "18 Sep 2026" },
+    { id: "i6", accountId: "p4", source: "api", period: "02 Oct 2026", status: "imported", lines: 3, at: "4 Oct 2026" },
+  ];
+}
+
+export interface ReconSummary {
+  suggested: number;
+  needs: number;
+  auto: number;
+  booksOnly: BookEntry[];
+  /** In bank − In your books: unresolved bank lines minus book entries the bank hasn't shown. */
+  difference: number;
+  reconciled: boolean;
+}
+
+export function reconFor(accountId: string, lines: BankLine[], entries: BookEntry[]): ReconSummary {
+  const mine = lines.filter((l) => l.accountId === accountId);
+  const open = mine.filter((l) => l.status === "suggested" || l.status === "needs");
+  const booksOnly = entries.filter((e) => e.accountId === accountId);
+  const difference = Math.round((open.reduce((s, l) => s + l.amount, 0) - booksOnly.reduce((s, e) => s + e.amount, 0)) * 100) / 100;
+  return {
+    suggested: mine.filter((l) => l.status === "suggested").length,
+    needs: mine.filter((l) => l.status === "needs").length,
+    auto: mine.filter((l) => l.status === "auto").length,
+    booksOnly,
+    difference,
+    reconciled: open.length === 0 && booksOnly.length === 0,
+  };
+}

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Clock, FileUp, Landmark, Plug, RefreshCw, Send, ShieldCheck, Sparkles, Users, XCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, FileUp, Landmark, Plug, RefreshCw, Send, ShieldCheck, Sparkles, Undo2, Users, XCircle } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
@@ -7,11 +7,11 @@ import { cn } from "../../lib/cn";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
 import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
-import { IN_FLIGHT, MONEY_FLOW, RECON, bankBalanceOf, compactINR, daysSince } from "./overviewData";
+import { reconFor } from "./ledgerData";
+import { MONEY_FLOW, bankBalanceOf, compactINR, daysSince } from "./overviewData";
+import type { BankingTab } from "./BankingPage";
 
 const ATTENTION_LIMIT = 5;
-
-export type OverviewTarget = "statements" | "accounts" | "payouts";
 
 const shortDate = (dmy: string) => {
   const [d, m, y] = dmy.split("-").map(Number);
@@ -21,37 +21,53 @@ const shortDate = (dmy: string) => {
 const accountLabel = (a: CompanyAccount) => `${a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank} ${last4(a.number)}`;
 
 /**
- * Banking landing page, kept to three blocks: four headline numbers (three for the owner, one for the
- * accountant), one Needs attention list, and the accounts with one balance each. Detail lives in the tabs.
+ * Banking landing page in three blocks: four headline numbers (three for the owner, one for the
+ * accountant), then Needs attention and Accounts given equal weight. Detail lives in the other tabs.
  */
 export function OverviewTab({
   onGo,
+  onOpenAccount,
   onConnect,
   onPay,
   onBulkPay,
 }: {
-  onGo: (tab: OverviewTarget) => void;
+  onGo: (tab: BankingTab) => void;
+  onOpenAccount: (accountId: string) => void;
   onConnect: (accountId: string) => void;
   onPay: () => void;
   onBulkPay: () => void;
 }) {
   const accounts = useBankingStore((s) => s.accounts).filter((a) => a.active);
-  const mode = useBankingStore((s) => s.scenario.balance);
+  const lines = useBankingStore((s) => s.bankLines);
+  const entries = useBankingStore((s) => s.bookEntries);
+  const payouts = useBankingStore((s) => s.payouts);
+  const { balance: mode, overviewLayout } = useBankingStore((s) => s.scenario);
   const [showAll, setShowAll] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const rows = accounts.map((a) => ({ a, bank: bankBalanceOf(a, mode), recon: RECON[a.id] }));
+  const rows = accounts.map((a) => ({ a, bank: bankBalanceOf(a, mode), recon: reconFor(a.id, lines, entries) }));
   const totalInBank = rows.reduce((s, r) => s + (r.bank?.amount ?? 0), 0);
-  const gapAccounts = rows.filter((r) => r.bank && r.recon && r.recon.difference !== 0);
-  const toExplain = gapAccounts.reduce((s, r) => s + Math.abs(r.recon!.difference), 0);
-  const suggestions = rows.reduce((s, r) => s + (r.recon?.suggestions ?? 0), 0);
+  const gapAccounts = rows.filter((r) => r.bank && !r.recon.reconciled && r.recon.difference !== 0);
+  const toExplain = gapAccounts.reduce((s, r) => s + Math.abs(r.recon.difference), 0);
+  const suggestions = rows.reduce((s, r) => s + r.recon.suggested, 0);
+  const needsYou = rows.reduce((s, r) => s + r.recon.needs, 0);
   const pct = (now: number, prev: number) => Math.round(((now - prev) / prev) * 1000) / 10;
+  const firstWithWork = rows.find((r) => r.recon.suggested + r.recon.needs > 0)?.a.id;
 
   // ---- needs attention, most urgent first ----
   type Item = { key: string; tone: "critical" | "warning" | "info"; icon: ReactNode; title: string; detail: string; action: string; run: () => void };
   const items: Item[] = [];
-  for (const p of IN_FLIGHT.filter((p) => p.status === "failed"))
-    items.push({ key: p.id, tone: "critical", icon: <XCircle />, title: `Payment to ${p.name} failed · ${fmtINR(p.amount)}`, detail: p.note, action: "View", run: () => onGo("payouts") });
+  const retried = new Set(payouts.map((p) => p.retryOf).filter(Boolean));
+  for (const p of payouts.filter((p) => ["failed", "rejected", "returned"].includes(p.status) && !retried.has(p.id)))
+    items.push({
+      key: p.id,
+      tone: "critical",
+      icon: p.status === "returned" ? <Undo2 /> : <XCircle />,
+      title: `Payment to ${p.name} ${p.status} · ${fmtINR(p.amount)}`,
+      detail: p.reason ?? "",
+      action: "View",
+      run: () => onGo("payouts"),
+    });
   for (const r of rows.filter((r) => r.a.connection === "expired"))
     items.push({
       key: `exp-${r.a.id}`,
@@ -62,7 +78,7 @@ export function OverviewTab({
       action: "Reconnect",
       run: () => onConnect(r.a.id),
     });
-  const awaiting = IN_FLIGHT.filter((p) => p.status === "awaiting");
+  const awaiting = payouts.filter((p) => p.status === "awaiting");
   if (awaiting.length)
     items.push({
       key: "awaiting",
@@ -73,15 +89,15 @@ export function OverviewTab({
       action: "View",
       run: () => onGo("payouts"),
     });
-  if (suggestions)
+  if (suggestions + needsYou)
     items.push({
       key: "ai",
       tone: "info",
       icon: <Sparkles />,
-      title: `${suggestions} matches suggested by AI`,
+      title: suggestions ? `${suggestions} matches suggested by AI${needsYou ? ` · ${needsYou} need you` : ""}` : `${needsYou} bank transactions need you`,
       detail: "Bank transactions matched to receipts, vouchers and bills. Accept in one click.",
       action: "Review",
-      run: () => onGo("statements"),
+      run: () => (firstWithWork ? onOpenAccount(firstWithWork) : onGo("transactions")),
     });
   for (const r of rows.filter((r) => r.bank?.source === "statement" && r.a.statement && daysSince(r.a.statement.date) > 7))
     items.push({
@@ -120,6 +136,7 @@ export function OverviewTab({
     warning: "bg-[var(--color-warning-soft)] text-[var(--color-warning-accent)]",
     info: "bg-[var(--color-primary-soft)] text-[var(--color-primary-accent)]",
   };
+  const split = overviewLayout === "split";
 
   return (
     <div className="flex flex-col gap-5">
@@ -184,96 +201,98 @@ export function OverviewTab({
             value={fmtINR(toExplain)}
             valueClass="text-[var(--color-warning-accent)]"
             note={
-              <button type="button" onClick={() => onGo("statements")} className="inline-flex cursor-pointer items-center gap-0.5 font-medium text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => (firstWithWork ? onOpenAccount(firstWithWork) : onGo("transactions"))}
+                className="inline-flex cursor-pointer items-center gap-0.5 font-medium text-primary hover:underline"
+              >
                 Review {gapAccounts.length} account{gapAccounts.length > 1 ? "s" : ""} <ChevronRight className="size-3.5" />
               </button>
             }
           />
         ) : (
-          <Figure label="Books" value="Match the bank" valueClass="text-[var(--color-success-accent)]" note="Nothing to reconcile" />
+          <Figure label="Your books" value="Match the bank" valueClass="text-[var(--color-success-accent)]" note="Nothing to reconcile" />
         )}
       </Card>
 
-      {/* 2 · Needs attention */}
-      <Card className="min-w-0">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <div className="text-sm font-semibold">Needs attention</div>
-          {items.length > 0 && <span className="text-xs text-muted-foreground">{items.length}</span>}
-        </div>
-        {items.length === 0 ? (
-          <div className="flex items-center gap-3 px-5 py-8 text-2sm text-muted-foreground">
-            <ShieldCheck className="size-5 text-[var(--color-success-accent)]" /> Nothing needs you right now.
+      {/* 2 + 3 · Needs attention and Accounts */}
+      <div className={cn("grid gap-5", split && "lg:grid-cols-2")}>
+        <Card className="min-w-0">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+            <div className="text-sm font-semibold">Needs attention</div>
+            {items.length > 0 && <span className="text-xs text-muted-foreground">{items.length}</span>}
           </div>
-        ) : (
+          {items.length === 0 ? (
+            <div className="flex items-center gap-3 px-5 py-8 text-2sm text-muted-foreground">
+              <ShieldCheck className="size-5 text-[var(--color-success-accent)]" /> Nothing needs you right now.
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {(showAll ? items : items.slice(0, ATTENTION_LIMIT)).map((it) => (
+                <li key={it.key} className="flex items-center gap-3 px-5 py-3">
+                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full [&_svg]:size-4", TONE[it.tone])}>{it.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-2sm font-medium text-foreground">{it.title}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{it.detail}</div>
+                  </div>
+                  <Button size="sm" className="shrink-0" onClick={it.run}>
+                    {it.action}
+                  </Button>
+                </li>
+              ))}
+              {items.length > ATTENTION_LIMIT && (
+                <li className="px-5 py-2.5">
+                  <button type="button" onClick={() => setShowAll(!showAll)} className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                    {showAll ? "Show fewer" : `Show ${items.length - ATTENTION_LIMIT} more`}
+                  </button>
+                </li>
+              )}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="min-w-0">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+            <div className="text-sm font-semibold">Accounts</div>
+            <button type="button" onClick={() => onGo("accounts")} className="inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+              Manage <ChevronRight className="size-3.5" />
+            </button>
+          </div>
           <ul className="divide-y divide-border">
-            {(showAll ? items : items.slice(0, ATTENTION_LIMIT)).map((it) => (
-              <li key={it.key} className="flex items-center gap-3 px-5 py-3">
-                <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full [&_svg]:size-4", TONE[it.tone])}>{it.icon}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-2sm font-medium text-foreground">{it.title}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">{it.detail}</div>
-                </div>
-                <Button size="sm" className="shrink-0" onClick={it.run}>
-                  {it.action}
-                </Button>
-              </li>
-            ))}
-            {items.length > ATTENTION_LIMIT && (
-              <li className="px-5 py-2.5">
-                <button type="button" onClick={() => setShowAll(!showAll)} className="cursor-pointer text-xs font-medium text-primary hover:underline">
-                  {showAll ? "Show fewer" : `Show ${items.length - ATTENTION_LIMIT} more`}
+            {rows.map(({ a, bank }) => (
+              <li key={a.id}>
+                <button type="button" onClick={() => onOpenAccount(a.id)} className="flex w-full cursor-pointer items-center gap-3 px-5 py-3 text-left hover:bg-accent/40">
+                  {a.bankKey ? (
+                    <BankIcon bank={a.bankKey} size={28} />
+                  ) : (
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <Landmark className="size-3.5" />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-2sm">
+                      <span className="font-medium">{accountLabel(a)}</span>
+                      {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                    </span>
+                    <span className={cn("block text-xs", bank?.source === "stale" ? "font-medium text-[var(--color-warning-accent)]" : "text-muted-foreground")}>
+                      {bank?.source === "live"
+                        ? `Live · ${a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}`
+                        : bank?.source === "stale"
+                          ? "Connection expired"
+                          : bank?.source === "statement"
+                            ? `Statement · ${shortDate(a.statement!.date)}`
+                            : "No bank data yet"}
+                    </span>
+                  </span>
+                  <span className={cn("shrink-0 text-right text-2sm font-semibold tabular-nums", bank?.source === "stale" && "text-muted-foreground")}>
+                    {bank ? fmtINR(bank.amount) : "—"}
+                  </span>
                 </button>
               </li>
-            )}
+            ))}
           </ul>
-        )}
-      </Card>
-
-      {/* 3 · Accounts */}
-      <Card className="min-w-0">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <div className="text-sm font-semibold">Accounts</div>
-          <button type="button" onClick={() => onGo("accounts")} className="inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-primary hover:underline">
-            Manage <ChevronRight className="size-3.5" />
-          </button>
-        </div>
-        <ul className="divide-y divide-border">
-          {rows.map(({ a, bank }) => (
-            <li key={a.id}>
-              <button type="button" onClick={() => onGo("statements")} className="flex w-full cursor-pointer items-center gap-3 px-5 py-3 text-left hover:bg-accent/40">
-                {a.bankKey ? (
-                  <BankIcon bank={a.bankKey} size={28} />
-                ) : (
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                    <Landmark className="size-3.5" />
-                  </span>
-                )}
-                <span className="min-w-0 flex-1 truncate text-2sm">
-                  <span className="font-medium">{accountLabel(a)}</span>
-                  {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                </span>
-                <span className={cn("w-36 shrink-0 text-right text-2sm font-semibold tabular-nums", bank?.source === "stale" && "text-muted-foreground")}>
-                  {bank ? fmtINR(bank.amount) : "—"}
-                </span>
-                <span
-                  className={cn(
-                    "hidden w-40 shrink-0 text-right text-xs sm:block",
-                    bank?.source === "stale" ? "font-medium text-[var(--color-warning-accent)]" : "text-muted-foreground",
-                  )}
-                >
-                  {bank?.source === "live"
-                    ? `Live · ${a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}`
-                    : bank?.source === "stale"
-                      ? "Connection expired"
-                      : bank?.source === "statement"
-                        ? `Statement · ${shortDate(a.statement!.date)}`
-                        : "No bank data yet"}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

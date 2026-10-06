@@ -15,6 +15,17 @@ import {
   type Employee,
   type PayeeContact,
 } from "../pages/banking/data";
+import {
+  initialBankLines,
+  initialBookEntries,
+  initialImports,
+  initialPayouts,
+  type BankLine,
+  type BookEntry,
+  type Match,
+  type Payout,
+  type StatementImport,
+} from "../pages/banking/ledgerData";
 
 /** What the account forms hand back once an account is entered (and optionally verified). */
 export interface NewAccountInput {
@@ -44,6 +55,10 @@ interface BankingState {
   accounts: CompanyAccount[];
   contacts: PayeeContact[];
   employees: Employee[];
+  bankLines: BankLine[];
+  bookEntries: BookEntry[];
+  payouts: Payout[];
+  imports: StatementImport[];
 
   setScenario: (patch: Partial<BankingScenario>) => void;
   resetData: () => void;
@@ -65,17 +80,49 @@ interface BankingState {
   updateAccount: (accountId: string, patch: Partial<CompanyAccount>) => void;
   setPrimary: (accountId: string) => void;
   syncAccount: (accountId: string) => Promise<void>;
-  uploadStatement: (accountId: string) => void;
+  uploadStatement: (accountId: string, fileName?: string) => void;
+
+  // ---- reconciliation (Transactions) ----
+  acceptMatches: (lineIds: string[]) => void;
+  rejectMatch: (lineId: string) => void;
+  /** Settle a line by hand: link an existing book entry (bookEntryId) or record a new one. */
+  resolveLine: (lineId: string, match: Match, bookEntryId?: string) => void;
+  moveEntry: (entryId: string, accountId: string) => void;
+
+  // ---- payouts ----
+  addPayout: (p: Omit<Payout, "id" | "ref" | "initiatedAt" | "initiatedBy">) => Payout;
+  retryPayout: (payoutId: string) => void;
+  cancelPayout: (payoutId: string) => void;
+  /** Dev panel: the checker approves everything waiting in net banking. */
+  approveAwaiting: () => void;
+  /** Dev panel: the next payout with the bank fails. */
+  failProcessing: () => void;
 }
+
+let payoutSeq = 1042;
+const nowLabel = () => "Today, " + new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
 export const useBankingStore = create<BankingState>((set, get) => ({
   scenario: DEFAULT_SCENARIO,
   contacts: initialContacts(),
   employees: initialEmployees(),
   accounts: initialAccounts(),
+  bankLines: initialBankLines(),
+  bookEntries: initialBookEntries(),
+  payouts: initialPayouts(),
+  imports: initialImports(),
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
-  resetData: () => set({ contacts: initialContacts(), employees: initialEmployees(), accounts: initialAccounts() }),
+  resetData: () =>
+    set({
+      contacts: initialContacts(),
+      employees: initialEmployees(),
+      accounts: initialAccounts(),
+      bankLines: initialBankLines(),
+      bookEntries: initialBookEntries(),
+      payouts: initialPayouts(),
+      imports: initialImports(),
+    }),
 
   verifyAccount: () =>
     new Promise((resolve) => {
@@ -167,11 +214,59 @@ export const useBankingStore = create<BankingState>((set, get) => ({
       }, 900);
     }),
 
-  uploadStatement: (accountId) => {
-    const today = new Date();
-    const date = [today.getDate(), today.getMonth() + 1, today.getFullYear()].map((n) => String(n).padStart(2, "0")).join("-");
-    const prev = get().accounts.find((a) => a.id === accountId)?.statement?.balance ?? 75000;
-    get().updateAccount(accountId, { statement: { date, balance: Math.round(prev * 1.04 * 100) / 100 } });
+  uploadStatement: (accountId, fileName = "statement.pdf") => {
+    const id = `i${Date.now()}`;
+    set((s) => ({ imports: [{ id, accountId, source: "upload", file: fileName, period: "Up to today", status: "processing", at: nowLabel() }, ...s.imports] }));
+    setTimeout(() => {
+      const today = new Date();
+      const date = [today.getDate(), today.getMonth() + 1, today.getFullYear()].map((n) => String(n).padStart(2, "0")).join("-");
+      const prev = get().accounts.find((a) => a.id === accountId)?.statement?.balance ?? 75000;
+      get().updateAccount(accountId, { statement: { date, balance: Math.round(prev * 1.04 * 100) / 100 } });
+      set((s) => ({ imports: s.imports.map((i) => (i.id === id ? { ...i, status: "imported", lines: 37 } : i)) }));
+    }, 2500);
+  },
+
+  acceptMatches: (lineIds) =>
+    set((s) => ({ bankLines: s.bankLines.map((l) => (lineIds.includes(l.id) && l.match ? { ...l, status: "matched" } : l)) })),
+
+  rejectMatch: (lineId) => set((s) => ({ bankLines: s.bankLines.map((l) => (l.id === lineId ? { ...l, status: "needs", match: undefined } : l)) })),
+
+  resolveLine: (lineId, match, bookEntryId) =>
+    set((s) => ({
+      bankLines: s.bankLines.map((l) => (l.id === lineId ? { ...l, status: "matched", match } : l)),
+      bookEntries: bookEntryId ? s.bookEntries.filter((e) => e.id !== bookEntryId) : s.bookEntries,
+    })),
+
+  moveEntry: (entryId, accountId) =>
+    set((s) => ({ bookEntries: s.bookEntries.map((e) => (e.id === entryId ? { ...e, accountId, assumedAccount: false } : e)) })),
+
+  addPayout: (p) => {
+    const payout: Payout = { ...p, id: `po${payoutSeq}`, ref: `PO-${payoutSeq++}`, initiatedAt: nowLabel(), initiatedBy: "You" };
+    set((s) => ({ payouts: [payout, ...s.payouts] }));
+    if (payout.status === "processing") settleLater(payout.id);
+    return payout;
+  },
+
+  retryPayout: (payoutId) => {
+    const original = get().payouts.find((p) => p.id === payoutId);
+    if (!original) return;
+    const { id: _id, ref: _ref, initiatedAt: _at, initiatedBy: _by, utr: _utr, reason: _reason, voucher: _v, ...rest } = original;
+    const approval = get().accounts.find((a) => a.id === original.fromAccountId)?.approval;
+    get().addPayout({ ...rest, status: approval === "maker-checker" ? "awaiting" : "processing", retryOf: payoutId });
+  },
+
+  cancelPayout: (payoutId) => set((s) => ({ payouts: s.payouts.map((p) => (p.id === payoutId ? { ...p, status: "cancelled" } : p)) })),
+
+  approveAwaiting: () => {
+    const ids = get().payouts.filter((p) => p.status === "awaiting").map((p) => p.id);
+    set((s) => ({ payouts: s.payouts.map((p) => (ids.includes(p.id) ? { ...p, status: "processing" } : p)) }));
+    ids.forEach(settleLater);
+  },
+
+  failProcessing: () => {
+    const next = get().payouts.find((p) => p.status === "processing");
+    if (!next) return;
+    set((s) => ({ payouts: s.payouts.map((p) => (p.id === next.id ? { ...p, status: "failed", reason: "Beneficiary bank is not responding" } : p)) }));
   },
 
   setEmployeeAccount: (employeeId, input) => {
@@ -187,4 +282,27 @@ export function usePayFromAccounts() {
   const accounts = useBankingStore((s) => s.accounts);
   const scenario = useBankingStore((s) => s.scenario);
   return payFromAccounts(accounts, scenario);
+}
+
+/** A payout with the bank settles a few seconds later (unless the dev panel failed it first). */
+function settleLater(payoutId: string) {
+  setTimeout(() => {
+    const { payouts } = useBankingStore.getState();
+    const p = payouts.find((x) => x.id === payoutId);
+    if (!p || p.status !== "processing") return;
+    const prefix = p.fromAccountId === "p2" ? "ICIC" : p.fromAccountId === "p3" ? "INDB" : "AXIS";
+    useBankingStore.setState({
+      payouts: payouts.map((x) =>
+        x.id === payoutId
+          ? {
+              ...x,
+              status: "paid",
+              utr: `${prefix}${x.mode[0]}${Date.now().toString().slice(-11)}`,
+              voucher: x.batch ? `${x.batch.count} vouchers` : `VOU 2026-${40 + Math.floor(Math.random() * 50)}`,
+              batch: x.batch ? { ...x.batch, paid: x.batch.count } : undefined,
+            }
+          : x,
+      ),
+    });
+  }, 4000);
 }

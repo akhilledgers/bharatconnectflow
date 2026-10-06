@@ -3,47 +3,14 @@
 // money in / out. Bank-side balances come from the accounts in the store.
 import type { CompanyAccount } from "./data";
 
-export interface ReconSnapshot {
-  /** In bank − In your books. Books balance is derived from the bank balance minus this. */
-  difference: number;
-  /** Bank lines with no matching book entry (e.g. charges, UPI receipts nobody recorded). */
-  bankOnly: { count: number; amount: number };
-  /** Book entries the bank hasn't shown yet (e.g. uncleared cheques, payments still processing). */
-  booksOnly: { count: number; amount: number };
-  /** Matches the AI recon engine proposes, waiting for review. */
-  suggestions: number;
-  /** Latest date up to which bank and books fully agree. */
-  reconciledTo?: string;
-}
-
-/** Keyed by account id. Accounts not listed have no books activity yet. */
-export const RECON: Record<string, ReconSnapshot> = {
-  p1: { difference: 12400, bankOnly: { count: 8, amount: 18200 }, booksOnly: { count: 3, amount: 5800 }, suggestions: 12, reconciledTo: "30-09-2026" },
-  p2: { difference: 0, bankOnly: { count: 0, amount: 0 }, booksOnly: { count: 0, amount: 0 }, suggestions: 0, reconciledTo: "05-10-2026" },
-  p3: { difference: 0, bankOnly: { count: 0, amount: 0 }, booksOnly: { count: 2, amount: 62000 }, suggestions: 0 },
-  p4: { difference: -4750, bankOnly: { count: 2, amount: 1250 }, booksOnly: { count: 1, amount: 3500 }, suggestions: 2, reconciledTo: "31-08-2026" },
-  p5: { difference: 0, bankOnly: { count: 0, amount: 0 }, booksOnly: { count: 0, amount: 0 }, suggestions: 0, reconciledTo: "25-09-2026" },
-  p6: { difference: -2700, bankOnly: { count: 0, amount: 0 }, booksOnly: { count: 1, amount: 2700 }, suggestions: 1, reconciledTo: "20-09-2026" },
+/** Latest date each account was fully reconciled (before the open items now in Transactions). */
+export const RECONCILED_TO: Record<string, string> = {
+  p1: "30-09-2026",
+  p2: "05-10-2026",
+  p4: "31-08-2026",
+  p5: "25-09-2026",
+  p6: "17-09-2026",
 };
-
-export type PayoutStatus = "awaiting" | "processing" | "failed";
-
-export interface InFlightPayout {
-  id: string;
-  name: string;
-  detail: string;
-  amount: number;
-  from: string;
-  status: PayoutStatus;
-  note: string;
-}
-
-export const IN_FLIGHT: InFlightPayout[] = [
-  { id: "po1", name: "September salaries", detail: "Batch · 14 payments", amount: 386400, from: "Axis ••9012", status: "awaiting", note: "Waiting for checker in Axis net banking" },
-  { id: "po2", name: "Kavya Textiles", detail: "INV-1042 · NEFT", amount: 18500, from: "Axis ••9012", status: "awaiting", note: "Waiting for checker · 2 h" },
-  { id: "po3", name: "Sunrise Logistics", detail: "Vendor payment · NEFT", amount: 42000, from: "ICICI ••4456", status: "processing", note: "With the bank · next NEFT batch" },
-  { id: "po4", name: "Blue Ocean Traders", detail: "INV-778 · IMPS", amount: 32000, from: "ICICI ••4456", status: "failed", note: "Beneficiary account closed" },
-];
 
 /** This month vs last month, across all accounts. */
 export const MONEY_FLOW = {

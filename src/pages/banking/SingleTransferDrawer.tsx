@@ -200,6 +200,15 @@ export function SingleTransferDrawer({
 
   const confirm = () => {
     if (otp.length !== 6 || !bene) return;
+    const billRefs = bills.filter((b) => billIds.includes(b.id)).map((b) => b.number);
+    store().addPayout({
+      name: bene.name,
+      detail: billRefs.length ? billRefs.join(", ") : purpose === "other" ? purposeOther || "Other" : (purposeOpt?.label ?? "Payment"),
+      amount: amountNum,
+      fromAccountId: payFrom.id,
+      mode,
+      status: makerChecker ? "awaiting" : "processing",
+    });
     setSnapshot({ amount: fmtINR(amountNum), name: bene.name, mode });
     setStep("success");
   };

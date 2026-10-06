@@ -279,6 +279,15 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
               className={cn(LG, "max-w-[280px] flex-[2]")}
               disabled={otp.length !== 6}
               onClick={() => {
+                useBankingStore.getState().addPayout({
+                  name: `Bulk payment · ${rows.length} beneficiaries`,
+                  detail: `${rows.length} payments`,
+                  amount: total,
+                  fromAccountId: payFrom.id,
+                  mode: "NEFT",
+                  status: makerChecker ? "awaiting" : "processing",
+                  batch: { count: rows.length, paid: 0, failed: 0 },
+                });
                 setSnapshot({ count: rows.length, total: fmtINR(total) });
                 setStep("success");
               }}

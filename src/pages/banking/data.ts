@@ -73,9 +73,11 @@ export interface BankingScenario {
   verify: "random" | "pass" | "fail";
   /** How the bank's API answers a Register Connected Banking request. */
   register: "success" | "fail";
+  /** Overview: Needs attention and Accounts side by side, or stacked (the earlier layout). */
+  overviewLayout: "split" | "stacked";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success" };
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
 export const CONNECTED_BANKING: Record<BankKey, { short: string; bulk: boolean; approvalChoice: boolean }> = {
@@ -154,19 +156,6 @@ export function syncedLabel(minutes: number) {
 }
 
 export const RTGS_MIN = 200000;
-
-export const STATEMENTS = [
-  ["UPI/110757199492/collect-pay-req/XX.ibz@icici/ICICI Bank/ICI9e12b082614d4f8393d25c3a1f", "2,360.00", "13,70,222.18", "XXXX4489"],
-  ["NEFT-IDFB6268M2640071-WATERIA TECHNOVATION PRIVATE LIMITE--10116296130-IDFB0080151", "4,130.00", "13,74,352.18", "XXXX4489"],
-  ["UPI/110757762892/collect-pay-req/XX7504@ybl/KARNATAKA BANK /ICIacbe63e3233e4a7b", "24,661.00", "13,99,013.18", "XXXX4489"],
-  ["UPI/130193639244/UPI/XXnair@okhdfcb/HDFC BANK LTD/HDF9d12b347e28a42e4aa88311", "3,421.00", "14,02,434.18", "XXXX4489"],
-  ["UPI/110757876936/collect-pay-req/XX4729@ybl/StateBank Of I/ICI7618d93db10940ff8640", "5,781.00", "14,08,215.18", "XXXX4489"],
-  ["NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED--INDB0000412", "18,000.00", "6,84,250.00", "XXXX4456"],
-  ["MMT/IMPS/626810705563/from bateaco fo/BATEACO BL/State Bank of I", "20,000.00", "14,31,636.18", "XXXX4489"],
-  ["UPI/110758009194/collect-pay-req/XXmp-2@oksbi/State Bank Of I/ICI567bff1337a3421c92", "8,000.00", "14,39,636.18", "XXXX4489"],
-  ["UPI/110758021692/est179031306238/XX18cd@ptsbi/State Bank Of I/ICIe8b7c789518040d11", "1,769.00", "14,41,405.18", "XXXX4489"],
-  ["Razorpay Software Pvt Ltd Fu", "3,81,906.16", "1,92,53,671.25", "XXXX4826"],
-].map(([details, amount, balance, acct], i) => ({ id: i, date: "25-09-2026", details, amount, balance, acct }));
 
 export const ONBOARDING_BANKS: { key: BankKey; name: string; initials: string }[] = [
   { key: "axis", name: "Axis Bank", initials: "AX" },
