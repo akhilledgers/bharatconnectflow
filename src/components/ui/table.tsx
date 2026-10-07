@@ -18,8 +18,9 @@ export function TablePagination({ from, to, total, children }: { from: number; t
         <span className="inline-flex h-7 items-center rounded-md border border-input px-2 text-xs text-foreground">10</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">
-          Showing {total === 0 ? 0 : from} to {to} of {total} records
+        {/* LEDGERS footer format: "1 - 10 of 10641". */}
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {total === 0 ? 0 : from} - {to} of {total}
         </span>
         <div className="flex items-center gap-1">
           <button disabled className={cn(pageBtn, "text-muted-foreground")} aria-label="Previous page">
