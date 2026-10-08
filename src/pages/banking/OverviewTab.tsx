@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle } from "../../components/ui/card";
 import { cn } from "../../lib/cn";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, ONBOARDING_BANKS, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
+import { ALL_ACCOUNTS, CONNECTED_BANKING, ONBOARDING_BANKS, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
 import { reconFor } from "./ledgerData";
 import { RECONCILED_TO, bankBalanceOf, compactINR, daysSince, shortDate } from "./overviewData";
 import { StatCard, StatLink } from "./StatCard";
@@ -64,8 +64,8 @@ export function OverviewTab({
   const toReview = gapAccounts.reduce((s, r) => s + r.recon.suggested + r.recon.needs + r.recon.booksOnly.length, 0);
   const suggestions = rows.reduce((s, r) => s + r.recon.suggested, 0);
   const needsYou = rows.reduce((s, r) => s + r.recon.needs, 0);
-  const firstWithWork = gapAccounts[0]?.a.id ?? rows.find((r) => r.recon.suggested + r.recon.needs > 0)?.a.id;
-  const review = () => (firstWithWork ? onOpenAccount(firstWithWork) : onGo("transactions"));
+  // Review work across accounts lands on All accounts; with one account, on that account.
+  const review = () => onOpenAccount(rows.length === 1 ? rows[0].a.id : ALL_ACCOUNTS);
   const count = (src: "live" | "stale" | "statement") => withBank.filter((r) => r.bank!.source === src).length;
   const stale = withBank.filter((r) => r.bank!.source === "stale");
   const allStale = withBank.length > 0 && stale.length === withBank.length;
@@ -138,8 +138,8 @@ export function OverviewTab({
       key: "ai",
       tone: "info",
       icon: <Sparkles />,
-      title: suggestions ? `${suggestions} matches suggested by AI${needsYou ? ` · ${needsYou} need you` : ""}` : `${plural(needsYou, "bank transaction")} need you`,
-      detail: "Bank transactions matched to receipts, vouchers and bills. Accept in one click.",
+      title: suggestions ? `${suggestions} AI matches to confirm${needsYou ? ` · ${needsYou} unmatched` : ""}` : `${plural(needsYou, "bank transaction")} unmatched`,
+      detail: "Bank transactions paired with receipts, vouchers and bills. Confirm in one click.",
       action: "Review",
       run: review,
     });

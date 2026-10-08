@@ -12,6 +12,8 @@ export interface Match {
   /** 0–100, from the recon engine. Absent when a person matched it. */
   confidence?: number;
   reason?: string;
+  /** Transfer between the company's own accounts: the bank line on the other side. */
+  pairLineId?: string;
 }
 
 export interface BankLine {
@@ -33,8 +35,11 @@ export interface BookEntry {
   kind: "Receipt" | "Payment voucher" | "Journal";
   party: string;
   amount: number;
-  daysOpen: number;
-  note: string;
+  /** The bank line this entry is linked to: matched, or proposed by the AI and waiting to be confirmed. */
+  lineId?: string;
+  /** Why an entry isn't in the bank yet (entries with no bank line). */
+  daysOpen?: number;
+  note?: string;
   /** Saved without a bank account, so LEDGERS assumed the primary one. */
   assumedAccount?: boolean;
 }
@@ -74,6 +79,10 @@ export function initialBankLines(): BankLine[] {
     L("l20", "p1", "22-09-2026", "GST CHALLAN CPIN 26090012", -18240, "auto", { kind: "Journal", party: "GST", ledger: "GST payable", confidence: 98, reason: "CPIN matches the challan" }),
     L("l21", "p1", "21-09-2026", "NEFT-RAZORPAY SOFTWARE-SETTLEMENT", 81906.16, "auto", { kind: "Receipt", ref: "REC 2026-59", party: "Razorpay", confidence: 96, reason: "Settlement report total" }),
     L("l22", "p1", "20-09-2026", "ACH/LIC OF INDIA/PREMIUM", -5400, "matched", { kind: "Expense", party: "LIC of India", ledger: "Insurance" }),
+    // One bank line, many entries: a bulk payout made from LEDGERS.
+    L("l23", "p1", "30-09-2026", "NEFT BULK UPLOAD AXOMB BATCH 27590 - 6 TXNS", -184300, "suggested", { kind: "Bill payment", ref: "6 vouchers", party: "Vendor batch · Sept 2", confidence: 97, reason: "Bulk payout PO-1034 from LEDGERS · same total" }),
+    // Transfer between own accounts: both sides are bank lines.
+    L("l24", "p1", "03-10-2026", "IMPS-OWN A/C TRANSFER-ICICI 4456", -50000, "suggested", { kind: "Transfer", party: "ICICI ••4456", confidence: 96, reason: "₹50,000 credited to ICICI ••4456 the same day", pairLineId: "l42" }),
 
     // Axis ••5068 — Payroll
     L("l30", "p4", "02-10-2026", "NEFT-AXOMB27588-ARJUN NAIR-SALARY", -38500, "suggested", { kind: "Payment voucher", ref: "VOU 2026-31", party: "Arjun Nair", ledger: "Salaries", confidence: 93, reason: "Salary run · same amount" }),
@@ -83,6 +92,7 @@ export function initialBankLines(): BankLine[] {
     // ICICI ••4456 — Collections
     L("l40", "p2", "04-10-2026", "NEFT-INDBN26268991204-ZENITH FABRICS PRIVATE LIMITED", 18000, "auto", { kind: "Receipt", ref: "REC 2026-64", party: "Zenith Fabrics", confidence: 97, reason: "Same amount and payer name" }),
     L("l41", "p2", "30-09-2026", "UPI/CR/BLUE OCEAN TRADERS", 32000, "auto", { kind: "Receipt", ref: "REC 2026-58", party: "Blue Ocean Traders", confidence: 95, reason: "Same amount and payer name" }),
+    L("l42", "p2", "03-10-2026", "IMPS-AXIS 9012-OWN TRANSFER", 50000, "suggested", { kind: "Transfer", party: "Axis ••9012", confidence: 96, reason: "₹50,000 debited from Axis ••9012 the same day", pairLineId: "l24" }),
 
     // Federal ••6942
     L("l50", "p6", "19-09-2026", "CHQ PAID 000318 VERTEX PACKAGING", -2700, "suggested", { kind: "Bill payment", ref: "VOU 2026-33", party: "Vertex Packaging", confidence: 91, reason: "Cheque no. 000318 on the voucher" }),
@@ -93,15 +103,51 @@ export function initialBankLines(): BankLine[] {
 }
 
 export function initialBookEntries(): BookEntry[] {
+  return [...openBookEntries(), ...linkedEntries(initialBankLines())];
+}
+
+/** Entries in the books with no bank line yet. */
+export function openBookEntries(): BookEntry[] {
   return [
     { id: "b1", accountId: "p1", date: "15-09-2026", ref: "VOU 2026-36", kind: "Payment voucher", party: "Shivam Trading", amount: -2000, daysOpen: 21, note: "Cheque 000412 not presented yet" },
     { id: "b2", accountId: "p1", date: "30-09-2026", ref: "VOU 2026-39", kind: "Payment voucher", party: "Ananya Rao", amount: -3377, daysOpen: 6, note: "Recorded as paid, not seen at the bank" },
     { id: "b3", accountId: "p1", date: "28-09-2026", ref: "REC 2026-57", kind: "Receipt", party: "Blue Ocean Traders", amount: 423, daysOpen: 8, note: "No bank account given", assumedAccount: true },
     { id: "b4", accountId: "p4", date: "29-09-2026", ref: "VOU 2026-29", kind: "Payment voucher", party: "Divya Menon", amount: -3500, daysOpen: 7, note: "Salary advance, not seen at the bank" },
-    { id: "b5", accountId: "p6", date: "18-09-2026", ref: "VOU 2026-33", kind: "Payment voucher", party: "Vertex Packaging", amount: -2700, daysOpen: 18, note: "Cheque 000318" },
     { id: "b6", accountId: "p3", date: "01-10-2026", ref: "REC 2026-55", kind: "Receipt", party: "Kiran Enterprises", amount: 40000, daysOpen: 5, note: "IndusInd isn't connected yet" },
     { id: "b7", accountId: "p3", date: "02-10-2026", ref: "REC 2026-68", kind: "Receipt", party: "Sharma Retail", amount: 22000, daysOpen: 4, note: "IndusInd isn't connected yet" },
   ];
+}
+
+// The vouchers behind the bulk payout line.
+const BATCHES: Record<string, [ref: string, party: string, amount: number][]> = {
+  l23: [
+    ["VOU 2026-41", "Kavya Textiles", 42000],
+    ["VOU 2026-42", "Sunrise Logistics", 38500],
+    ["VOU 2026-43", "Orbit Supplies", 31200],
+    ["VOU 2026-44", "Vertex Packaging", 27600],
+    ["VOU 2026-45", "Shivam Trading", 25000],
+    ["VOU 2026-46", "Deepak Trading", 20000],
+  ],
+};
+
+/** The book entry a matched (or proposed) bank line points to. A bank charge or transfer the AI proposes has none until accepted. */
+export function entryForLine(l: BankLine): BookEntry {
+  const m = l.match!;
+  const kind: BookEntry["kind"] = m.kind === "Receipt" ? "Receipt" : m.kind === "Journal" || m.kind === "Transfer" ? "Journal" : "Payment voucher";
+  const prefix = m.kind === "Transfer" ? "CON" : m.kind === "Expense" ? "EXP" : "JV";
+  return { id: `e-${l.id}`, accountId: l.accountId, date: l.date, ref: m.ref ?? `${prefix} ${l.id.toUpperCase()}`, kind, party: m.party, amount: l.amount, lineId: l.id };
+}
+
+/** Book entries already linked to bank lines: matched ones, and the ones the AI proposed that exist in the books. */
+export function linkedEntries(lines: BankLine[]): BookEntry[] {
+  return lines.flatMap((l): BookEntry[] => {
+    if (!l.match) return [];
+    const batch = BATCHES[l.id];
+    if (batch)
+      return batch.map(([ref, party, amount], i) => ({ id: `e-${l.id}-${i}`, accountId: l.accountId, date: l.date, ref, kind: "Payment voucher", party, amount: -amount, lineId: l.id }));
+    if (!l.match.ref && l.status === "suggested") return [];
+    return [entryForLine(l)];
+  });
 }
 
 export const LEDGERS = [
@@ -186,26 +232,32 @@ export function initialImports(): StatementImport[] {
 }
 
 export interface ReconSummary {
+  /** Bank lines with an AI match waiting to be confirmed. */
   suggested: number;
+  /** Bank lines with no match. */
   needs: number;
   auto: number;
+  /** Book entries with no bank line ("Not in bank"). */
   booksOnly: BookEntry[];
-  /** In bank − In your books: unresolved bank lines minus book entries the bank hasn't shown. */
+  /** In bank − In your books: bank lines with nothing in the books, minus book entries the bank hasn't shown. */
   difference: number;
   reconciled: boolean;
 }
 
 export function reconFor(accountId: string, lines: BankLine[], entries: BookEntry[]): ReconSummary {
   const mine = lines.filter((l) => l.accountId === accountId);
-  const open = mine.filter((l) => l.status === "suggested" || l.status === "needs");
-  const booksOnly = entries.filter((e) => e.accountId === accountId);
-  const difference = Math.round((open.reduce((s, l) => s + l.amount, 0) - booksOnly.reduce((s, e) => s + e.amount, 0)) * 100) / 100;
+  const linked = new Set(entries.map((e) => e.lineId).filter(Boolean));
+  const bankOnly = mine.filter((l) => !linked.has(l.id));
+  const booksOnly = entries.filter((e) => e.accountId === accountId && !e.lineId);
+  const difference = Math.round((bankOnly.reduce((s, l) => s + l.amount, 0) - booksOnly.reduce((s, e) => s + e.amount, 0)) * 100) / 100;
+  const suggested = mine.filter((l) => l.status === "suggested").length;
+  const needs = mine.filter((l) => l.status === "needs").length;
   return {
-    suggested: mine.filter((l) => l.status === "suggested").length,
-    needs: mine.filter((l) => l.status === "needs").length,
+    suggested,
+    needs,
     auto: mine.filter((l) => l.status === "auto").length,
     booksOnly,
     difference,
-    reconciled: open.length === 0 && booksOnly.length === 0,
+    reconciled: suggested === 0 && needs === 0 && booksOnly.length === 0,
   };
 }

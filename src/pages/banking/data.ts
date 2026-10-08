@@ -134,6 +134,9 @@ export function initialAccounts(): CompanyAccount[] {
   ];
 }
 
+/** Banking → Transactions: every account at once. */
+export const ALL_ACCOUNTS = "all";
+
 export function last4(number: string) {
   return "••" + number.slice(-4);
 }

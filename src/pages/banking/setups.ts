@@ -1,7 +1,18 @@
 // Dev panel → Banking setup: whole-world presets that put Banking into one stage of a business's journey
 // (no bank yet, bank added, statement uploaded, connected…) so every empty and in-between state can be seen.
 import { initialAccounts, type CompanyAccount } from "./data";
-import { initialBankLines, initialBookEntries, initialImports, initialPayouts, type BankLine, type BookEntry, type Payout, type StatementImport } from "./ledgerData";
+import {
+  initialBankLines,
+  initialBookEntries,
+  initialImports,
+  initialPayouts,
+  linkedEntries,
+  openBookEntries,
+  type BankLine,
+  type BookEntry,
+  type Payout,
+  type StatementImport,
+} from "./ledgerData";
 
 export type BankingSetup = "new" | "added" | "statement" | "live" | "review" | "expired" | "mixed";
 
@@ -52,7 +63,7 @@ export function setupData(setup: BankingSetup): SetupData {
       return {
         accounts: [{ ...axis, verified: false, connection: "none", approval: "single", syncedMinutesAgo: undefined, booksBalance: 186420 }],
         bankLines: [],
-        bookEntries: initialBookEntries().filter((e) => e.accountId === "p1"),
+        bookEntries: openBookEntries().filter((e) => e.accountId === "p1"),
         payouts: [],
         imports: [],
         moneyFlow: SMALL_FLOW,
@@ -63,17 +74,19 @@ export function setupData(setup: BankingSetup): SetupData {
       const extra = initialBankLines()
         .filter((l) => ["l03", "l08", "l10"].includes(l.id))
         .map((l) => ({ ...l, id: `${l.id}c`, accountId: "p5", date: l.date.replace("-10-", "-09-") }));
-      return { accounts: [canara], ...only("p5"), bankLines: [...only("p5").bankLines, ...extra], moneyFlow: SMALL_FLOW };
+      const d = only("p5");
+      return { accounts: [canara], ...d, bankLines: [...d.bankLines, ...extra], bookEntries: [...d.bookEntries, ...linkedEntries(extra)], moneyFlow: SMALL_FLOW };
     }
 
     case "live": {
       const d = only("p1");
+      // Everything the engine suggested has been accepted; nothing is left in the books alone.
+      const bankLines = d.bankLines.filter((l) => l.status !== "needs").map((l): BankLine => (l.status === "suggested" ? { ...l, status: "matched" } : l));
       return {
         accounts: [axis],
         ...d,
-        // Everything the engine suggested has been accepted; nothing is left in the books alone.
-        bankLines: d.bankLines.filter((l) => l.status !== "needs").map((l) => (l.status === "suggested" ? { ...l, status: "matched" } : l)),
-        bookEntries: [],
+        bankLines,
+        bookEntries: linkedEntries(bankLines),
         payouts: d.payouts.filter((p) => p.status === "paid"),
         moneyFlow: MAIN_FLOW,
       };

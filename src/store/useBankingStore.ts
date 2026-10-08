@@ -16,6 +16,7 @@ import {
 } from "../pages/banking/data";
 import { setupData, type BankingSetup, type MoneyFlow } from "../pages/banking/setups";
 import {
+  entryForLine,
   type BankLine,
   type BookEntry,
   type Match,
@@ -79,11 +80,13 @@ interface BankingState {
   addCompanyAccount: (input: NewCompanyAccountInput) => CompanyAccount;
   updateAccount: (accountId: string, patch: Partial<CompanyAccount>) => void;
   setPrimary: (accountId: string) => void;
-  syncAccount: (accountId: string) => Promise<void>;
+  /** Pull the latest balance and statement from the bank; resolves with the number of new transactions. */
+  syncAccount: (accountId: string) => Promise<number>;
   uploadStatement: (accountId: string, fileName?: string) => void;
 
   // ---- reconciliation (Transactions) ----
   acceptMatches: (lineIds: string[]) => void;
+  /** Reject an AI match (or undo a match): the bank line becomes Unmatched, its entries Not in bank. */
   rejectMatch: (lineId: string) => void;
   /** Settle a line by hand: link an existing book entry (bookEntryId) or record a new one. */
   resolveLine: (lineId: string, match: Match, bookEntryId?: string) => void;
@@ -100,6 +103,15 @@ interface BankingState {
 }
 
 let payoutSeq = 1042;
+const synced = new Set<string>();
+const todayDMY = () => {
+  const d = new Date();
+  return [d.getDate(), d.getMonth() + 1, d.getFullYear()].map((n) => String(n).padStart(2, "0")).join("-");
+};
+const daysAgo = (dmy: string) => {
+  const [d, m, y] = dmy.split("-").map(Number);
+  return Math.max(0, Math.floor((Date.now() - new Date(y, m - 1, d).getTime()) / 86_400_000));
+};
 const nowLabel = () => "Today, " + new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
 export const useBankingStore = create<BankingState>((set, get) => ({
@@ -110,8 +122,14 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   setup: "mixed",
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
-  resetData: () => set({ contacts: initialContacts(), employees: initialEmployees(), ...setupData(get().setup) }),
-  applySetup: (setup) => set({ setup, ...setupData(setup) }),
+  resetData: () => {
+    synced.clear();
+    set({ contacts: initialContacts(), employees: initialEmployees(), ...setupData(get().setup) });
+  },
+  applySetup: (setup) => {
+    synced.clear();
+    set({ setup, ...setupData(setup) });
+  },
 
   verifyAccount: () =>
     new Promise((resolve) => {
@@ -199,7 +217,24 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     new Promise((resolve) => {
       setTimeout(() => {
         get().updateAccount(accountId, { syncedMinutesAgo: 0 });
-        resolve();
+        // The first sync of a session brings in one new receipt, already matched by the AI.
+        if (synced.has(accountId)) return resolve(0);
+        synced.add(accountId);
+        const line: BankLine = {
+          id: `ls${Date.now()}${accountId}`,
+          accountId,
+          date: todayDMY(),
+          narration: "NEFT-HDFCN52026100877-KIRAN ENTERPRISES-INV-2026-131",
+          amount: 26500,
+          status: "suggested",
+          match: { kind: "Receipt", ref: "REC 2026-70", party: "Kiran Enterprises", confidence: 96, reason: "Same amount · INV-2026-131 in the narration" },
+        };
+        set((s) => ({
+          bankLines: [line, ...s.bankLines],
+          bookEntries: [...s.bookEntries, entryForLine(line)],
+          accounts: s.accounts.map((a) => (a.id === accountId && a.liveBalance ? { ...a, liveBalance: [a.liveBalance[0] + line.amount, a.liveBalance[1] + line.amount] } : a)),
+        }));
+        resolve(1);
       }, 900);
     }),
 
@@ -207,8 +242,7 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     const id = `i${Date.now()}`;
     set((s) => ({ imports: [{ id, accountId, source: "upload", file: fileName, period: "Up to today", status: "processing", at: nowLabel() }, ...s.imports] }));
     setTimeout(() => {
-      const today = new Date();
-      const date = [today.getDate(), today.getMonth() + 1, today.getFullYear()].map((n) => String(n).padStart(2, "0")).join("-");
+      const date = todayDMY();
       const prev = get().accounts.find((a) => a.id === accountId)?.statement?.balance ?? 75000;
       get().updateAccount(accountId, { statement: { date, balance: Math.round(prev * 1.04 * 100) / 100 } });
       set((s) => ({ imports: s.imports.map((i) => (i.id === id ? { ...i, status: "imported", lines: 37 } : i)) }));
@@ -216,15 +250,42 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   },
 
   acceptMatches: (lineIds) =>
-    set((s) => ({ bankLines: s.bankLines.map((l) => (lineIds.includes(l.id) && l.match ? { ...l, status: "matched" } : l)) })),
+    set((s) => {
+      // A transfer between own accounts is accepted on both sides.
+      const ids = new Set(lineIds);
+      for (const l of s.bankLines) if (ids.has(l.id) && l.match?.pairLineId) ids.add(l.match.pairLineId);
+      const accepted = s.bankLines.filter((l) => ids.has(l.id) && l.match && l.status === "suggested");
+      const linked = new Set(s.bookEntries.map((e) => e.lineId));
+      return {
+        bankLines: s.bankLines.map((l) => (accepted.includes(l) ? { ...l, status: "matched" } : l)),
+        // A match the AI proposed as a new entry (bank charge, rent, transfer) is recorded now.
+        bookEntries: [...s.bookEntries, ...accepted.filter((l) => !linked.has(l.id)).map(entryForLine)],
+      };
+    }),
 
-  rejectMatch: (lineId) => set((s) => ({ bankLines: s.bankLines.map((l) => (l.id === lineId ? { ...l, status: "needs", match: undefined } : l)) })),
+  rejectMatch: (lineId) =>
+    set((s) => {
+      const pair = s.bankLines.find((l) => l.id === lineId)?.match?.pairLineId;
+      const ids = [lineId, ...(pair ? [pair] : [])];
+      return {
+        bankLines: s.bankLines.map((l) => (ids.includes(l.id) ? { ...l, status: "needs", match: undefined } : l)),
+        bookEntries: s.bookEntries.map((e) =>
+          e.lineId && ids.includes(e.lineId) ? { ...e, lineId: undefined, daysOpen: daysAgo(e.date), note: "Unlinked from a bank transaction" } : e,
+        ),
+      };
+    }),
 
   resolveLine: (lineId, match, bookEntryId) =>
-    set((s) => ({
-      bankLines: s.bankLines.map((l) => (l.id === lineId ? { ...l, status: "matched", match } : l)),
-      bookEntries: bookEntryId ? s.bookEntries.filter((e) => e.id !== bookEntryId) : s.bookEntries,
-    })),
+    set((s) => {
+      const line = s.bankLines.find((l) => l.id === lineId)!;
+      const matched: BankLine = { ...line, status: "matched", match };
+      return {
+        bankLines: s.bankLines.map((l) => (l.id === lineId ? matched : l)),
+        bookEntries: bookEntryId
+          ? s.bookEntries.map((e) => (e.id === bookEntryId ? { ...e, lineId } : e))
+          : [...s.bookEntries, { ...entryForLine(matched), id: `e-${lineId}-${Date.now()}` }],
+      };
+    }),
 
   moveEntry: (entryId, accountId) =>
     set((s) => ({ bookEntries: s.bookEntries.map((e) => (e.id === entryId ? { ...e, accountId, assumedAccount: false } : e)) })),

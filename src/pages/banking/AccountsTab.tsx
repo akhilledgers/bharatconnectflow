@@ -14,6 +14,7 @@ import { BankIcon } from "./BankLogo";
 import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
 import { reconFor } from "./ledgerData";
 import { bankBalanceOf, daysSince } from "./overviewData";
+import { pickStatementFile } from "./statementUpload";
 import { SyncBadge } from "./SyncBadge";
 
 const toast = (message: string, tone: "success" | "error" = "success") => useStore.getState().pushToast(message, tone);
@@ -56,18 +57,11 @@ export function AccountsTab({
     if (ok < ids.length) toast("The bank couldn't confirm some accounts. Check the account number and IFSC.", "error");
   };
 
-  const upload = (a: CompanyAccount) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".pdf,.csv,.xls,.xlsx";
-    input.onchange = () => {
-      const f = input.files?.[0];
-      if (!f) return;
-      useBankingStore.getState().uploadStatement(a.id, f.name);
-      toast(`Importing ${f.name} for ${shortName(a)}`);
-    };
-    input.click();
-  };
+  const upload = (a: CompanyAccount) =>
+    pickStatementFile((name) => {
+      useBankingStore.getState().uploadStatement(a.id, name);
+      toast(`Importing ${name} for ${shortName(a)}`);
+    });
 
   const row = (a: CompanyAccount) => {
     const bank = bankBalanceOf(a, mode);

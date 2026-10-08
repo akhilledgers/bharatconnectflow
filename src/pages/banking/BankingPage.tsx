@@ -5,6 +5,7 @@ import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
 import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
+import { ALL_ACCOUNTS } from "./data";
 import { reconFor } from "./ledgerData";
 import { AccountsTab } from "./AccountsTab";
 import { AddBankAccountDrawer } from "./AddBankAccountDrawer";
@@ -37,10 +38,15 @@ export function BankingPage() {
   const bulkAvailable = payFrom.some((a) => a.bulkSupported);
 
   const [tab, setTab] = useState<BankingTab>("overview");
-  const [txnAccountPicked, setTxnAccount] = useState<string | null>(null);
+  const [txnAccountPicked, setTxnAccount] = useState<string>(ALL_ACCOUNTS);
   const [flow, setFlow] = useState<Flow>({ kind: "none" });
   const [moreOpen, setMoreOpen] = useState(false);
-  const txnAccount = accounts.find((a) => a.id === txnAccountPicked)?.id ?? (accounts.find((a) => a.primary) ?? accounts[0])?.id;
+  // One account, or All accounts (the default: the work queue across banks). With a single account there's nothing to combine.
+  const txnAccount = !accounts.length
+    ? undefined
+    : accounts.length === 1
+      ? accounts[0].id
+      : (accounts.find((a) => a.id === txnAccountPicked)?.id ?? ALL_ACCOUNTS);
 
   const toReview = accounts.reduce((s, a) => {
     const r = reconFor(a.id, lines, entries);
@@ -124,7 +130,7 @@ export function BankingPage() {
         )}
         {tab === "transactions" &&
           (txnAccount ? (
-            <TransactionsTab key={txnAccount} accountId={txnAccount} onAccountChange={setTxnAccount} />
+            <TransactionsTab accountId={txnAccount} onAccountChange={setTxnAccount} onConnect={(accountId) => setFlow({ kind: "register", accountId })} />
           ) : (
             <NoAccounts onAdd={() => setFlow({ kind: "add" })}>Add a bank account to see its transactions next to your books.</NoAccounts>
           ))}
