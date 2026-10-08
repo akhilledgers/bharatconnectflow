@@ -10,10 +10,11 @@ import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, fmtINR, last4, type CompanyAccount } from "./data";
+import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
 import { LEDGERS, PARTIES, reconFor, type BankLine, type BookEntry, type Match, type MatchKind } from "./ledgerData";
-import { RECONCILED_TO, bankBalanceOf } from "./overviewData";
+import { RECONCILED_TO, bankBalanceOf, shortDate } from "./overviewData";
 import { OVERLAY } from "./shared";
+import { StatCard } from "./StatCard";
 import { useEscape } from "./useEscape";
 
 type View = "suggested" | "needs" | "auto" | "books" | "all";
@@ -59,7 +60,7 @@ export function TransactionsTab({ accountId, onAccountChange }: { accountId: str
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0];
   const recon = reconFor(account.id, lines, entries);
   const bank = bankBalanceOf(account, mode);
-  const inBooks = bank ? bank.amount - recon.difference : -recon.difference;
+  const inBooks = bank ? bank.amount - recon.difference : (account.booksBalance ?? -recon.difference);
 
   const [view, setView] = useState<View>(recon.suggested ? "suggested" : recon.needs ? "needs" : "all");
   const [query, setQuery] = useState("");
@@ -95,68 +96,102 @@ export function TransactionsTab({ accountId, onAccountChange }: { accountId: str
     toast(ids.length === 1 ? "Match accepted" : `${ids.length} matches accepted`);
   };
 
+  const open = recon.suggested + recon.needs + recon.booksOnly.length;
   const visibleIds = rows.map((l) => l.id);
   const allSelected = view === "suggested" && visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {/* Account + bank vs books */}
-      <Card className="flex-row flex-wrap items-center gap-x-8 gap-y-4 px-5 py-4">
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setSwitcherOpen(!switcherOpen)}
-            className="flex cursor-pointer items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-accent"
-          >
-            <AccountMark account={account} />
-            <div>
-              <div className="text-2sm font-semibold">{accountName(account)}</div>
-              <div className="text-xs text-muted-foreground">{account.nickname || account.bank}</div>
+      <div className="relative self-start">
+        <button
+          type="button"
+          onClick={() => setSwitcherOpen(!switcherOpen)}
+          className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-left shadow-xs shadow-black/5 hover:bg-accent"
+        >
+          <AccountMark account={account} />
+          <div>
+            <div className="text-2sm font-semibold">{accountName(account)}</div>
+            <div className="text-xs text-muted-foreground">{account.nickname || account.bank}</div>
+          </div>
+          <ChevronDown className="size-4 opacity-60" />
+        </button>
+        {switcherOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setSwitcherOpen(false)} />
+            <div className={cn(popoverCls, "absolute start-0 top-[calc(100%+4px)] z-50 flex w-72 flex-col gap-0.5 p-1")}>
+              {accounts.map((a) => {
+                const r = reconFor(a.id, lines, entries);
+                const open = r.suggested + r.needs;
+                return (
+                  <button
+                    key={a.id}
+                    className={cn(menuItemCls, "justify-between", a.id === account.id && "bg-accent")}
+                    onClick={() => {
+                      onAccountChange(a.id);
+                      setSwitcherOpen(false);
+                      setSelected([]);
+                      setView(r.suggested ? "suggested" : r.needs ? "needs" : "all");
+                    }}
+                  >
+                    <span className="truncate">
+                      {accountName(a)}
+                      {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                    </span>
+                    {open > 0 && <span className="text-xs text-muted-foreground">{open} to review</span>}
+                  </button>
+                );
+              })}
             </div>
-            <ChevronDown className="size-4 opacity-60" />
-          </button>
-          {switcherOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setSwitcherOpen(false)} />
-              <div className={cn(popoverCls, "absolute start-0 top-[calc(100%+4px)] z-50 flex w-72 flex-col gap-0.5 p-1")}>
-                {accounts.map((a) => {
-                  const r = reconFor(a.id, lines, entries);
-                  const open = r.suggested + r.needs;
-                  return (
-                    <button
-                      key={a.id}
-                      className={cn(menuItemCls, "justify-between", a.id === account.id && "bg-accent")}
-                      onClick={() => {
-                        onAccountChange(a.id);
-                        setSwitcherOpen(false);
-                        setSelected([]);
-                        setView(r.suggested ? "suggested" : r.needs ? "needs" : "all");
-                      }}
-                    >
-                      <span className="truncate">
-                        {accountName(a)}
-                        {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                      </span>
-                      {open > 0 && <span className="text-xs text-muted-foreground">{open} to review</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+          </>
+        )}
+      </div>
 
-        <Stat label="In bank" value={bank ? fmtINR(bank.amount) : "—"} />
-        <Stat label="In your books" value={fmtINR(inBooks)} />
-        {recon.reconciled ? (
-          <Stat label="Status" value={<span className="text-[var(--color-success-accent)]">Reconciled</span>} />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="In bank"
+          value={bank ? fmtINR(bank.amount) : "—"}
+          tone={!bank ? "muted" : bank.source === "stale" ? "warn" : "primary"}
+          sub={
+            !bank
+              ? account.bankKey
+                ? "Connect the account to see it"
+                : "Upload a statement to see it"
+              : bank.source === "live"
+                ? `Live · synced ${account.syncedMinutesAgo ? syncedLabel(account.syncedMinutesAgo) : "just now"}`
+                : bank.source === "stale"
+                  ? `Last known · expired ${syncedLabel(account.syncedMinutesAgo ?? 0)}`
+                  : `As per statement · ${shortDate(account.statement!.date)}`
+          }
+        />
+        <StatCard label="In your books" value={fmtINR(inBooks)} tone="purple" sub="Bank Book · as of today" />
+        {!bank ? (
+          <StatCard label="Difference" value="Can't compare yet" tone="muted" sub="Needs bank data" />
+        ) : recon.reconciled ? (
+          <StatCard label="Difference" value="Reconciled" tone="good" sub="Books match the bank" />
         ) : (
-          <Stat label="Difference" value={<span className="text-[var(--color-warning-accent)]">{fmtINR(Math.abs(recon.difference))}</span>} />
+          <StatCard
+            label="Difference"
+            value={fmtINR(Math.abs(recon.difference))}
+            tone="warn"
+            sub={RECONCILED_TO[account.id] ? `Last fully reconciled on ${shortDate(RECONCILED_TO[account.id])}` : "Not reconciled yet"}
+          />
         )}
-        {RECONCILED_TO[account.id] && !recon.reconciled && (
-          <div className="text-xs text-muted-foreground">Last fully reconciled on {RECONCILED_TO[account.id]}</div>
-        )}
-      </Card>
+        <StatCard
+          label="To review"
+          value={!bank ? "—" : open ? `${open} item${open === 1 ? "" : "s"}` : "None"}
+          tone={open && bank ? "warn" : "muted"}
+          sub={
+            !bank
+              ? "Matching starts once bank data is in"
+              : open
+              ? [recon.suggested && `${recon.suggested} by AI`, recon.needs && `${recon.needs} need you`, recon.booksOnly.length && `${recon.booksOnly.length} books only`]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Nothing left to match"
+          }
+        />
+      </div>
 
       <Card className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
@@ -356,7 +391,11 @@ export function TransactionsTab({ accountId, onAccountChange }: { accountId: str
                         ? "Nothing needs you on this account."
                         : view === "auto"
                           ? "Nothing was auto-matched yet."
-                          : "No transactions match your search."}
+                          : !bank && !q
+                            ? account.bankKey
+                              ? "No bank transactions yet. Connect the account to bring them in."
+                              : "No bank transactions yet. Upload a statement to bring them in."
+                            : "No transactions match your search."}
                   </Empty>
                 )}
               </tbody>
@@ -388,15 +427,6 @@ function AccountMark({ account }: { account: CompanyAccount }) {
     <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
       <Landmark className="size-4" />
     </span>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-base font-semibold tabular-nums">{value}</div>
-    </div>
   );
 }
 

@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Banknote, Check, ChevronDown, Clock, Download, FileSpreadsheet, Receipt, RefreshCw, RotateCcw, Search, Send, Undo2, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Clock, Download, RefreshCw, RotateCcw, Search, Send, Undo2, X, XCircle } from "lucide-react";
 import { Badge, type BadgeVariant } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
-import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
@@ -14,6 +13,7 @@ import { CONNECTED_BANKING, fmtINR, last4 } from "./data";
 import type { Payout, PayoutStatus } from "./ledgerData";
 import { compactINR } from "./overviewData";
 import { OVERLAY } from "./shared";
+import { StatCard, StatLink } from "./StatCard";
 import { useEscape } from "./useEscape";
 
 type View = "action" | "progress" | "paid" | "all";
@@ -34,18 +34,20 @@ const IN_PROGRESS: PayoutStatus[] = ["awaiting", "processing"];
 const toast = (m: string) => useStore.getState().pushToast(m, "success");
 
 /** Everything paid out from LEDGERS, tracked until it's settled and in the books. */
-export function PayoutsTab({ onSingle, onBulk, onPayBill }: { onSingle: () => void; onBulk: () => void; onPayBill: () => void }) {
+export function PayoutsTab({ onSingle }: { onSingle: () => void }) {
   const payouts = useBankingStore((s) => s.payouts);
   const accounts = useBankingStore((s) => s.accounts);
   const [view, setView] = useState<View>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [menu, setMenu] = useState(false);
 
   const retried = new Set(payouts.map((p) => p.retryOf).filter(Boolean));
   const needsAction = payouts.filter((p) => NEEDS_ACTION.includes(p.status) && !retried.has(p.id));
   const inProgress = payouts.filter((p) => IN_PROGRESS.includes(p.status));
   const paid = payouts.filter((p) => p.status === "paid");
+  const processing = inProgress.filter((p) => p.status === "processing");
+  const awaiting = inProgress.filter((p) => p.status === "awaiting");
+  const sum = (list: Payout[]) => list.reduce((s, p) => s + p.amount, 0);
 
   const q = query.trim().toLowerCase();
   const rows = (view === "action" ? needsAction : view === "progress" ? inProgress : view === "paid" ? paid : payouts).filter(
@@ -62,47 +64,17 @@ export function PayoutsTab({ onSingle, onBulk, onPayBill }: { onSingle: () => vo
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-2sm text-muted-foreground">
-          <span>
-            Paid this month <span className="font-semibold text-foreground tabular-nums">{compactINR(paid.reduce((s, p) => s + p.amount, 0))}</span>
-          </span>
-          <span>
-            In progress <span className="font-semibold text-foreground tabular-nums">{compactINR(inProgress.reduce((s, p) => s + p.amount, 0))}</span> ({inProgress.length})
-          </span>
-          {needsAction.length > 0 && <span className="font-medium text-destructive">{needsAction.length} need action</span>}
-        </div>
-        <div className="relative">
-          <Button variant="primary" onClick={() => setMenu(!menu)}>
-            <Send />
-            New payout <ChevronDown />
-          </Button>
-          {menu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
-              <div className={cn(popoverCls, "absolute end-0 top-[calc(100%+4px)] z-50 flex w-52 flex-col gap-0.5 p-1")}>
-                {[
-                  { icon: <Banknote />, label: "Single transfer", run: onSingle },
-                  { icon: <FileSpreadsheet />, label: "Bulk transfer", run: onBulk },
-                  { icon: <Receipt />, label: "Pay a purchase bill", run: onPayBill },
-                ].map((m) => (
-                  <button
-                    key={m.label}
-                    className={menuItemCls}
-                    onClick={() => {
-                      setMenu(false);
-                      m.run();
-                    }}
-                  >
-                    {m.icon}
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Paid this month" value={compactINR(sum(paid))} tone="good" sub={`${paid.length} payout${paid.length === 1 ? "" : "s"}`} />
+        <StatCard label="With the bank" value={compactINR(sum(processing))} tone="primary" sub={processing.length ? `${processing.length} processing` : "Nothing processing"} />
+        <StatCard label="Awaiting approval" value={compactINR(sum(awaiting))} tone="purple" sub={awaiting.length ? `${awaiting.length} with the checker in net banking` : "Nothing waiting"} />
+        <StatCard
+          label="Needs action"
+          value={needsAction.length ? compactINR(sum(needsAction)) : "None"}
+          tone={needsAction.length ? "bad" : "muted"}
+          sub={needsAction.length ? <StatLink onClick={() => setView("action")}>{needsAction.length} failed, rejected or returned</StatLink> : "Nothing failed or returned"}
+        />
       </div>
 
       <Card className="min-w-0">
@@ -211,7 +183,19 @@ export function PayoutsTab({ onSingle, onBulk, onPayBill }: { onSingle: () => vo
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
-                    {view === "action" ? "No failed, rejected or returned payouts." : "No payouts here."}
+                    {payouts.length === 0 ? (
+                      <span className="flex flex-col items-center gap-3">
+                        No payouts yet. Payments you make from LEDGERS are tracked here until they're settled.
+                        <Button variant="primary" onClick={onSingle}>
+                          <Send />
+                          Pay someone
+                        </Button>
+                      </span>
+                    ) : view === "action" ? (
+                      "No failed, rejected or returned payouts."
+                    ) : (
+                      "No payouts here."
+                    )}
                   </td>
                 </tr>
               )}

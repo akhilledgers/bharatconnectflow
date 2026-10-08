@@ -116,6 +116,8 @@ export interface CompanyAccount {
   syncedMinutesAgo?: number;
   /** Balance from the last uploaded statement, for accounts without Connected Banking. */
   statement?: { date: string; balance: number };
+  /** Bank Book balance, for accounts with no bank data yet (otherwise it's worked out from the bank side). */
+  booksBalance?: number;
 }
 
 export function initialAccounts(): CompanyAccount[] {
@@ -123,11 +125,11 @@ export function initialAccounts(): CompanyAccount[] {
   return [
     { ...base, id: "p1", bank: "Axis Bank", bankKey: "axis", number: "921020023599012", ifsc: "UTIB0000004", nickname: "Main operating", primary: true, verified: true, connection: "connected", approval: "maker-checker", liveBalance: [482300, 5000], syncedMinutesAgo: 8 },
     { ...base, id: "p2", bank: "ICICI Bank", bankKey: "icici", number: "123405004456", ifsc: "ICIC0000123", nickname: "Collections", verified: true, connection: "connected", liveBalance: [115000, 2500], syncedMinutesAgo: 22 },
-    { ...base, id: "p3", bank: "IndusInd Bank", bankKey: "indusind", number: "201000628251", ifsc: "INDB0000007", nickname: "Vendor payments", liveBalance: [268450, 3000] },
+    { ...base, id: "p3", bank: "IndusInd Bank", bankKey: "indusind", number: "201000628251", ifsc: "INDB0000007", nickname: "Vendor payments", liveBalance: [268450, 3000], booksBalance: 62000 },
     { ...base, id: "p4", bank: "Axis Bank", bankKey: "axis", number: "921020045675068", ifsc: "UTIB0000004", nickname: "Payroll", verified: true, connection: "expired", approval: "maker-checker", liveBalance: [96300, 1200], syncedMinutesAgo: 2 * 24 * 60 },
     { ...base, id: "p5", bank: "Canara Bank", bankKey: null, number: "9938438484938484", ifsc: "CNRB0002456", statement: { date: "25-09-2026", balance: 124560 } },
     { ...base, id: "p6", bank: "Federal Bank", bankKey: null, number: "12340100006942", ifsc: "FDRL0001234", type: "Savings", verified: true, statement: { date: "20-09-2026", balance: 48210.55 } },
-    { ...base, id: "p7", bank: "Ahmedabad Mercantile Co-operative Bank", bankKey: null, number: "7376726387623", ifsc: "AMCB0000003" },
+    { ...base, id: "p7", bank: "Ahmedabad Mercantile Co-operative Bank", bankKey: null, number: "7376726387623", ifsc: "AMCB0000003", booksBalance: 18250 },
     { ...base, id: "p8", bank: "Citibank", bankKey: null, number: "78783983894894", ifsc: "CITI0000003", active: false, verified: true },
   ];
 }

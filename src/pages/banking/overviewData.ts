@@ -1,6 +1,5 @@
 // Sample figures for Banking → Overview that the prototype doesn't model elsewhere yet: the books side of
-// each account (from the Bank Book), what the AI recon engine has found, payouts in flight, and the month's
-// money in / out. Bank-side balances come from the accounts in the store.
+// each account (from the Bank Book) and how far it is reconciled. Bank-side balances come from the accounts in the store.
 import type { CompanyAccount } from "./data";
 
 /** Latest date each account was fully reconciled (before the open items now in Transactions). */
@@ -10,12 +9,6 @@ export const RECONCILED_TO: Record<string, string> = {
   p4: "31-08-2026",
   p5: "25-09-2026",
   p6: "17-09-2026",
-};
-
-/** This month vs last month, across all accounts. */
-export const MONEY_FLOW = {
-  in: { now: 842300, prev: 710500 },
-  out: { now: 695800, prev: 732100 },
 };
 
 /** Balance shown for an account on the bank side: live if connected (or last known if expired), else last statement. */
@@ -38,4 +31,10 @@ export function compactINR(n: number) {
   if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)}Cr`;
   if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)}L`;
   return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
+}
+
+/** "25-09-2026" → "25 Sep". */
+export function shortDate(dmy: string) {
+  const [d, m, y] = dmy.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }

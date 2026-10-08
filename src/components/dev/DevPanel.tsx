@@ -6,6 +6,7 @@ import { STATUS_META } from "../../lib/status";
 import { STOCK_HOLDING_ID, SHARMA_TRADERS_ID } from "../../mock/seed";
 import { BharatConnectMark } from "../layout/BharatConnectMark";
 import { CONNECTED_BANKING, last4, type ApprovalMode, type BankConnection } from "../../pages/banking/data";
+import { SETUP_OPTIONS } from "../../pages/banking/setups";
 import type { ConnectionState } from "../../types";
 
 const STATES: ConnectionState[] = [
@@ -312,43 +313,57 @@ function BankingOptions() {
   const resetData = useBankingStore((s) => s.resetData);
   const approveAwaiting = useBankingStore((s) => s.approveAwaiting);
   const failProcessing = useBankingStore((s) => s.failProcessing);
+  const setup = useBankingStore((s) => s.setup);
+  const applySetup = useBankingStore((s) => s.applySetup);
   const apiAccounts = accounts.filter((a) => a.bankKey && a.active);
   const anyConnected = apiAccounts.some((a) => a.connection === "connected");
 
   return (
     <>
-      <Group
-        label="Connected Banking"
-        hint={
-          anyConnected
-            ? "Only connected accounts appear in Fund Transfer's Pay From. ICICI is single-transfer only."
-            : "Nothing connected — Fund Transfer opens the Connect a Bank Account dialog."
-        }
-      >
-        <div className="space-y-2.5">
-          {apiAccounts.map((a) => {
-            const meta = CONNECTED_BANKING[a.bankKey!];
-            return (
-              <div key={a.id} className="space-y-1.5">
-                <div className="text-xs text-foreground">
-                  {meta.short} {last4(a.number)}
-                  {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                </div>
-                <Choice
-                  value={a.connection}
-                  options={CONNECTION_OPTIONS}
-                  onChange={(connection) =>
-                    updateAccount(a.id, { connection, ...(connection !== "none" ? { verified: true, syncedMinutesAgo: connection === "expired" ? 2880 : 5 } : {}) })
-                  }
-                />
-                {meta.approvalChoice && a.connection !== "none" && (
-                  <Choice value={a.approval} options={APPROVAL_OPTIONS} onChange={(approval: ApprovalMode) => updateAccount(a.id, { approval })} />
-                )}
-              </div>
-            );
-          })}
+      <Group label="Business stage" hint="Replaces accounts, transactions and payouts with this stage's sample data.">
+        <div className="grid grid-cols-2 gap-1.5">
+          {SETUP_OPTIONS.map((o) => (
+            <button key={o.value} onClick={() => applySetup(o.value)} className={`text-left ${OPTION} ${setup === o.value ? ON : OFF}`}>
+              {o.label}
+            </button>
+          ))}
         </div>
       </Group>
+
+      {apiAccounts.length > 0 && (
+        <Group
+          label="Connected Banking"
+          hint={
+            anyConnected
+              ? "Only connected accounts appear in Fund Transfer's Pay From. ICICI is single-transfer only."
+              : "Nothing connected — Fund Transfer opens the Connect a Bank Account dialog."
+          }
+        >
+          <div className="space-y-2.5">
+            {apiAccounts.map((a) => {
+              const meta = CONNECTED_BANKING[a.bankKey!];
+              return (
+                <div key={a.id} className="space-y-1.5">
+                  <div className="text-xs text-foreground">
+                    {meta.short} {last4(a.number)}
+                    {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                  </div>
+                  <Choice
+                    value={a.connection}
+                    options={CONNECTION_OPTIONS}
+                    onChange={(connection) =>
+                      updateAccount(a.id, { connection, ...(connection !== "none" ? { verified: true, syncedMinutesAgo: connection === "expired" ? 2880 : 5 } : {}) })
+                    }
+                  />
+                  {meta.approvalChoice && a.connection !== "none" && (
+                    <Choice value={a.approval} options={APPROVAL_OPTIONS} onChange={(approval: ApprovalMode) => updateAccount(a.id, { approval })} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Group>
+      )}
 
       <Group
         label="Account balance"
@@ -414,7 +429,7 @@ function BankingOptions() {
 
       <Group label="Sample data">
         <button onClick={resetData} className={`w-full ${OPTION} ${OFF}`}>
-          Reset accounts, transactions, payouts & payees
+          Reset this stage's sample data & payees
         </button>
       </Group>
     </>

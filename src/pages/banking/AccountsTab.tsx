@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { BadgeCheck, CloudDownload, FileText, Landmark, MoreHorizontal, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Upload } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
 import { ToggleGroup } from "../../components/ui/tabs";
@@ -11,20 +11,24 @@ import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { AddBankAccountDrawer } from "./AddBankAccountDrawer";
 import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
 import { reconFor } from "./ledgerData";
-import { bankBalanceOf } from "./overviewData";
+import { bankBalanceOf, daysSince } from "./overviewData";
+import { SyncBadge } from "./SyncBadge";
 
 const toast = (message: string, tone: "success" | "error" = "success") => useStore.getState().pushToast(message, tone);
 const shortName = (a: CompanyAccount) => `${a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank} ${last4(a.number)}`;
-const shortDate = (dmy: string) => {
-  const [d, m, y] = dmy.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-};
 
 /** Setup and upkeep of the company's bank accounts: how each one syncs, and the statement imports. */
-export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (accountId: string) => void; onOpenTransactions: (accountId: string) => void }) {
+export function AccountsTab({
+  onConnect,
+  onOpenTransactions,
+  onAdd,
+}: {
+  onConnect: (accountId: string) => void;
+  onOpenTransactions: (accountId: string) => void;
+  onAdd: () => void;
+}) {
   const accounts = useBankingStore((s) => s.accounts);
   const lines = useBankingStore((s) => s.bankLines);
   const entries = useBankingStore((s) => s.bookEntries);
@@ -34,7 +38,6 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
   const [query, setQuery] = useState("");
   const [verifying, setVerifying] = useState<string[]>([]);
   const [menu, setMenu] = useState<{ id: string; right: number; top?: number; bottom?: number } | null>(null);
-  const [adding, setAdding] = useState(false);
 
   const q = query.trim().toLowerCase();
   const list = accounts
@@ -69,15 +72,15 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
   const row = (a: CompanyAccount) => {
     const bank = bankBalanceOf(a, mode);
     const recon = reconFor(a.id, lines, entries);
-    const books = bank ? bank.amount - recon.difference : recon.booksOnly.length ? -recon.difference : null;
+    const books = bank ? bank.amount - recon.difference : (a.booksBalance ?? (recon.booksOnly.length ? -recon.difference : null));
     const isVerifying = verifying.includes(a.id);
 
     let sync: ReactNode;
     let action: ReactNode = null;
-    if (!a.active) sync = <Dot tone="muted">Inactive</Dot>;
-    else if (a.bankKey && a.connection === "connected") sync = <Dot tone="good">Live · {a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}</Dot>;
+    if (!a.active) sync = <SyncBadge account={a} />;
+    else if (a.bankKey && a.connection === "connected") sync = <SyncNote account={a}>Synced {a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}</SyncNote>;
     else if (a.bankKey && a.connection === "expired") {
-      sync = <Dot tone="warn">Connection expired · {syncedLabel(a.syncedMinutesAgo ?? 0)}</Dot>;
+      sync = <SyncNote account={a}>{syncedLabel(a.syncedMinutesAgo ?? 0)}</SyncNote>;
       action = (
         <Button size="sm" onClick={() => onConnect(a.id)}>
           <RefreshCw />
@@ -85,7 +88,7 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
         </Button>
       );
     } else if (a.bankKey) {
-      sync = <Dot tone="muted">{a.statement ? `Statement · ${shortDate(a.statement.date)}` : "Not connected"}</Dot>;
+      sync = <SyncBadge account={a} />;
       action = (
         <Button size="sm" onClick={() => onConnect(a.id)}>
           <Plug />
@@ -93,7 +96,7 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
         </Button>
       );
     } else {
-      sync = <Dot tone="muted">{a.statement ? `Statement · ${shortDate(a.statement.date)}` : "No statement yet"}</Dot>;
+      sync = <SyncNote account={a}>{a.statement && daysSince(a.statement.date) > 7 ? `${daysSince(a.statement.date)} days old` : null}</SyncNote>;
       action = (
         <Button size="sm" onClick={() => upload(a)}>
           <Upload />
@@ -202,7 +205,7 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
             ]}
           />
         </div>
-        <Button variant="primary" onClick={() => setAdding(true)}>
+        <Button onClick={onAdd}>
           <Plus />
           Add bank account
         </Button>
@@ -255,63 +258,65 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
         </div>
       </Card>
 
-      <Card className="min-w-0">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <div>
-            <div className="text-sm font-semibold">Statement imports</div>
-            <div className="text-xs text-muted-foreground">Bank feeds and the statements you upload</div>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className={tableCls}>
-            <tbody>
-              {imports.slice(0, 8).map((i) => {
-                const a = accounts.find((x) => x.id === i.accountId);
-                return (
-                  <tr key={i.id} className={trCls}>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-2.5">
-                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-3.5">
-                          {i.source === "api" ? <CloudDownload /> : <FileText />}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="truncate text-2sm">{i.source === "api" ? "Bank feed" : i.file}</div>
-                          <div className="text-xs text-muted-foreground">{a ? shortName(a) : ""}</div>
+      {imports.length > 0 && (
+        <Card className="min-w-0">
+          <CardHeader className="py-3">
+            <div>
+              <CardTitle>Statement imports</CardTitle>
+              <CardDescription>Bank feeds and the statements you upload</CardDescription>
+            </div>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className={tableCls}>
+              <tbody>
+                {imports.slice(0, 8).map((i) => {
+                  const a = accounts.find((x) => x.id === i.accountId);
+                  return (
+                    <tr key={i.id} className={trCls}>
+                      <td className={tdCls}>
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-3.5">
+                            {i.source === "api" ? <CloudDownload /> : <FileText />}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-2sm">{i.source === "api" ? "Bank feed" : i.file}</div>
+                            <div className="text-xs text-muted-foreground">{a ? shortName(a) : ""}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.period}</td>
-                    <td className={tdCls}>
-                      {i.status === "imported" ? (
-                        <span className="text-2sm">
-                          <Badge variant="success">Imported</Badge> <span className="ms-1 text-muted-foreground">{i.lines} transactions</span>
-                        </span>
-                      ) : i.status === "processing" ? (
-                        <span className="inline-flex items-center gap-2 text-2sm text-muted-foreground">
-                          <CircularSpinner size={14} /> Reading the statement…
-                        </span>
-                      ) : (
-                        <span className="text-2sm">
-                          <Badge variant="destructive">Failed</Badge> <span className="ms-1 text-muted-foreground">{i.reason}</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.at}</td>
-                    <td className={cn(tdCls, "w-32 text-right")}>
-                      {i.status === "failed" && a && (
-                        <Button size="sm" onClick={() => upload(a)}>
-                          <RotateCcw />
-                          Upload again
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                      </td>
+                      <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.period}</td>
+                      <td className={tdCls}>
+                        {i.status === "imported" ? (
+                          <span className="text-2sm">
+                            <Badge variant="success">Imported</Badge> <span className="ms-1 text-muted-foreground">{i.lines} transactions</span>
+                          </span>
+                        ) : i.status === "processing" ? (
+                          <span className="inline-flex items-center gap-2 text-2sm text-muted-foreground">
+                            <CircularSpinner size={14} /> Reading the statement…
+                          </span>
+                        ) : (
+                          <span className="text-2sm">
+                            <Badge variant="destructive">Failed</Badge> <span className="ms-1 text-muted-foreground">{i.reason}</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.at}</td>
+                      <td className={cn(tdCls, "w-32 text-right")}>
+                        {i.status === "failed" && a && (
+                          <Button size="sm" onClick={() => upload(a)}>
+                            <RotateCcw />
+                            Upload again
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {menu && menuAccount && (
         <>
@@ -351,7 +356,6 @@ export function AccountsTab({ onConnect, onOpenTransactions }: { onConnect: (acc
         </>
       )}
 
-      {adding && <AddBankAccountDrawer onClose={() => setAdding(false)} onConnect={onConnect} />}
     </div>
   );
 }
@@ -366,16 +370,11 @@ function GroupRow({ children }: { children: ReactNode }) {
   );
 }
 
-function Dot({ tone, children }: { tone: "good" | "warn" | "muted"; children: ReactNode }) {
+function SyncNote({ account, children }: { account: CompanyAccount; children: ReactNode }) {
   return (
-    <span className={cn("inline-flex items-center gap-2 text-2sm", tone === "warn" ? "font-medium text-[var(--color-warning-accent)]" : tone === "good" ? "text-foreground" : "text-muted-foreground")}>
-      <span
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          tone === "good" ? "bg-[var(--color-success-accent)]" : tone === "warn" ? "bg-[var(--color-warning-accent)]" : "bg-muted-foreground/40",
-        )}
-      />
-      {children}
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <SyncBadge account={account} />
+      {children && <span className="text-xs text-muted-foreground">{children}</span>}
     </span>
   );
 }

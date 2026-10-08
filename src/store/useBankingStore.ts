@@ -3,7 +3,6 @@ import {
   DEFAULT_SCENARIO,
   bankFromIfsc,
   IFSC_BANKS,
-  initialAccounts,
   initialContacts,
   initialEmployees,
   maskAccount,
@@ -15,11 +14,8 @@ import {
   type Employee,
   type PayeeContact,
 } from "../pages/banking/data";
+import { setupData, type BankingSetup, type MoneyFlow } from "../pages/banking/setups";
 import {
-  initialBankLines,
-  initialBookEntries,
-  initialImports,
-  initialPayouts,
   type BankLine,
   type BookEntry,
   type Match,
@@ -59,9 +55,13 @@ interface BankingState {
   bookEntries: BookEntry[];
   payouts: Payout[];
   imports: StatementImport[];
+  moneyFlow: MoneyFlow;
+  /** Which stage of the business's banking journey the sample data shows (dev panel). */
+  setup: BankingSetup;
 
   setScenario: (patch: Partial<BankingScenario>) => void;
   resetData: () => void;
+  applySetup: (setup: BankingSetup) => void;
   /** Resolves after the simulated penny-drop; outcome follows the dev panel's verification setting. */
   verifyAccount: () => Promise<boolean>;
   markContactAccountVerified: (contactId: string, accountId: string) => void;
@@ -106,23 +106,12 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   scenario: DEFAULT_SCENARIO,
   contacts: initialContacts(),
   employees: initialEmployees(),
-  accounts: initialAccounts(),
-  bankLines: initialBankLines(),
-  bookEntries: initialBookEntries(),
-  payouts: initialPayouts(),
-  imports: initialImports(),
+  ...setupData("mixed"),
+  setup: "mixed",
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
-  resetData: () =>
-    set({
-      contacts: initialContacts(),
-      employees: initialEmployees(),
-      accounts: initialAccounts(),
-      bankLines: initialBankLines(),
-      bookEntries: initialBookEntries(),
-      payouts: initialPayouts(),
-      imports: initialImports(),
-    }),
+  resetData: () => set({ contacts: initialContacts(), employees: initialEmployees(), ...setupData(get().setup) }),
+  applySetup: (setup) => set({ setup, ...setupData(setup) }),
 
   verifyAccount: () =>
     new Promise((resolve) => {
