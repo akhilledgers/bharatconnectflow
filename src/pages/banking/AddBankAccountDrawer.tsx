@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, Landmark, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Check, Eye, EyeOff, Landmark, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
@@ -7,11 +7,19 @@ import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, IFSC_BANKS, digitsOnly, last4, type CompanyAccount } from "./data";
+import { CONNECTED_BANKING, FY_START, digitsOnly, fmtINR, last4, type CompanyAccount } from "./data";
+import { lookupIfsc, type IfscResult } from "./ifscLookup";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
 
 const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const toDMY = (iso: string) => iso.split("-").reverse().join("-");
+const fyLabel = (iso: string) => {
+  const y = Number(iso.slice(0, 4));
+  return `FY ${y}–${String(y + 1).slice(2)}`;
+};
 
 /** Banking → Accounts → Add bank account. IFSC first: it identifies the bank and branch. */
 export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => void; onConnect: (accountId: string) => void }) {
@@ -23,20 +31,49 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
   const [type, setType] = useState<CompanyAccount["type"]>("Current");
   const [primary, setPrimary] = useState(!hasPrimary);
   const [verify, setVerify] = useState(true);
+  const [showNumber, setShowNumber] = useState(false);
+  const [lookup, setLookup] = useState<{ code: string; result: IfscResult | null }>({ code: "", result: null });
+  const [openingAmount, setOpeningAmount] = useState("");
+  const [overdrawn, setOverdrawn] = useState(false);
+  const [openingDate, setOpeningDate] = useState(FY_START);
   const [phase, setPhase] = useState<"form" | "saving" | "added">("form");
   const [added, setAdded] = useState<{ account: CompanyAccount; verified: boolean } | null>(null);
   useEscape(onClose);
 
   const ifscValid = IFSC_RE.test(ifsc);
-  const known = ifscValid ? IFSC_BANKS[ifsc.slice(0, 4)] : undefined;
-  const mismatch = confirm !== "" && confirm !== number;
-  const canSave = ifscValid && number.length >= 9 && confirm === number && phase === "form";
+  // Look the IFSC up as soon as it's complete; a stale answer for an earlier code is ignored.
+  useEffect(() => {
+    if (!ifscValid) return;
+    let live = true;
+    lookupIfsc(ifsc).then((result) => live && setLookup({ code: ifsc, result }));
+    return () => {
+      live = false;
+    };
+  }, [ifsc, ifscValid]);
+  const result = ifscValid && lookup.code === ifsc ? lookup.result : null;
+  const checking = ifscValid && !result;
+  const info = result?.status === "found" ? result.info : undefined;
+  const notFound = result?.status === "not-found";
+
+  // Only flag a mismatch once the second number is as long as the first, so typing isn't shouted at.
+  const mismatch = confirm.length >= number.length && confirm !== "" && confirm !== number;
+  const opening = openingAmount === "" ? null : Number(openingAmount);
+  const beforeFy = openingDate < FY_START;
+  const canSave = ifscValid && !notFound && !checking && number.length >= 9 && confirm === number && opening !== null && !!openingDate && !beforeFy && phase === "form";
 
   const save = async () => {
     if (!canSave) return;
     setPhase("saving");
     const store = useBankingStore.getState();
-    const account = store.addCompanyAccount({ ifsc, number, nickname: nickname.trim(), type, primary });
+    const account = store.addCompanyAccount({
+      ifsc,
+      number,
+      nickname: nickname.trim(),
+      type,
+      primary,
+      bank: info?.bank,
+      opening: { amount: overdrawn ? -opening! : opening!, date: toDMY(openingDate) },
+    });
     const verified = verify ? await store.verifyOwnAccount(account.id) : false;
     if (verify && !verified)
       useStore.getState().pushToast(`Account added, but ${account.bank} couldn't verify it. You can retry from the list.`, "error");
@@ -106,20 +143,44 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                 />
                 {ifsc.length === 11 && !ifscValid ? (
                   <p className="text-xs text-destructive">That isn't a valid IFSC. It has 4 letters, a 0, then 6 letters or digits.</p>
-                ) : ifscValid ? (
-                  <div className="flex items-center gap-2.5 rounded-md bg-muted px-3 py-2">
-                    {known?.bankKey ? (
-                      <BankIcon bank={known.bankKey} size={24} />
-                    ) : (
-                      <Landmark className="size-4 text-muted-foreground" />
-                    )}
-                    <div className="min-w-0 text-xs">
-                      <div className="font-medium text-foreground">{known?.bank ?? "Bank found"}</div>
-                      <div className="text-muted-foreground">{known?.branch ?? `Branch ${ifsc.slice(5)}`}</div>
+                ) : checking ? (
+                  <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2.5 text-xs text-muted-foreground">
+                    <CircularSpinner size={12} /> Checking IFSC…
+                  </div>
+                ) : notFound ? (
+                  <div className="flex items-start gap-2 rounded-md bg-[var(--color-destructive-soft)] px-3 py-2.5 text-xs text-[var(--color-destructive-accent)]">
+                    <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                    No branch has this IFSC. Check it on a cheque leaf or the passbook.
+                  </div>
+                ) : info ? (
+                  <div className="flex items-start gap-2.5 rounded-md border border-border bg-muted/50 px-3 py-2.5">
+                    {info.bankKey ? <BankIcon bank={info.bankKey} size={28} /> : <Landmark className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+                    <div className="min-w-0 flex-1 text-xs">
+                      <div className="flex items-center gap-1.5 text-2sm font-medium text-foreground">
+                        {info.bank}
+                        <Check className="size-3.5 text-[var(--color-success-accent)]" />
+                      </div>
+                      <div className="text-muted-foreground">{[info.branch, info.city, info.state].filter(Boolean).join(", ")}</div>
+                      {info.address && <div className="mt-0.5 text-muted-foreground">{info.address}</div>}
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {(["neft", "rtgs", "imps", "upi"] as const).map((rail) => (
+                          <span
+                            key={rail}
+                            className={cn(
+                              "rounded px-1.5 py-px text-[10px] font-semibold uppercase",
+                              info[rail] ? "bg-[var(--color-success-soft)] text-[var(--color-success-accent)]" : "bg-muted text-muted-foreground line-through",
+                            )}
+                          >
+                            {rail}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                ) : result?.status === "unreachable" ? (
+                  <p className="text-xs text-[var(--color-warning-accent)]">Couldn't reach the IFSC directory to confirm the branch. You can still add the account.</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Fills in the bank and branch.</p>
+                  <p className="text-xs text-muted-foreground">We'll find the bank and branch.</p>
                 )}
               </div>
 
@@ -128,7 +189,27 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                   <label htmlFor="add-number" className="text-xs font-medium">
                     Account number
                   </label>
-                  <Input id="add-number" value={number} onChange={(e) => setNumber(digitsOnly(e.target.value))} inputMode="numeric" className="tabular-nums" />
+                  <div className="relative">
+                    <Input
+                      id="add-number"
+                      type={showNumber ? "text" : "password"}
+                      value={number}
+                      onChange={(e) => setNumber(digitsOnly(e.target.value))}
+                      onCopy={(e) => e.preventDefault()}
+                      onCut={(e) => e.preventDefault()}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      className="pe-9 tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNumber(!showNumber)}
+                      aria-label={showNumber ? "Hide account number" : "Show account number"}
+                      className="absolute end-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
+                    >
+                      {showNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <label htmlFor="add-confirm" className="text-xs font-medium">
@@ -139,13 +220,21 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                     value={confirm}
                     onChange={(e) => setConfirm(digitsOnly(e.target.value))}
                     onPaste={(e) => e.preventDefault()}
+                    onDrop={(e) => e.preventDefault()}
                     inputMode="numeric"
+                    autoComplete="off"
                     aria-invalid={mismatch ? true : undefined}
                     className="tabular-nums"
                   />
                 </div>
               </div>
-              {mismatch && <p className="-mt-3 text-xs text-destructive">Account numbers don't match.</p>}
+              <p className={cn("-mt-3 text-xs", mismatch ? "text-destructive" : confirm && confirm === number ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
+                {mismatch
+                  ? "Account numbers don't match."
+                  : confirm && confirm === number
+                    ? `Account numbers match · ending ${number.slice(-4)}`
+                    : "The first number is hidden. Type it again to confirm; pasting is turned off."}
+              </p>
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="add-nickname" className="text-xs font-medium">
@@ -170,6 +259,56 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-border pt-4">
+                <div>
+                  <div className="text-sm font-medium">Opening balance</div>
+                  <p className="text-xs text-muted-foreground">The balance your books start from for this account, so your balance sheet is right.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <label htmlFor="add-opening" className="text-xs font-medium">
+                      Amount (₹)
+                    </label>
+                    <Input
+                      id="add-opening"
+                      value={openingAmount}
+                      onChange={(e) => setOpeningAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      className="tabular-nums"
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <label htmlFor="add-opening-date" className="text-xs font-medium">
+                      As on
+                    </label>
+                    <Input id="add-opening-date" type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
+                  </div>
+                </div>
+                <div role="radiogroup" aria-label="Balance type" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
+                  {([false, true] as const).map((od) => (
+                    <button
+                      key={String(od)}
+                      type="button"
+                      role="radio"
+                      aria-checked={overdrawn === od}
+                      onClick={() => setOverdrawn(od)}
+                      className={cn("h-8 flex-1 cursor-pointer rounded-md text-2sm", overdrawn === od && "bg-background font-medium shadow-lg shadow-black/5")}
+                    >
+                      {od ? "Overdrawn (OD / CC)" : "Money in the account"}
+                    </button>
+                  ))}
+                </div>
+                <p className={cn("text-xs", beforeFy ? "text-[var(--color-warning-accent)]" : "text-muted-foreground")}>
+                  {beforeFy
+                    ? `That's before your financial year starts (${fmtDate(FY_START)}). Enter the balance as on ${fmtDate(FY_START)} instead.`
+                    : openingDate === FY_START
+                      ? `Start of ${fyLabel(FY_START)}. Opened later in the year? Pick the opening date and enter 0 or the first deposit.`
+                      : `Opened during ${fyLabel(FY_START)}: the balance before ${fmtDate(openingDate)} is taken as zero.`}
+                  {opening !== null && opening > 0 && !beforeFy && ` ${fmtINR(overdrawn ? -opening : opening)} as on ${fmtDate(openingDate)}.`}
+                </p>
               </div>
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">

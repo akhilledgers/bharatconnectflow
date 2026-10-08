@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   DEFAULT_SCENARIO,
   bankFromIfsc,
+  bankKeyFromName,
   IFSC_BANKS,
   initialContacts,
   initialEmployees,
@@ -46,6 +47,9 @@ export interface NewCompanyAccountInput {
   nickname: string;
   type: CompanyAccount["type"];
   primary: boolean;
+  /** Bank name from the IFSC directory, when the lookup found it. */
+  bank?: string;
+  opening?: CompanyAccount["opening"];
 }
 
 interface BankingState {
@@ -197,12 +201,13 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     return ok;
   },
 
-  addCompanyAccount: ({ ifsc, number, nickname, type, primary }) => {
+  addCompanyAccount: ({ ifsc, number, nickname, type, primary, bank, opening }) => {
     const known = IFSC_BANKS[ifsc.slice(0, 4)];
     const account: CompanyAccount = {
       id: `p${Date.now()}`,
-      bank: known?.bank ?? bankFromIfsc(ifsc),
-      bankKey: known?.bankKey ?? null,
+      opening,
+      bank: bank ?? known?.bank ?? bankFromIfsc(ifsc),
+      bankKey: known?.bankKey ?? (bank ? bankKeyFromName(bank) : null),
       number,
       ifsc,
       nickname,

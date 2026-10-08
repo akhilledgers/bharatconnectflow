@@ -118,7 +118,12 @@ export interface CompanyAccount {
   statement?: { date: string; balance: number };
   /** Bank Book balance, for accounts with no bank data yet (otherwise it's worked out from the bank side). */
   booksBalance?: number;
+  /** Opening balance in the books: as on the FY start, or the day the account was opened if later. Negative = overdrawn. */
+  opening?: { amount: number; date: string };
 }
+
+/** Start of the business's financial year (Settings → Financial year). Opening balances are taken as on this date. */
+export const FY_START = "2026-04-01";
 
 export function initialAccounts(): CompanyAccount[] {
   const base = { active: true, primary: false, verified: false, connection: "none" as BankConnection, approval: "single" as ApprovalMode, type: "Current" as const, nickname: "" };
