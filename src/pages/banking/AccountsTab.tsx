@@ -5,7 +5,6 @@ import { Button } from "../../components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
-import { ToggleGroup } from "../../components/ui/tabs";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
@@ -14,6 +13,7 @@ import { BankIcon } from "./BankLogo";
 import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
 import { reconFor } from "./ledgerData";
 import { bankBalanceOf, daysSince } from "./overviewData";
+import { FilterChips } from "./FilterChips";
 import { pickStatementFile } from "./statementUpload";
 import { SyncBadge } from "./SyncBadge";
 
@@ -190,12 +190,12 @@ export function AccountsTab({
               className="h-8.5 w-full rounded-md border border-input bg-background ps-9 pe-3 text-2sm shadow-xs shadow-black/5 placeholder:text-muted-foreground/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30"
             />
           </div>
-          <ToggleGroup
+          <FilterChips
             value={show}
             onChange={setShow}
             items={[
-              { value: "active", label: "Active" },
-              { value: "inactive", label: "Inactive" },
+              { value: "active", label: "Active", count: accounts.filter((a) => a.active).length },
+              { value: "inactive", label: "Inactive", count: accounts.filter((a) => !a.active).length },
             ]}
           />
         </div>

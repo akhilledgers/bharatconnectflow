@@ -138,8 +138,8 @@ export function OverviewTab({
       key: "ai",
       tone: "info",
       icon: <Sparkles />,
-      title: suggestions ? `${suggestions} AI matches to confirm${needsYou ? ` · ${needsYou} unmatched` : ""}` : `${plural(needsYou, "bank transaction")} unmatched`,
-      detail: "Bank transactions paired with receipts, vouchers and bills. Confirm in one click.",
+      title: suggestions ? `${suggestions} matches suggested by AI${needsYou ? ` · ${needsYou} unmatched` : ""}` : `${plural(needsYou, "bank transaction")} unmatched`,
+      detail: "Bank transactions paired with receipts, vouchers and bills. Accept in one click.",
       action: "Review",
       run: review,
     });

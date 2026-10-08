@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, Landmark, Layers, Plug, RefreshCw, Search, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Landmark, Layers, Plug, RefreshCw, Search, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input, Select } from "../../components/ui/input";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
-import { ToggleGroup } from "../../components/ui/tabs";
+import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
@@ -15,13 +15,14 @@ import { ALL_ACCOUNTS, CONNECTED_BANKING, fmtINR, last4, syncedLabel, type Compa
 import { LEDGERS, PARTIES, reconFor, type BankLine, type BookEntry, type Match, type MatchKind } from "./ledgerData";
 import { RECONCILED_TO, bankBalanceOf, shortDate } from "./overviewData";
 import { OVERLAY } from "./shared";
+import { FilterChips } from "./FilterChips";
 import { StatCard } from "./StatCard";
 import { pickStatementFile } from "./statementUpload";
 import { useEscape } from "./useEscape";
 
 /** Which side of the reconciliation is listed. */
 type Side = "bank" | "books";
-/** Bank side: To confirm · Unmatched · Matched. Books side: To confirm · Not in bank · Matched. */
+/** Bank side: Suggested by AI · Unmatched · Matched. Books side: Suggested by AI · Not in bank · Matched. */
 type Filter = "all" | "confirm" | "unmatched" | "notinbank" | "matched";
 type Period = "this-month" | "last-month" | "last-3" | "fy" | "custom";
 
@@ -181,19 +182,19 @@ export function TransactionsTab({
     side === "bank"
       ? [
           { value: "all", label: "All" },
-          { value: "confirm", label: "To confirm" },
+          { value: "confirm", label: "Suggested by AI" },
           { value: "unmatched", label: "Unmatched" },
           { value: "matched", label: "Matched" },
         ]
       : [
           { value: "all", label: "All" },
-          { value: "confirm", label: "To confirm" },
+          { value: "confirm", label: "Suggested by AI" },
           { value: "notinbank", label: "Not in bank" },
           { value: "matched", label: "Matched" },
         ];
   const counts = side === "bank" ? bankCounts : bookCounts;
 
-  // Ids of the bank lines (to confirm) shown right now: what "Accept all" accepts.
+  // Ids of the bank lines (suggested by AI) shown right now: what "Accept all" accepts.
   const confirmIds =
     filter !== "confirm" ? [] : side === "bank" ? bankRows.map((l) => l.id) : [...new Set(bookRows.map((e) => e.lineId!).filter(Boolean))];
   const allSelected = confirmIds.length > 0 && confirmIds.every((id) => selected.includes(id));
@@ -201,7 +202,7 @@ export function TransactionsTab({
   const accept = (ids: string[]) => {
     store().acceptMatches(ids);
     setSelected((s) => s.filter((id) => !ids.includes(id)));
-    toast(ids.length === 1 ? "Match confirmed" : `${ids.length} matches confirmed`);
+    toast(ids.length === 1 ? "Match accepted" : `${ids.length} matches accepted`);
   };
   const reject = (lineId: string, undo = false) => {
     store().rejectMatch(lineId);
@@ -221,7 +222,7 @@ export function TransactionsTab({
     setSyncing(true);
     const found = (await Promise.all(ids.map((id) => store().syncAccount(id)))).reduce((s, n) => s + n, 0);
     setSyncing(false);
-    toast(found ? `${found} new transaction${found > 1 ? "s" : ""} · matched by AI, waiting to confirm` : "Up to date · no new transactions");
+    toast(found ? `${found} new transaction${found > 1 ? "s" : ""} · suggested by AI, ready to accept` : "Up to date · no new transactions");
   };
   const upload = (a: CompanyAccount) => {
     setUploadOpen(false);
@@ -236,7 +237,7 @@ export function TransactionsTab({
   const openCount = (r: (typeof rows)[number]) => r.recon.suggested + r.recon.needs + r.recon.booksOnly.length;
   const toReview = rows.reduce((s, r) => s + openCount(r), 0);
   const reviewSub = [
-    rows.reduce((s, r) => s + r.recon.suggested, 0) && `${rows.reduce((s, r) => s + r.recon.suggested, 0)} to confirm`,
+    rows.reduce((s, r) => s + r.recon.suggested, 0) && `${rows.reduce((s, r) => s + r.recon.suggested, 0)} suggested`,
     rows.reduce((s, r) => s + r.recon.needs, 0) && `${rows.reduce((s, r) => s + r.recon.needs, 0)} unmatched`,
     rows.reduce((s, r) => s + r.recon.booksOnly.length, 0) && `${rows.reduce((s, r) => s + r.recon.booksOnly.length, 0)} not in bank`,
   ]
@@ -431,43 +432,28 @@ export function TransactionsTab({
       </div>
 
       <Card className="min-w-0">
+        <Tabs
+          variant="line"
+          value={side}
+          onChange={(v) => {
+            setSide(v);
+            setSelected([]);
+            if (filter === "unmatched" || filter === "notinbank") setFilter("all");
+          }}
+          items={[
+            { value: "bank", label: <SideLabel icon={<Landmark />} text="Bank statement" count={bankCounts.all} /> },
+            { value: "books", label: <SideLabel icon={<BookOpen />} text="Your books" count={bookCounts.all} /> },
+          ]}
+        />
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <ToggleGroup
-              value={side}
-              onChange={(v) => {
-                setSide(v);
-                setSelected([]);
-                if (filter === "unmatched" || filter === "notinbank") setFilter("all");
-              }}
-              items={[
-                { value: "bank", label: "Bank statement" },
-                { value: "books", label: "Your books" },
-              ]}
-            />
-            <div role="tablist" className="flex flex-wrap gap-1">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === f.value}
-                  onClick={() => {
-                    setFilter(f.value);
-                    setSelected([]);
-                  }}
-                  className={cn(
-                    "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-2sm text-muted-foreground hover:bg-accent hover:text-foreground",
-                    filter === f.value && "bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary",
-                  )}
-                >
-                  {f.value === "confirm" && <Sparkles className="size-3.5" />}
-                  {f.label}
-                  <span className="tabular-nums opacity-70">{counts[f.value]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterChips
+            value={filter}
+            onChange={(f) => {
+              setFilter(f);
+              setSelected([]);
+            }}
+            items={FILTERS.map((f) => ({ ...f, count: counts[f.value], icon: f.value === "confirm" ? <Sparkles /> : undefined }))}
+          />
           <div className="relative w-60">
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -483,18 +469,18 @@ export function TransactionsTab({
         {filter === "confirm" && confirmIds.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-[var(--color-primary-soft)]/60 px-5 py-2.5 text-xs">
             <span className="text-[var(--color-primary-accent)]">
-              The AI paired these bank transactions with entries in your books, from amounts, references and past behaviour. Check and confirm.
+              The AI paired these bank transactions with entries in your books, from amounts, references and past behaviour. Check and accept.
             </span>
             <div className="flex gap-2">
               {selected.length > 0 && (
                 <Button size="sm" onClick={() => accept(selected)}>
                   <Check />
-                  Confirm selected ({selected.length})
+                  Accept selected ({selected.length})
                 </Button>
               )}
               <Button size="sm" variant="primary" onClick={() => accept(confirmIds)}>
                 <Check />
-                Confirm all {confirmIds.length}
+                Accept all {confirmIds.length}
               </Button>
             </div>
           </div>
@@ -596,7 +582,7 @@ export function TransactionsTab({
                         ? "No bank transactions yet. Connect the account to bring them in."
                         : "No bank transactions yet. Upload a statement to bring them in."
                       : filter === "confirm"
-                        ? "Nothing to confirm. New bank transactions are matched as they arrive."
+                        ? "No suggestions waiting. New bank transactions are matched as they arrive."
                         : filter === "unmatched"
                           ? "Every bank transaction in this period is in your books."
                           : "No bank transactions in this period."}
@@ -624,7 +610,7 @@ export function TransactionsTab({
                   <th className={thCls}>Entry</th>
                   <th className={cn(thCls, "w-32 text-right")}>Received</th>
                   <th className={cn(thCls, "w-32 text-right")}>Paid</th>
-                  <th className={cn(thCls, "w-[30%]")}>In the bank</th>
+                  <th className={cn(thCls, "w-[28%]")}>In the bank</th>
                   <th className={cn(thCls, "w-40")} />
                 </tr>
               </thead>
@@ -726,7 +712,7 @@ export function TransactionsTab({
                     {filter === "notinbank"
                       ? "Every entry in your books for this period has shown up at the bank."
                       : filter === "confirm"
-                        ? "Nothing to confirm."
+                        ? "No suggestions waiting."
                         : "No entries in your books for this period."}
                   </Empty>
                 )}
@@ -752,14 +738,14 @@ export function TransactionsTab({
   );
 }
 
-/** Confirm / reject an AI match, find a match for an unmatched line, or undo a match. */
+/** Accept / reject an AI match, find a match for an unmatched line, or undo a match. */
 function LineActions({ line, onAccept, onReject, onFind }: { line: BankLine; onAccept: () => void; onReject: (undo: boolean) => void; onFind: () => void }) {
   if (line.status === "suggested")
     return (
       <div className="flex justify-end gap-1.5">
         <Button size="sm" onClick={onAccept}>
           <Check />
-          Confirm
+          Accept
         </Button>
         <Button size="icon-sm" variant="ghost" aria-label="Not this match" title="Not this match" onClick={() => onReject(false)}>
           <X />
@@ -777,6 +763,16 @@ function LineActions({ line, onAccept, onReject, onFind }: { line: BankLine; onA
       <Undo2 />
       Undo
     </Button>
+  );
+}
+
+function SideLabel({ icon, text, count }: { icon: ReactNode; text: string; count: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 [&_svg]:size-4">
+      {icon}
+      {text}
+      <span className="rounded-full bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{count}</span>
+    </span>
   );
 }
 
