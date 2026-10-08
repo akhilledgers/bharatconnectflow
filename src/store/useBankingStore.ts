@@ -17,7 +17,9 @@ import {
 import { setupData, type BankingSetup, type MoneyFlow } from "../pages/banking/setups";
 import {
   entryForLine,
+  initialParties,
   type BankLine,
+  type Party,
   type BookEntry,
   type Match,
   type Payout,
@@ -56,6 +58,8 @@ interface BankingState {
   bookEntries: BookEntry[];
   payouts: Payout[];
   imports: StatementImport[];
+  /** Contacts with their open invoices and bills, for matching bank lines by hand. */
+  parties: Party[];
   moneyFlow: MoneyFlow;
   /** Which stage of the business's banking journey the sample data shows (dev panel). */
   setup: BankingSetup;
@@ -88,8 +92,13 @@ interface BankingState {
   acceptMatches: (lineIds: string[]) => void;
   /** Reject an AI match (or undo a match): the bank line becomes Unmatched, its entries Not in bank. */
   rejectMatch: (lineId: string) => void;
-  /** Settle a line by hand: link an existing book entry (bookEntryId) or record a new one. */
-  resolveLine: (lineId: string, match: Match, bookEntryId?: string) => void;
+  /**
+   * Settle a line by hand: link entries already in the books, or record a new one (settling the given
+   * invoices/bills by the allocated amounts). Replaces whatever the line was matched to before.
+   */
+  resolveLine: (lineId: string, match: Match, opts?: { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[] }) => void;
+  /** Teach the engine that a UPI ID / narration name belongs to a contact. */
+  rememberKey: (partyId: string, key: string) => void;
   moveEntry: (entryId: string, accountId: string) => void;
 
   // ---- payouts ----
@@ -119,16 +128,17 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   contacts: initialContacts(),
   employees: initialEmployees(),
   ...setupData("mixed"),
+  parties: initialParties(),
   setup: "mixed",
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   resetData: () => {
     synced.clear();
-    set({ contacts: initialContacts(), employees: initialEmployees(), ...setupData(get().setup) });
+    set({ contacts: initialContacts(), employees: initialEmployees(), parties: initialParties(), ...setupData(get().setup) });
   },
   applySetup: (setup) => {
     synced.clear();
-    set({ setup, ...setupData(setup) });
+    set({ setup, parties: initialParties(), ...setupData(setup) });
   },
 
   verifyAccount: () =>
@@ -276,17 +286,28 @@ export const useBankingStore = create<BankingState>((set, get) => ({
       };
     }),
 
-  resolveLine: (lineId, match, bookEntryId) =>
+  resolveLine: (lineId, match, opts = {}) => {
+    const prev = get().bankLines.find((l) => l.id === lineId);
+    // Changing an earlier match: unlink what it pointed to first (those entries go back to Not in bank).
+    if (prev?.match) get().rejectMatch(lineId);
     set((s) => {
       const line = s.bankLines.find((l) => l.id === lineId)!;
-      const matched: BankLine = { ...line, status: "matched", match };
+      const matched: BankLine = { ...line, status: "matched", match, party: opts.party ?? line.party };
+      const ids = opts.entryIds ?? [];
+      const settle = new Map((opts.settle ?? []).map((x) => [x.itemId, x.amount]));
       return {
         bankLines: s.bankLines.map((l) => (l.id === lineId ? matched : l)),
-        bookEntries: bookEntryId
-          ? s.bookEntries.map((e) => (e.id === bookEntryId ? { ...e, lineId } : e))
+        bookEntries: ids.length
+          ? s.bookEntries.map((e) => (ids.includes(e.id) ? { ...e, lineId } : e))
           : [...s.bookEntries, { ...entryForLine(matched), id: `e-${lineId}-${Date.now()}` }],
+        parties: settle.size
+          ? s.parties.map((p) => ({ ...p, items: p.items.map((i) => (settle.has(i.id) ? { ...i, due: Math.round((i.due - settle.get(i.id)!) * 100) / 100 } : i)).filter((i) => i.due > 0) }))
+          : s.parties,
       };
-    }),
+    });
+  },
+
+  rememberKey: (partyId, key) => set((s) => ({ parties: s.parties.map((p) => (p.id === partyId && !p.keys.includes(key) ? { ...p, keys: [...p.keys, key] } : p)) })),
 
   moveEntry: (entryId, accountId) =>
     set((s) => ({ bookEntries: s.bookEntries.map((e) => (e.id === entryId ? { ...e, accountId, assumedAccount: false } : e)) })),

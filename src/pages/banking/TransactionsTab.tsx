@@ -11,7 +11,7 @@ import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
 import { ALL_ACCOUNTS, CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
-import { LEDGERS, PARTIES, reconFor, type BankLine, type BookEntry, type Match, type MatchKind } from "./ledgerData";
+import { LEDGERS, describeLine, narrationKey, reconFor, type BankLine, type BookEntry, type Match, type MatchKind, type Party } from "./ledgerData";
 import { RECONCILED_TO, bankBalanceOf, shortDate } from "./overviewData";
 import { OVERLAY } from "./shared";
 import { FilterChips } from "./FilterChips";
@@ -62,7 +62,7 @@ function periodRange(p: Period, custom: { from: string; to: string }): [Date, Da
 }
 
 /** Who paid or was paid: the engine's reading of the narration, or the matched party. */
-const lineParty = (l: BankLine) => l.party ?? l.match?.party ?? l.narration;
+const lineParty = (l: BankLine) => l.party ?? l.match?.party ?? describeLine(l);
 
 const lineStatus = (l: BankLine): Exclude<Filter, "all" | "notinbank"> => (l.status === "suggested" ? "confirm" : l.status === "needs" ? "unmatched" : "matched");
 
@@ -91,6 +91,7 @@ export function TransactionsTab({
   const accounts = useBankingStore((s) => s.accounts).filter((a) => a.active);
   const lines = useBankingStore((s) => s.bankLines);
   const entries = useBankingStore((s) => s.bookEntries);
+  const parties = useBankingStore((s) => s.parties);
   const mode = useBankingStore((s) => s.scenario.balance);
   const store = useBankingStore.getState;
 
@@ -137,7 +138,7 @@ export function TransactionsTab({
       bal = Math.round((bal - l.amount) * 100) / 100;
     }
   }
-  const periodLines = accountLines.filter((l) => inPeriod(l.date) && matchesQuery(l.narration + (l.match?.party ?? "") + (l.match?.ref ?? ""), l.amount));
+  const periodLines = accountLines.filter((l) => inPeriod(l.date) && matchesQuery([l.narration, l.party, l.match?.party, l.match?.ref, describeLine(l)].join(" "), l.amount));
   const bankCounts = { confirm: 0, unmatched: 0, matched: 0, notinbank: 0, all: periodLines.length };
   for (const l of periodLines) bankCounts[lineStatus(l)]++;
 
@@ -497,12 +498,13 @@ export function TransactionsTab({
               className="size-4 cursor-pointer accent-primary"
             />
           )}
+          <div className="w-16 shrink-0">Date</div>
           <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-6">
             <span>{isStatementView ? "Bank transaction" : "Entry in your books"}</span>
             <span>{isStatementView ? "In your books" : "In the bank"}</span>
           </div>
           <div className="w-28 text-right sm:w-36">Amount</div>
-          <div className="w-[136px]" />
+          <div className="w-[164px]" />
         </div>
 
         {isStatementView
@@ -513,10 +515,12 @@ export function TransactionsTab({
                 checked={selected.includes(l.id)}
                 onToggle={() => toggle(l.id)}
                 onOpen={() => setDetail(l.id)}
+                date={l.date}
                 main={
                   <TwoLines
                     title={lineParty(l)}
-                    sub={`${shortDate(l.date)} · ${all ? `${accountName(byId.get(l.accountId)!)} · ` : ""}${l.narration}`}
+                    muted={!l.party && !l.match}
+                    sub={`${all ? `${accountName(byId.get(l.accountId)!)} · ` : ""}${l.narration}`}
                     subTitle={l.narration}
                   />
                 }
@@ -535,13 +539,14 @@ export function TransactionsTab({
                   checked={!!e.lineId && selected.includes(e.lineId)}
                   onToggle={() => e.lineId && toggle(e.lineId)}
                   onOpen={l ? () => setDetail(l.id) : undefined}
-                  main={<TwoLines title={`${e.ref} · ${e.party}`} sub={`${shortDate(e.date)} · ${all ? `${accountName(byId.get(e.accountId)!)} · ` : ""}${e.kind}`} />}
+                  date={e.date}
+                  main={<TwoLines title={`${e.ref} · ${e.party}`} sub={`${all ? `${accountName(byId.get(e.accountId)!)} · ` : ""}${e.kind}`} />}
                   side={
                     l ? (
                       <TwoLines
                         icon={l.status === "suggested" ? <Sparkles className="size-3.5 text-primary" /> : <Check className="size-3.5 text-[var(--color-success-accent)]" />}
                         title={lineParty(l)}
-                        sub={`${shortDate(l.date)} · ${l.status === "suggested" ? "suggested by AI" : "matched"}${Math.abs(l.amount) !== Math.abs(e.amount) ? ` · part of ${fmtINR(Math.abs(l.amount))}` : ""}`}
+                        sub={`${l.status === "suggested" ? "Suggested by AI" : "Matched"} · ${l.date === e.date ? "same day" : `at the bank ${shortDate(l.date)}`}${Math.abs(l.amount) !== Math.abs(e.amount) ? ` · part of ${fmtINR(Math.abs(l.amount))}` : ""}`}
                       />
                     ) : (
                       <div className="min-w-0">
@@ -641,14 +646,17 @@ export function TransactionsTab({
       )}
 
       {resolving && (
-        <ResolveDrawer
+        <MatchPanel
           line={resolving}
-          candidates={entries.filter((e) => e.accountId === resolving.accountId && !e.lineId && Math.sign(e.amount) === Math.sign(resolving.amount))}
+          parties={parties}
+          // Open entries, plus whatever the line is matched to now (so a change can keep or swap it).
+          openEntries={entries.filter((e) => e.accountId === resolving.accountId && (!e.lineId || e.lineId === resolving.id) && Math.sign(e.amount) === Math.sign(resolving.amount))}
           onClose={() => setResolving(null)}
-          onDone={(match, entryId, rule) => {
-            store().resolveLine(resolving.id, match, entryId);
+          onDone={(match, opts, remember) => {
+            store().resolveLine(resolving.id, match, opts);
+            if (remember) store().rememberKey(remember.partyId, remember.key);
             setResolving(null);
-            toast(rule ? `Matched · rule saved for similar "${resolving.narration.split("/")[0]}" transactions` : "Matched");
+            toast(remember ? `Matched · the AI will now recognise ${remember.key} as ${match.party}` : "Matched");
           }}
         />
       )}
@@ -656,7 +664,7 @@ export function TransactionsTab({
   );
 }
 
-/** Accept / reject an AI match, find a match for an unmatched line, or undo a match. */
+/** Accept or change an AI match, find a match for an unmatched line, or undo a match. */
 function LineActions({ line, onAccept, onReject, onFind }: { line: BankLine; onAccept: () => void; onReject: (undo: boolean) => void; onFind: () => void }) {
   if (line.status === "suggested")
     return (
@@ -665,8 +673,8 @@ function LineActions({ line, onAccept, onReject, onFind }: { line: BankLine; onA
           <Check />
           Accept
         </Button>
-        <Button size="icon-sm" variant="ghost" aria-label="Not this match" title="Not this match" onClick={() => onReject(false)}>
-          <X />
+        <Button size="sm" variant="ghost" onClick={onFind} title="Pick the right contact or entry">
+          Change
         </Button>
       </div>
     );
@@ -716,6 +724,7 @@ function Row({
   checked,
   onToggle,
   onOpen,
+  date,
   main,
   side,
   amount,
@@ -726,6 +735,7 @@ function Row({
   checked: boolean;
   onToggle: () => void;
   onOpen?: () => void;
+  date: string;
   main: ReactNode;
   side: ReactNode;
   amount: number;
@@ -750,6 +760,7 @@ function Row({
           className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary lg:mt-0"
         />
       )}
+      <div className="w-16 shrink-0 pt-px text-2sm tabular-nums text-muted-foreground lg:pt-0">{shortDate(date)}</div>
       <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2 lg:grid-cols-2 lg:items-center">
         {main}
         {side}
@@ -758,19 +769,19 @@ function Row({
         <Amount value={amount} className="text-2sm font-semibold" />
         {note && <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{note}</div>}
       </div>
-      <div className="flex w-[136px] shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
+      <div className="flex w-[164px] shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
         {actions}
       </div>
     </div>
   );
 }
 
-function TwoLines({ title, sub, subTitle, icon }: { title: ReactNode; sub: ReactNode; subTitle?: string; icon?: ReactNode }) {
+function TwoLines({ title, sub, subTitle, icon, muted }: { title: ReactNode; sub: ReactNode; subTitle?: string; icon?: ReactNode; muted?: boolean }) {
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-1.5">
         {icon}
-        <span className="truncate text-2sm font-medium">{title}</span>
+        <span className={cn("truncate text-2sm", muted ? "text-muted-foreground" : "font-medium")}>{title}</span>
       </div>
       <div className="mt-0.5 truncate text-xs text-muted-foreground" title={subTitle}>
         {sub}
@@ -904,10 +915,11 @@ function LineDrawer({
         <div className="flex justify-end gap-2.5 border-t border-border px-6 py-4">
           {l.status === "suggested" ? (
             <>
-              <Button onClick={() => onReject(false)}>
+              <Button variant="ghost" onClick={() => onReject(false)}>
                 <X />
                 Not this match
               </Button>
+              <Button onClick={onFind}>Change</Button>
               <Button variant="primary" onClick={onAccept}>
                 <Check />
                 Accept
@@ -915,13 +927,16 @@ function LineDrawer({
             </>
           ) : l.status === "needs" ? (
             <Button variant="primary" onClick={onFind}>
-              Find match or record
+              Find match
             </Button>
           ) : (
-            <Button onClick={() => onReject(true)}>
-              <Undo2 />
-              Undo match
-            </Button>
+            <>
+              <Button onClick={() => onReject(true)}>
+                <Undo2 />
+                Undo match
+              </Button>
+              <Button onClick={onFind}>Change match</Button>
+            </>
           )}
         </div>
       </div>
@@ -929,30 +944,112 @@ function LineDrawer({
   );
 }
 
-const KINDS: MatchKind[] = ["Receipt", "Payment voucher", "Expense", "Bill payment", "Transfer", "Journal"];
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-xs font-semibold text-[var(--color-primary-accent)]">{n}</span>
+      <div className="min-w-0 flex-1">
+        <div className="mb-2 text-sm font-medium">{title}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
-/** Settle one bank line: link an entry already in the books, or record a new one (optionally as a rule). */
-function ResolveDrawer({
+type Settle = { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[] };
+
+/**
+ * Match a bank line by hand: who it is (search any contact, or none), what it settles (their open invoices or
+ * bills, or entries already in the books), and optionally teach the engine the UPI ID / name for next time.
+ */
+function MatchPanel({
   line,
-  candidates,
+  parties,
+  openEntries,
   onClose,
   onDone,
 }: {
   line: BankLine;
-  candidates: BookEntry[];
+  parties: Party[];
+  /** Book entries on this account with no bank line yet, same direction as the line. */
+  openEntries: BookEntry[];
   onClose: () => void;
-  onDone: (match: Match, bookEntryId?: string, rule?: boolean) => void;
+  onDone: (match: Match, opts: Settle, remember?: { partyId: string; key: string }) => void;
 }) {
   useEscape(onClose);
-  const [tab, setTab] = useState<"match" | "record">(candidates.length ? "match" : "record");
-  const [pick, setPick] = useState<string | null>(null);
-  const [kind, setKind] = useState<MatchKind>(line.amount > 0 ? "Receipt" : "Expense");
-  const [party, setParty] = useState("");
-  const [ledger, setLedger] = useState(line.amount > 0 ? "Sales" : "");
-  const [rule, setRule] = useState(false);
+  const inflow = line.amount > 0;
+  const total = Math.abs(line.amount);
+  const key = narrationKey(line);
+  const narr = line.narration.toUpperCase();
+  // Who it might be: contacts with a learned UPI ID / name, or a name word in the narration.
+  const suggested = parties
+    .map((p) => ({ p, score: (key && p.keys.includes(key.value) ? 10 : 0) + p.name.toUpperCase().split(/\s+/).filter((w) => w.length >= 4 && narr.includes(w)).length }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.p)
+    .slice(0, 3);
 
-  const picked = candidates.find((c) => c.id === pick);
-  const canRecord = party.trim() !== "" && (kind === "Receipt" || kind === "Payment voucher" || ledger !== "");
+  const [who, setWho] = useState<string | null>(() => (line.match?.party ? parties.find((p) => p.name === line.match!.party)?.id : suggested.length === 1 ? suggested[0].id : undefined) ?? null);
+  const [q, setQ] = useState("");
+  const party = parties.find((p) => p.id === who);
+  const items = party ? party.items.filter((i) => (inflow ? i.kind === "Invoice" : i.kind === "Bill")) : [];
+  const entries = party ? openEntries.filter((e) => e.party === party.name) : [];
+  const exact = [...entries.map((e) => ({ id: e.id, amount: Math.abs(e.amount) })), ...items.map((i) => ({ id: i.id, amount: i.due }))].find((x) => x.amount === total);
+  const [picked, setPicked] = useState<string[]>(exact ? [exact.id] : []);
+  const [kind, setKind] = useState<MatchKind>(inflow ? "Journal" : "Expense");
+  const guessLedger = { "Bank charge": "Bank charges", "Interest credit": "Interest income", "Tax payment": "GST payable" }[describeLine(line)] ?? "";
+  const [ledger, setLedger] = useState(guessLedger);
+  const [remember, setRemember] = useState(true);
+
+  const choose = (id: string | null) => {
+    setWho(id);
+    setQ("");
+    const p = parties.find((x) => x.id === id);
+    const its = p ? p.items.filter((i) => (inflow ? i.kind === "Invoice" : i.kind === "Bill")) : [];
+    const ens = p ? openEntries.filter((e) => e.party === p.name) : [];
+    const ex = [...ens.map((e) => ({ id: e.id, amount: Math.abs(e.amount) })), ...its.map((i) => ({ id: i.id, amount: i.due }))].find((x) => x.amount === total);
+    setPicked(ex ? [ex.id] : []);
+  };
+
+  // Entries already in the books and open invoices/bills are alternatives: linking one excludes the other.
+  const pickedEntries = entries.filter((e) => picked.includes(e.id));
+  const toggle = (id: string, isEntry: boolean) =>
+    setPicked((s) => {
+      if (s.includes(id)) return s.filter((x) => x !== id);
+      const sameKind = s.filter((x) => (isEntry ? entries.some((e) => e.id === x) : items.some((i) => i.id === x)));
+      return [...sameKind, id];
+    });
+  const alloc = new Map<string, number>();
+  let left = total;
+  for (const x of [...entries.map((e) => ({ id: e.id, amount: Math.abs(e.amount) })), ...items.map((i) => ({ id: i.id, amount: i.due }))])
+    if (picked.includes(x.id)) {
+      const a = Math.min(x.amount, left);
+      alloc.set(x.id, a);
+      left = Math.round((left - a) * 100) / 100;
+    }
+  const results = q.trim()
+    ? parties.filter((p) => [p.name, p.gstin ?? "", p.phone ?? "", ...p.keys].some((v) => v.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 6)
+    : [];
+  const canMatch = who === "none" ? ledger !== "" : !!party && (pickedEntries.length === 0 || left === 0);
+
+  const submit = () => {
+    if (who === "none") return onDone({ kind, party: describeLine(line), ledger }, {});
+    const p = party!;
+    const rem = remember && key && !p.keys.includes(key.value) ? { partyId: p.id, key: key.value } : undefined;
+    if (pickedEntries.length)
+      return onDone(
+        { kind: pickedEntries[0].kind === "Receipt" ? "Receipt" : pickedEntries[0].kind === "Journal" ? "Journal" : "Payment voucher", ref: pickedEntries.map((e) => e.ref).join(", "), party: p.name },
+        { entryIds: pickedEntries.map((e) => e.id), party: p.name },
+        rem,
+      );
+    const settled = items.filter((i) => picked.includes(i.id));
+    const ref = settled.length === 0 ? undefined : settled.length <= 2 ? settled.map((i) => i.ref).join(", ") : `${settled.length} ${inflow ? "invoices" : "bills"}`;
+    onDone(
+      { kind: settled.length ? (inflow ? "Receipt" : "Bill payment") : inflow ? "Receipt" : "Payment voucher", ref, party: p.name, ledger: left > 0 ? "Advance / on account" : undefined },
+      { party: p.name, settle: settled.map((i) => ({ itemId: i.id, amount: alloc.get(i.id)! })) },
+      rem,
+    );
+  };
 
   return (
     <>
@@ -961,136 +1058,151 @@ function ResolveDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="Match bank transaction"
-        className="fixed bottom-5 end-5 top-5 z-50 flex w-[460px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
+        className="fixed bottom-5 end-5 top-5 z-50 flex w-[480px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="text-base font-semibold">Match bank transaction</div>
+          <div className="text-base font-semibold">{line.match ? "Change match" : "Match bank transaction"}</div>
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
             <X />
           </Button>
         </div>
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
-          <div className="rounded-lg border border-border p-3.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 text-2sm">
-                <div className="break-words">{line.narration}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">{line.date}</div>
-              </div>
-              <Amount value={line.amount} className="shrink-0 text-base font-semibold" />
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3.5">
+            <div className="min-w-0 text-2sm">
+              <div className="font-medium">{describeLine(line)}</div>
+              <div className="mt-0.5 font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{line.narration}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{fmtDay(toDate(line.date))}</div>
             </div>
+            <Amount value={line.amount} className="shrink-0 text-base font-semibold" />
           </div>
 
-          <div role="tablist" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
-            {(
-              [
-                ["match", `Match an entry (${candidates.length})`],
-                ["record", "Record new entry"],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={tab === v}
-                onClick={() => setTab(v)}
-                className={cn("h-8 flex-1 cursor-pointer rounded-md text-2sm", tab === v && "bg-background font-medium shadow-lg shadow-black/5")}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === "match" ? (
-            candidates.length === 0 ? (
-              <p className="text-2sm text-muted-foreground">No open entries in your books for this account. Record a new entry instead.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {candidates.map((c) => {
-                  const diff = Math.abs(c.amount) - Math.abs(line.amount);
-                  return (
-                    <label
-                      key={c.id}
-                      className={cn(
-                        "flex cursor-pointer items-start gap-3 rounded-md border p-3",
-                        pick === c.id ? "border-primary bg-[var(--color-primary-soft)]" : "border-input hover:bg-accent/60",
-                      )}
-                    >
-                      <input type="radio" name="cand" checked={pick === c.id} onChange={() => setPick(c.id)} className="mt-0.5 size-4 accent-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex justify-between gap-2 text-2sm">
-                          <span className="font-medium">
-                            {c.ref} · {c.party}
-                          </span>
-                          <Amount value={c.amount} />
-                        </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {c.date} · {diff === 0 ? "Exact amount" : `${fmtINR(Math.abs(diff))} ${diff > 0 ? "more" : "less"} than the bank`}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
+          <Step n={1} title="Who is this?">
+            {who && who !== "none" && party ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-primary bg-[var(--color-primary-soft)] px-3 py-2.5">
+                <div className="min-w-0 text-2sm">
+                  <div className="font-medium">{party.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{[party.type, party.gstin, party.phone].filter(Boolean).join(" · ")}</div>
+                </div>
+                <button type="button" onClick={() => choose(null)} className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                  Change
+                </button>
               </div>
-            )
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="rec-kind" className="text-xs font-medium">
-                  Type
-                </label>
-                <Select id="rec-kind" value={kind} onChange={(e) => setKind(e.target.value as MatchKind)}>
-                  {KINDS.map((k) => (
+            ) : who === "none" ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-primary bg-[var(--color-primary-soft)] px-3 py-2.5 text-2sm">
+                <span className="font-medium">No contact</span>
+                <button type="button" onClick={() => choose(null)} className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contact, GSTIN, phone, UPI ID" className="ps-9" />
+                </div>
+                {results.length > 0 ? (
+                  <div className="flex flex-col rounded-md border border-border">
+                    {results.map((p) => (
+                      <button key={p.id} type="button" onClick={() => choose(p.id)} className="flex cursor-pointer flex-col items-start border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-accent">
+                        <span className="text-2sm font-medium">{p.name}</span>
+                        <span className="text-xs text-muted-foreground">{[p.type, p.gstin, p.phone].filter(Boolean).join(" · ")}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : q.trim() ? (
+                  <div className="text-xs text-muted-foreground">No contact found. Create it from Contacts, or pick No contact below.</div>
+                ) : (
+                  suggested.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      Could be:
+                      {suggested.map((p) => (
+                        <button key={p.id} type="button" onClick={() => choose(p.id)} className="cursor-pointer rounded-md border border-input px-2 py-1 text-foreground hover:bg-accent">
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                )}
+                <button type="button" onClick={() => choose("none")} className="cursor-pointer self-start text-xs font-medium text-primary hover:underline">
+                  No contact: bank charge, interest, tax, transfer…
+                </button>
+              </div>
+            )}
+          </Step>
+
+          {who === "none" && (
+            <Step n={2} title="Record it as">
+              <div className="grid grid-cols-2 gap-3">
+                <Select aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as MatchKind)}>
+                  {(["Expense", "Journal", "Transfer"] as MatchKind[]).map((k) => (
                     <option key={k}>{k}</option>
                   ))}
                 </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="rec-party" className="text-xs font-medium">
-                  {line.amount > 0 ? "Received from" : "Paid to"}
-                </label>
-                <Input id="rec-party" list="rec-parties" value={party} onChange={(e) => setParty(e.target.value)} placeholder="Contact or payee" />
-                <datalist id="rec-parties">
-                  {PARTIES.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="rec-ledger" className="text-xs font-medium">
-                  Account head
-                </label>
-                <Select id="rec-ledger" value={ledger} onChange={(e) => setLedger(e.target.value)}>
-                  <option value="">Select…</option>
+                <Select aria-label="Account head" value={ledger} onChange={(e) => setLedger(e.target.value)}>
+                  <option value="">Account head…</option>
                   {LEDGERS.map((l) => (
                     <option key={l}>{l}</option>
                   ))}
                 </Select>
               </div>
+            </Step>
+          )}
+
+          {party && (
+            <Step n={2} title={`What does it settle?`}>
+              {entries.length + items.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
+                  No open {inflow ? "invoices" : "bills"} for {party.name}. It will be recorded as an advance / on account, to adjust later.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    ...entries.map((e) => ({ id: e.id, ref: e.ref, date: e.date, amount: Math.abs(e.amount), note: e.lineId === line.id ? "Suggested by AI ·" : "In your books, not in bank yet ·", isEntry: true })),
+                    ...items.map((i) => ({ id: i.id, ref: i.ref, date: i.date, amount: i.due, note: `${i.kind} · due`, isEntry: false })),
+                  ].map((x) => (
+                    <label
+                      key={x.id}
+                      className={cn("flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2", picked.includes(x.id) ? "border-primary bg-[var(--color-primary-soft)]" : "border-input hover:bg-accent/60")}
+                    >
+                      <input type="checkbox" checked={picked.includes(x.id)} onChange={() => toggle(x.id, x.isEntry)} className="size-4 accent-primary" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-2sm font-medium">{x.ref}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {shortDate(x.date)} · {x.note} {fmtINR(x.amount)}
+                        </span>
+                      </span>
+                      {alloc.has(x.id) && <span className="text-2sm tabular-nums">{fmtINR(alloc.get(x.id)!)}</span>}
+                    </label>
+                  ))}
+                  <div className={cn("mt-1 text-xs", left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
+                    {left === 0
+                      ? `Allocated ${fmtINR(total)} of ${fmtINR(total)} ✓`
+                      : pickedEntries.length
+                        ? `The entries add up to ${fmtINR(total - left)}; the bank shows ${fmtINR(total)}.`
+                        : `${fmtINR(total - left)} allocated · ${fmtINR(left)} left will be recorded as an advance / on account`}
+                  </div>
+                </div>
+              )}
+            </Step>
+          )}
+
+          {party && key && !party.keys.includes(key.value) && (
+            <Step n={3} title="Next time">
               <label className="flex cursor-pointer items-start gap-2.5 text-2sm">
-                <input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} className="mt-0.5 size-4 accent-primary" />
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="mt-0.5 size-4 accent-primary" />
                 <span>
-                  Do the same for similar transactions
-                  <span className="block text-xs text-muted-foreground">The AI engine will match future lines like this one automatically.</span>
+                  Remember {key.label} <span className="font-mono text-xs">{key.value}</span> is {party.name}
+                  <span className="block text-xs text-muted-foreground">The AI will match transactions like this to {party.name} on its own.</span>
                 </span>
               </label>
-            </div>
+            </Step>
           )}
         </div>
         <div className="flex justify-end gap-2.5 border-t border-border px-6 py-4">
           <Button onClick={onClose}>Cancel</Button>
-          {tab === "match" ? (
-            <Button
-              variant="primary"
-              disabled={!picked}
-              onClick={() => picked && onDone({ kind: picked.kind, ref: picked.ref, party: picked.party }, picked.id)}
-            >
-              Match
-            </Button>
-          ) : (
-            <Button variant="primary" disabled={!canRecord} onClick={() => onDone({ kind, party: party.trim(), ledger: ledger || undefined }, undefined, rule)}>
-              Record & match
-            </Button>
-          )}
+          <Button variant="primary" disabled={!canMatch} onClick={submit}>
+            Match
+          </Button>
         </div>
       </div>
     </>

@@ -56,11 +56,83 @@ const L = (id: string, accountId: string, date: string, narration: string, amoun
   match,
 });
 
-// Payee / payer the engine read from narrations it couldn't match (matched lines take the match's party).
-const NARRATION_PARTY: Record<string, string> = { l02: "Deepak Trading", l04: "Chander Stores", l07: "Axis Bank · SMS charges", l10: "Bateaco BL" };
-
+// The engine names the party only when it's sure (a matched line takes its match's party). Unmatched lines here
+// have narrations it couldn't tie to anyone, so they stay unnamed and show what kind of transaction they are.
 export function initialBankLines(): BankLine[] {
-  return sampleLines().map((l) => ({ ...l, party: NARRATION_PARTY[l.id] ?? l.match?.party }));
+  return sampleLines().map((l) => ({ ...l, party: l.match?.party }));
+}
+
+/** What a bank line is, in plain words, when nobody could be named from its narration. */
+export function describeLine(l: BankLine): string {
+  const n = l.narration.toUpperCase();
+  const dir = l.amount > 0 ? "in" : "out";
+  if (n.includes("CHARGES")) return "Bank charge";
+  if (n.startsWith("INT.PD") || n.includes("INTEREST")) return "Interest credit";
+  if (n.includes("GST CHALLAN") || n.includes("TDS")) return "Tax payment";
+  if (n.startsWith("CHQ DEP")) return "Cheque deposit";
+  if (n.startsWith("CHQ")) return "Cheque paid";
+  if (n.startsWith("ACH")) return "Auto-debit";
+  if (n.startsWith("UPI")) return `UPI payment ${dir}`;
+  for (const mode of ["NEFT", "IMPS", "RTGS"]) if (n.startsWith(mode)) return `${mode} ${l.amount > 0 ? "credit" : "debit"}`;
+  return `Money ${dir}`;
+}
+
+/** The bit of a narration that identifies the other side: a UPI ID, or the name the bank printed. */
+export function narrationKey(l: BankLine): { label: string; value: string } | null {
+  const parts = l.narration.split(/[/]/).map((p) => p.trim()).filter(Boolean);
+  if (l.narration.toUpperCase().startsWith("UPI")) {
+    const id = parts.find((p) => p.includes("@")) ?? parts.at(-1);
+    return id && /[a-z]/i.test(id) ? { label: "UPI ID", value: id } : null;
+  }
+  const name = l.narration.split(/[/-]/).map((p) => p.trim()).filter((p) => /^[A-Z][A-Z .&]{3,}$/.test(p)).at(-1);
+  return name ? { label: "Name in narration", value: name } : null;
+}
+
+// ---- Contacts, with what they owe or are owed: what a bank line can be matched against by hand ----
+
+export interface OpenItem {
+  id: string;
+  ref: string;
+  date: string;
+  kind: "Invoice" | "Bill";
+  /** Still to be paid. */
+  due: number;
+}
+
+export interface Party {
+  id: string;
+  name: string;
+  type: "Customer" | "Vendor" | "Employee";
+  gstin?: string;
+  phone?: string;
+  /** UPI IDs / narration names the engine has learned belong to this contact. */
+  keys: string[];
+  items: OpenItem[];
+}
+
+const inv = (id: string, ref: string, date: string, due: number): OpenItem => ({ id, ref, date, kind: "Invoice", due });
+const bill = (id: string, ref: string, date: string, due: number): OpenItem => ({ id, ref, date, kind: "Bill", due });
+
+export function initialParties(): Party[] {
+  return [
+    { id: "k1", name: "Deepak Trading", type: "Vendor", gstin: "29AAGFD4417K1ZP", phone: "98450 21177", keys: [], items: [bill("o1", "BILL-0912", "28-09-2026", 2400), bill("o2", "BILL-0899", "12-09-2026", 5100)] },
+    { id: "k2", name: "Deepak Enterprises", type: "Vendor", gstin: "29AAHCD9921L1Z2", phone: "99001 45522", keys: [], items: [bill("o3", "BILL-0907", "22-09-2026", 1800)] },
+    { id: "k3", name: "Chander Stores", type: "Vendor", phone: "98860 77310", keys: [], items: [] },
+    { id: "k4", name: "Bateaco BL", type: "Customer", gstin: "27AAJCB7781M1ZQ", phone: "97690 11820", keys: [], items: [inv("o4", "INV-2026-109", "15-09-2026", 20000), inv("o5", "INV-2026-114", "24-09-2026", 6500)] },
+    { id: "k5", name: "Mehta Exports", type: "Customer", gstin: "24AABCM1123R1ZX", phone: "98250 33019", keys: [], items: [inv("o6", "INV-2026-126", "04-10-2026", 48000)] },
+    { id: "k6", name: "Zenith Fabrics", type: "Customer", gstin: "33AACCZ5531H1Z9", keys: ["zenithfab@ybl"], items: [inv("o7", "INV-2026-125", "02-10-2026", 14000)] },
+    { id: "k7", name: "Sharma Retail", type: "Customer", gstin: "07AAPFS8812Q1Z1", phone: "98110 64420", keys: [], items: [inv("o8", "INV-2026-127", "03-10-2026", 22000), inv("o9", "INV-2026-128", "05-10-2026", 8500)] },
+    { id: "k8", name: "Kavya Textiles", type: "Vendor", gstin: "33AAKFK2210B1ZC", keys: [], items: [bill("o10", "BILL-0931", "01-10-2026", 12000)] },
+    { id: "k9", name: "Sunrise Logistics", type: "Vendor", gstin: "27AAMCS6650E1ZD", keys: [], items: [bill("o11", "BILL-4480", "02-10-2026", 9600)] },
+    { id: "k10", name: "Orbit Supplies", type: "Customer", gstin: "29AABCO4409N1ZS", keys: [], items: [inv("o12", "INV-2026-130", "06-10-2026", 31000)] },
+    { id: "k11", name: "Blue Ocean Traders", type: "Customer", gstin: "32AAFCB3300D1ZK", keys: [], items: [inv("o13", "INV-2026-133", "06-10-2026", 4200)] },
+    { id: "k12", name: "Kiran Enterprises", type: "Customer", gstin: "29AAQFK7012C1ZB", keys: [], items: [inv("o14", "INV-2026-131", "05-10-2026", 26500)] },
+    { id: "k13", name: "Vertex Packaging", type: "Vendor", gstin: "29AAGCV1185P1ZT", keys: [], items: [bill("o15", "BILL-0944", "04-10-2026", 6750)] },
+    { id: "k14", name: "Shivam Trading", type: "Vendor", phone: "90080 55214", keys: [], items: [bill("o16", "BILL-0950", "05-10-2026", 2000)] },
+    { id: "k15", name: "Priya Sharma", type: "Employee", phone: "98450 66012", keys: [], items: [] },
+    { id: "k16", name: "Ananya Rao", type: "Employee", phone: "99860 21934", keys: [], items: [] },
+    { id: "k17", name: "Rohit Sharma", type: "Customer", phone: "98440 18263", keys: [], items: [] },
+  ];
 }
 
 function sampleLines(): BankLine[] {
