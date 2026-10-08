@@ -5,7 +5,6 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input, Select } from "../../components/ui/input";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
-import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
 import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
@@ -62,6 +61,9 @@ function periodRange(p: Period, custom: { from: string; to: string }): [Date, Da
   }
 }
 
+/** Who paid or was paid: the engine's reading of the narration, or the matched party. */
+const lineParty = (l: BankLine) => l.party ?? l.match?.party ?? l.narration;
+
 const lineStatus = (l: BankLine): Exclude<Filter, "all" | "notinbank"> => (l.status === "suggested" ? "confirm" : l.status === "needs" ? "unmatched" : "matched");
 
 export function Amount({ value, className }: { value: number; className?: string }) {
@@ -69,33 +71,6 @@ export function Amount({ value, className }: { value: number; className?: string
     <span className={cn("tabular-nums", value > 0 ? "text-[var(--color-success-accent)]" : "text-foreground", className)}>
       {value > 0 ? "+" : "−"}
       {fmtINR(Math.abs(value))}
-    </span>
-  );
-}
-
-function MatchText({ m }: { m: Match }) {
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-2sm">
-        <span className="font-medium">{m.kind}</span>
-        {m.ref && <span className="text-muted-foreground"> · {m.ref}</span>}
-        <span className="text-muted-foreground"> · {m.party}</span>
-        {m.ledger && <span className="text-muted-foreground"> · {m.ledger}</span>}
-      </div>
-      {m.reason && <div className="truncate text-xs text-muted-foreground">{m.reason}</div>}
-    </div>
-  );
-}
-
-function Confidence({ value }: { value: number }) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-        value >= 90 ? "bg-[var(--color-success-soft)] text-[var(--color-success-accent)]" : "bg-[var(--color-primary-soft)] text-[var(--color-primary-accent)]",
-      )}
-    >
-      {value}%
     </span>
   );
 }
@@ -139,6 +114,7 @@ export function TransactionsTab({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moveMenu, setMoveMenu] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
 
   const [from, to] = periodRange(period, custom);
   const inPeriod = (dmy: string) => {
@@ -255,8 +231,7 @@ export function TransactionsTab({
 
   const isStatementView = side === "bank";
   const showBalance = !!account && !!bank;
-  const bankCols = 6 + (filter === "confirm" ? 1 : 0) + (all ? 1 : 0) + (showBalance ? 1 : 0);
-  const bookCols = 6 + (filter === "confirm" ? 1 : 0) + (all ? 1 : 0);
+  const detailLine = detail ? lineById.get(detail) : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -445,32 +420,33 @@ export function TransactionsTab({
             { value: "books", label: <SideLabel icon={<BookOpen />} text="Your books" count={bookCounts.all} /> },
           ]}
         />
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-          <FilterChips
-            value={filter}
-            onChange={(f) => {
-              setFilter(f);
-              setSelected([]);
-            }}
-            items={FILTERS.map((f) => ({ ...f, count: counts[f.value], icon: f.value === "confirm" ? <Sparkles /> : undefined }))}
-          />
-          <div className="relative w-60">
-            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="txn-search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={isStatementView ? "Search narration, party, amount" : "Search voucher, party, amount"}
-              className="ps-9"
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
+          <div className="hidden md:block">
+            <FilterChips
+              value={filter}
+              onChange={(f) => {
+                setFilter(f);
+                setSelected([]);
+              }}
+              items={FILTERS.map((f) => ({ ...f, count: counts[f.value], icon: f.value === "confirm" ? <Sparkles /> : undefined }))}
             />
           </div>
-        </div>
-
-        {filter === "confirm" && confirmIds.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-[var(--color-primary-soft)]/60 px-5 py-2.5 text-xs">
-            <span className="text-[var(--color-primary-accent)]">
-              The AI paired these bank transactions with entries in your books, from amounts, references and past behaviour. Check and accept.
-            </span>
+          <Select
+            aria-label="Show"
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value as Filter);
+              setSelected([]);
+            }}
+            wrapperClassName="w-52 md:hidden"
+          >
+            {FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label} ({counts[f.value]})
+              </option>
+            ))}
+          </Select>
+          {filter === "confirm" && confirmIds.length > 0 && (
             <div className="flex gap-2">
               {selected.length > 0 && (
                 <Button size="sm" onClick={() => accept(selected)}>
@@ -483,8 +459,18 @@ export function TransactionsTab({
                 Accept all {confirmIds.length}
               </Button>
             </div>
+          )}
+          <div className="relative ms-auto w-full sm:w-60">
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="txn-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={isStatementView ? "Search party, narration, amount" : "Search voucher, party, amount"}
+              className="ps-9"
+            />
           </div>
-        )}
+        </div>
 
         {isStatementView && periodBalances && (
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-border px-5 py-2.5 text-xs text-muted-foreground">
@@ -500,227 +486,159 @@ export function TransactionsTab({
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          {isStatementView ? (
-            <table className={cn(tableCls, "table-fixed")}>
-              <thead>
-                <tr>
-                  {filter === "confirm" && (
-                    <th className={cn(thCls, "w-10 pe-0")}>
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={allSelected}
-                        onChange={() => setSelected(allSelected ? [] : confirmIds)}
-                        className="size-4 cursor-pointer accent-primary"
-                      />
-                    </th>
-                  )}
-                  <th className={cn(thCls, "w-28")}>Date</th>
-                  {all && <th className={cn(thCls, "w-32")}>Account</th>}
-                  <th className={thCls}>Narration</th>
-                  <th className={cn(thCls, "w-28 text-right")}>Withdrawal</th>
-                  <th className={cn(thCls, "w-28 text-right")}>Deposit</th>
-                  {showBalance && <th className={cn(thCls, "w-36 text-right")}>Balance</th>}
-                  <th className={cn(thCls, "w-[24%]")}>In your books</th>
-                  <th className={cn(thCls, "w-36")} />
-                </tr>
-              </thead>
-              <tbody>
-                {bankRows.map((l) => {
-                  const st = lineStatus(l);
-                  return (
-                    <tr key={l.id} className={trCls}>
-                      {filter === "confirm" && (
-                        <td className={cn(tdCls, "pe-0")}>
-                          <input
-                            type="checkbox"
-                            aria-label="Select"
-                            checked={selected.includes(l.id)}
-                            onChange={() => toggle(l.id)}
-                            className="size-4 cursor-pointer accent-primary"
-                          />
-                        </td>
-                      )}
-                      <td className={cn(tdCls, "tabular-nums text-muted-foreground")}>{l.date}</td>
-                      {all && <td className={cn(tdCls, "truncate text-muted-foreground")}>{accountName(byId.get(l.accountId)!)}</td>}
-                      <td className={tdCls}>
-                        <div className="line-clamp-2 text-2sm [overflow-wrap:anywhere]" title={l.narration}>
-                          {l.narration}
-                        </div>
-                      </td>
-                      <td className={cn(tdCls, "text-right tabular-nums")}>{l.amount < 0 ? fmtINR(-l.amount) : ""}</td>
-                      <td className={cn(tdCls, "text-right tabular-nums text-[var(--color-success-accent)]")}>{l.amount > 0 ? fmtINR(l.amount) : ""}</td>
-                      {showBalance && <td className={cn(tdCls, "text-right tabular-nums text-muted-foreground")}>{fmtINR(balanceAfter.get(l.id) ?? 0)}</td>}
-                      <td className={tdCls}>
-                        {st === "unmatched" ? (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="warning">Unmatched</Badge>
-                            <span className="truncate text-xs text-muted-foreground">Nothing in your books yet</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2.5">
-                            {st === "confirm" && l.match!.confidence ? (
-                              <Confidence value={l.match!.confidence} />
-                            ) : (
-                              <Badge variant="success">{l.status === "auto" ? "AI" : "You"}</Badge>
-                            )}
-                            <MatchText m={l.match!} />
-                          </div>
-                        )}
-                      </td>
-                      <td className={cn(tdCls, "text-right")}>
-                        <LineActions line={l} onAccept={() => accept([l.id])} onReject={(undo) => reject(l.id, undo)} onFind={() => setResolving(l)} />
-                      </td>
-                    </tr>
-                  );
-                })}
-                {bankRows.length === 0 && (
-                  <Empty colSpan={bankCols}>
-                    {account && !bank && !q
-                      ? account.bankKey
-                        ? "No bank transactions yet. Connect the account to bring them in."
-                        : "No bank transactions yet. Upload a statement to bring them in."
-                      : filter === "confirm"
-                        ? "No suggestions waiting. New bank transactions are matched as they arrive."
-                        : filter === "unmatched"
-                          ? "Every bank transaction in this period is in your books."
-                          : "No bank transactions in this period."}
-                  </Empty>
-                )}
-              </tbody>
-            </table>
-          ) : (
-            <table className={cn(tableCls, "table-fixed")}>
-              <thead>
-                <tr>
-                  {filter === "confirm" && (
-                    <th className={cn(thCls, "w-10 pe-0")}>
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={allSelected}
-                        onChange={() => setSelected(allSelected ? [] : confirmIds)}
-                        className="size-4 cursor-pointer accent-primary"
-                      />
-                    </th>
-                  )}
-                  <th className={cn(thCls, "w-28")}>Date</th>
-                  {all && <th className={cn(thCls, "w-32")}>Account</th>}
-                  <th className={thCls}>Entry</th>
-                  <th className={cn(thCls, "w-32 text-right")}>Received</th>
-                  <th className={cn(thCls, "w-32 text-right")}>Paid</th>
-                  <th className={cn(thCls, "w-[28%]")}>In the bank</th>
-                  <th className={cn(thCls, "w-40")} />
-                </tr>
-              </thead>
-              <tbody>
-                {bookRows.map((e) => {
-                  const st = entryStatus(e);
-                  const l = e.lineId ? lineById.get(e.lineId) : undefined;
-                  return (
-                    <tr key={e.id} className={trCls}>
-                      {filter === "confirm" && (
-                        <td className={cn(tdCls, "pe-0")}>
-                          <input
-                            type="checkbox"
-                            aria-label="Select"
-                            checked={selected.includes(e.lineId!)}
-                            onChange={() => toggle(e.lineId!)}
-                            className="size-4 cursor-pointer accent-primary"
-                          />
-                        </td>
-                      )}
-                      <td className={cn(tdCls, "tabular-nums text-muted-foreground")}>{e.date}</td>
-                      {all && <td className={cn(tdCls, "truncate text-muted-foreground")}>{accountName(byId.get(e.accountId)!)}</td>}
-                      <td className={tdCls}>
-                        <div className="truncate font-medium">{e.ref}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {e.kind} · {e.party}
-                        </div>
-                      </td>
-                      <td className={cn(tdCls, "text-right tabular-nums text-[var(--color-success-accent)]")}>{e.amount > 0 ? fmtINR(e.amount) : ""}</td>
-                      <td className={cn(tdCls, "text-right tabular-nums")}>{e.amount < 0 ? fmtINR(-e.amount) : ""}</td>
-                      <td className={tdCls}>
-                        {st === "notinbank" ? (
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="warning">Not in bank</Badge>
-                              {e.assumedAccount && <Badge variant="secondary">Account assumed</Badge>}
-                            </div>
-                            <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {e.note}
-                              {e.daysOpen !== undefined && ` · open ${e.daysOpen} days`}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            {st === "confirm" && l?.match?.confidence ? <Confidence value={l.match.confidence} /> : <Badge variant="success">Matched</Badge>}
-                            <div className="min-w-0">
-                              <div className="truncate text-2sm" title={l?.narration}>
-                                {l?.narration}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {l?.date}
-                                {l && Math.abs(l.amount) !== Math.abs(e.amount) && ` · part of ${fmtINR(Math.abs(l.amount))}`}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className={cn(tdCls, "text-right")}>
-                        {l ? (
-                          <LineActions line={l} onAccept={() => accept([l.id])} onReject={(undo) => reject(l.id, undo)} onFind={() => setResolving(l)} />
-                        ) : e.assumedAccount ? (
-                          <div className="relative inline-block">
-                            <Button size="sm" onClick={() => setMoveMenu(moveMenu === e.id ? null : e.id)}>
-                              Move to… <ChevronDown />
-                            </Button>
-                            {moveMenu === e.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setMoveMenu(null)} />
-                                <div className={cn(popoverCls, "absolute end-0 top-full z-20 mt-1 flex w-56 flex-col p-1 text-left")}>
-                                  {accounts
-                                    .filter((a) => a.id !== e.accountId)
-                                    .map((a) => (
-                                      <button
-                                        key={a.id}
-                                        className={menuItemCls}
-                                        onClick={() => {
-                                          store().moveEntry(e.id, a.id);
-                                          setMoveMenu(null);
-                                          toast(`${e.ref} moved to ${accountName(a)}`);
-                                        }}
-                                      >
-                                        {accountName(a)}
-                                        {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                                      </button>
-                                    ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Waiting for the bank</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {bookRows.length === 0 && (
-                  <Empty colSpan={bookCols}>
-                    {filter === "notinbank"
-                      ? "Every entry in your books for this period has shown up at the bank."
-                      : filter === "confirm"
-                        ? "No suggestions waiting."
-                        : "No entries in your books for this period."}
-                  </Empty>
-                )}
-              </tbody>
-            </table>
+        {/* Column heads: wide screens only. Below that each row stacks. */}
+        <div className="hidden items-center gap-3 border-b border-border bg-muted/40 px-5 py-2 text-xs font-medium text-muted-foreground lg:flex">
+          {filter === "confirm" && (
+            <input
+              type="checkbox"
+              aria-label="Select all"
+              checked={allSelected}
+              onChange={() => setSelected(allSelected ? [] : confirmIds)}
+              className="size-4 cursor-pointer accent-primary"
+            />
           )}
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-6">
+            <span>{isStatementView ? "Bank transaction" : "Entry in your books"}</span>
+            <span>{isStatementView ? "In your books" : "In the bank"}</span>
+          </div>
+          <div className="w-28 text-right sm:w-36">Amount</div>
+          <div className="w-[136px]" />
         </div>
+
+        {isStatementView
+          ? bankRows.map((l) => (
+              <Row
+                key={l.id}
+                checkbox={filter === "confirm"}
+                checked={selected.includes(l.id)}
+                onToggle={() => toggle(l.id)}
+                onOpen={() => setDetail(l.id)}
+                main={
+                  <TwoLines
+                    title={lineParty(l)}
+                    sub={`${shortDate(l.date)} · ${all ? `${accountName(byId.get(l.accountId)!)} · ` : ""}${l.narration}`}
+                    subTitle={l.narration}
+                  />
+                }
+                side={<BooksSide line={l} />}
+                amount={l.amount}
+                note={showBalance ? `Bal ${fmtINR(balanceAfter.get(l.id) ?? 0)}` : undefined}
+                actions={<LineActions line={l} onAccept={() => accept([l.id])} onReject={(undo) => reject(l.id, undo)} onFind={() => setResolving(l)} />}
+              />
+            ))
+          : bookRows.map((e) => {
+              const l = e.lineId ? lineById.get(e.lineId) : undefined;
+              return (
+                <Row
+                  key={e.id}
+                  checkbox={filter === "confirm"}
+                  checked={!!e.lineId && selected.includes(e.lineId)}
+                  onToggle={() => e.lineId && toggle(e.lineId)}
+                  onOpen={l ? () => setDetail(l.id) : undefined}
+                  main={<TwoLines title={`${e.ref} · ${e.party}`} sub={`${shortDate(e.date)} · ${all ? `${accountName(byId.get(e.accountId)!)} · ` : ""}${e.kind}`} />}
+                  side={
+                    l ? (
+                      <TwoLines
+                        icon={l.status === "suggested" ? <Sparkles className="size-3.5 text-primary" /> : <Check className="size-3.5 text-[var(--color-success-accent)]" />}
+                        title={lineParty(l)}
+                        sub={`${shortDate(l.date)} · ${l.status === "suggested" ? "suggested by AI" : "matched"}${Math.abs(l.amount) !== Math.abs(e.amount) ? ` · part of ${fmtINR(Math.abs(l.amount))}` : ""}`}
+                      />
+                    ) : (
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant="warning">Not in bank</Badge>
+                          {e.assumedAccount && <Badge variant="secondary">Account assumed</Badge>}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {e.note}
+                          {e.daysOpen !== undefined && ` · open ${e.daysOpen} days`}
+                        </div>
+                      </div>
+                    )
+                  }
+                  amount={e.amount}
+                  actions={
+                    l ? (
+                      <LineActions line={l} onAccept={() => accept([l.id])} onReject={(undo) => reject(l.id, undo)} onFind={() => setResolving(l)} />
+                    ) : e.assumedAccount ? (
+                      <div className="relative inline-block">
+                        <Button size="sm" onClick={() => setMoveMenu(moveMenu === e.id ? null : e.id)}>
+                          Move to… <ChevronDown />
+                        </Button>
+                        {moveMenu === e.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setMoveMenu(null)} />
+                            <div className={cn(popoverCls, "absolute end-0 top-full z-20 mt-1 flex w-56 flex-col p-1 text-left")}>
+                              {accounts
+                                .filter((a) => a.id !== e.accountId)
+                                .map((a) => (
+                                  <button
+                                    key={a.id}
+                                    className={menuItemCls}
+                                    onClick={() => {
+                                      store().moveEntry(e.id, a.id);
+                                      setMoveMenu(null);
+                                      toast(`${e.ref} moved to ${accountName(a)}`);
+                                    }}
+                                  >
+                                    {accountName(a)}
+                                    {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                                  </button>
+                                ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Waiting for the bank</span>
+                    )
+                  }
+                />
+              );
+            })}
+
+        {(isStatementView ? bankRows : bookRows).length === 0 && (
+          <div className="px-5 py-10 text-center text-2sm text-muted-foreground">
+            {isStatementView
+              ? account && !bank && !q
+                ? account.bankKey
+                  ? "No bank transactions yet. Connect the account to bring them in."
+                  : "No bank transactions yet. Upload a statement to bring them in."
+                : filter === "confirm"
+                  ? "No suggestions waiting. New bank transactions are matched as they arrive."
+                  : filter === "unmatched"
+                    ? "Every bank transaction in this period is in your books."
+                    : "No bank transactions in this period."
+              : filter === "notinbank"
+                ? "Every entry in your books for this period has shown up at the bank."
+                : filter === "confirm"
+                  ? "No suggestions waiting."
+                  : "No entries in your books for this period."}
+          </div>
+        )}
       </Card>
+
+      {detailLine && (
+        <LineDrawer
+          line={detailLine}
+          accountLabel={accountName(byId.get(detailLine.accountId)!)}
+          balance={showBalance ? balanceAfter.get(detailLine.id) : undefined}
+          entries={entries.filter((e) => e.lineId === detailLine.id)}
+          onClose={() => setDetail(null)}
+          onAccept={() => {
+            accept([detailLine.id]);
+            setDetail(null);
+          }}
+          onReject={(undo) => {
+            reject(detailLine.id, undo);
+            setDetail(null);
+          }}
+          onFind={() => {
+            setDetail(null);
+            setResolving(detailLine);
+          }}
+        />
+      )}
 
       {resolving && (
         <ResolveDrawer
@@ -792,13 +710,222 @@ function AccountMark({ account }: { account: CompanyAccount | null }) {
   );
 }
 
-function Empty({ children, colSpan }: { children: ReactNode; colSpan: number }) {
+/** One list row: who/what (and its match) on the left, amount and action on the right. Stacks below lg. */
+function Row({
+  checkbox,
+  checked,
+  onToggle,
+  onOpen,
+  main,
+  side,
+  amount,
+  note,
+  actions,
+}: {
+  checkbox: boolean;
+  checked: boolean;
+  onToggle: () => void;
+  onOpen?: () => void;
+  main: ReactNode;
+  side: ReactNode;
+  amount: number;
+  note?: string;
+  actions: ReactNode;
+}) {
   return (
-    <tr>
-      <td colSpan={colSpan} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
-        {children}
-      </td>
-    </tr>
+    <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={(e) => onOpen && e.key === "Enter" && onOpen()}
+      className={cn("flex items-start gap-3 border-b border-border px-5 py-3 last:border-b-0 lg:items-center", onOpen && "cursor-pointer hover:bg-accent/40")}
+    >
+      {checkbox && (
+        <input
+          type="checkbox"
+          aria-label="Select"
+          checked={checked}
+          onClick={(e) => e.stopPropagation()}
+          onChange={onToggle}
+          className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary lg:mt-0"
+        />
+      )}
+      <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2 lg:grid-cols-2 lg:items-center">
+        {main}
+        {side}
+      </div>
+      <div className="w-28 shrink-0 text-right sm:w-36">
+        <Amount value={amount} className="text-2sm font-semibold" />
+        {note && <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{note}</div>}
+      </div>
+      <div className="flex w-[136px] shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
+        {actions}
+      </div>
+    </div>
+  );
+}
+
+function TwoLines({ title, sub, subTitle, icon }: { title: ReactNode; sub: ReactNode; subTitle?: string; icon?: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        {icon}
+        <span className="truncate text-2sm font-medium">{title}</span>
+      </div>
+      <div className="mt-0.5 truncate text-xs text-muted-foreground" title={subTitle}>
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+/** What a bank line is (or isn't) in the books, in two short lines. */
+function BooksSide({ line: l }: { line: BankLine }) {
+  if (l.status === "needs")
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <Badge variant="warning">Unmatched</Badge>
+        <span className="truncate text-xs text-muted-foreground">Nothing in your books yet</span>
+      </div>
+    );
+  const m = l.match!;
+  const what = [m.kind, m.ref ?? m.ledger].filter(Boolean).join(" · ");
+  const check = l.status === "suggested" && m.confidence !== undefined && m.confidence < 90;
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        {l.status === "suggested" ? <Sparkles className="size-3.5 shrink-0 text-primary" /> : <Check className="size-3.5 shrink-0 text-[var(--color-success-accent)]" />}
+        <span className="truncate text-2sm">{what}</span>
+        {check && <Badge variant="warning">Check · {m.confidence}%</Badge>}
+      </div>
+      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+        {l.status === "suggested" ? m.reason : `Matched by ${l.status === "auto" ? "AI" : "you"}`}
+      </div>
+    </div>
+  );
+}
+
+/** Everything about one bank transaction, and what to do with it. Opens on row click. */
+function LineDrawer({
+  line: l,
+  accountLabel,
+  balance,
+  entries,
+  onClose,
+  onAccept,
+  onReject,
+  onFind,
+}: {
+  line: BankLine;
+  accountLabel: string;
+  balance?: number;
+  entries: BookEntry[];
+  onClose: () => void;
+  onAccept: () => void;
+  onReject: (undo: boolean) => void;
+  onFind: () => void;
+}) {
+  useEscape(onClose);
+  const m = l.match;
+  return (
+    <>
+      <div className={OVERLAY} onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Bank transaction"
+        className="fixed bottom-5 end-5 top-5 z-50 flex w-[460px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
+      >
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="text-base font-semibold">Bank transaction</div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
+            <X />
+          </Button>
+        </div>
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+          <div>
+            <Amount value={l.amount} className="text-2xl font-semibold" />
+            <div className="mt-1 text-sm font-medium">{lineParty(l)}</div>
+            <div className="text-xs text-muted-foreground">
+              {fmtDay(toDate(l.date))} · {accountLabel}
+              {balance !== undefined && ` · balance after ${fmtINR(balance)}`}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">Narration</div>
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs [overflow-wrap:anywhere]">{l.narration}</div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">In your books</div>
+            {!m ? (
+              <div className="rounded-md border border-dashed border-border p-3.5 text-2sm text-muted-foreground">
+                Nothing in your books matches this yet. Link an entry you've already recorded, or record a new one.
+              </div>
+            ) : (
+              <div className="rounded-md border border-border p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-2sm font-medium">{[m.kind, m.ref ?? m.ledger].filter(Boolean).join(" · ")}</span>
+                  {l.status === "suggested" ? (
+                    <Badge variant={m.confidence !== undefined && m.confidence < 90 ? "warning" : "primary"}>
+                      <Sparkles />
+                      {m.confidence}% sure
+                    </Badge>
+                  ) : (
+                    <Badge variant="success">Matched by {l.status === "auto" ? "AI" : "you"}</Badge>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {m.party}
+                  {m.ledger && m.ref ? ` · ${m.ledger}` : ""}
+                </div>
+                {m.reason && <div className="mt-2 text-xs">Why: {m.reason}</div>}
+                {entries.length > 1 && (
+                  <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
+                    <div className="text-xs text-muted-foreground">{entries.length} entries make up this amount</div>
+                    {entries.map((e) => (
+                      <div key={e.id} className="flex justify-between gap-2 text-xs">
+                        <span className="truncate">
+                          {e.ref} · {e.party}
+                        </span>
+                        <span className="tabular-nums">{fmtINR(Math.abs(e.amount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {entries.length === 0 && l.status === "suggested" && (
+                  <div className="mt-2 text-xs text-muted-foreground">Accepting records this as a new {m.kind === "Transfer" ? "contra entry" : "entry"} in your books.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2.5 border-t border-border px-6 py-4">
+          {l.status === "suggested" ? (
+            <>
+              <Button onClick={() => onReject(false)}>
+                <X />
+                Not this match
+              </Button>
+              <Button variant="primary" onClick={onAccept}>
+                <Check />
+                Accept
+              </Button>
+            </>
+          ) : l.status === "needs" ? (
+            <Button variant="primary" onClick={onFind}>
+              Find match or record
+            </Button>
+          ) : (
+            <Button onClick={() => onReject(true)}>
+              <Undo2 />
+              Undo match
+            </Button>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 

@@ -25,6 +25,8 @@ export interface BankLine {
   amount: number;
   status: LineStatus;
   match?: Match;
+  /** Who paid or was paid, in plain words, as read from the narration by the recon engine. */
+  party?: string;
 }
 
 export interface BookEntry {
@@ -54,7 +56,14 @@ const L = (id: string, accountId: string, date: string, narration: string, amoun
   match,
 });
 
+// Payee / payer the engine read from narrations it couldn't match (matched lines take the match's party).
+const NARRATION_PARTY: Record<string, string> = { l02: "Deepak Trading", l04: "Chander Stores", l07: "Axis Bank · SMS charges", l10: "Bateaco BL" };
+
 export function initialBankLines(): BankLine[] {
+  return sampleLines().map((l) => ({ ...l, party: NARRATION_PARTY[l.id] ?? l.match?.party }));
+}
+
+function sampleLines(): BankLine[] {
   return [
     // Axis ••9012 — Main operating
     L("l01", "p1", "05-10-2026", "NEFT-HDFCN52026100512-MEHTA EXPORTS PVT LTD-INV-2026-118", 123000, "suggested", { kind: "Receipt", ref: "REC 2026-66", party: "Mehta Exports", confidence: 98, reason: "Same amount · INV-2026-118 in the narration" }),

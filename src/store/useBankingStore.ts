@@ -227,6 +227,7 @@ export const useBankingStore = create<BankingState>((set, get) => ({
           narration: "NEFT-HDFCN52026100877-KIRAN ENTERPRISES-INV-2026-131",
           amount: 26500,
           status: "suggested",
+          party: "Kiran Enterprises",
           match: { kind: "Receipt", ref: "REC 2026-70", party: "Kiran Enterprises", confidence: 96, reason: "Same amount · INV-2026-131 in the narration" },
         };
         set((s) => ({
