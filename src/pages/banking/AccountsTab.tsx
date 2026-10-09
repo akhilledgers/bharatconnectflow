@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { BadgeCheck, CloudDownload, FileText, Landmark, MoreHorizontal, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Upload } from "lucide-react";
+import { BadgeCheck, CloudDownload, FileText, History, Landmark, MoreHorizontal, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card } from "../../components/ui/card";
+import { Select } from "../../components/ui/input";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, tdCls, thCls, trCls } from "../../components/ui/table";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
@@ -11,16 +12,22 @@ import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
 import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
-import { reconFor } from "./ledgerData";
+import type { StatementImport } from "./ledgerData";
 import { bankBalanceOf, daysSince } from "./overviewData";
 import { FilterChips } from "./FilterChips";
+import { OVERLAY } from "./shared";
 import { pickStatementFile } from "./statementUpload";
 import { SyncBadge } from "./SyncBadge";
+import { useEscape } from "./useEscape";
 
 const toast = (message: string, tone: "success" | "error" = "success") => useStore.getState().pushToast(message, tone);
 const shortName = (a: CompanyAccount) => `${a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank} ${last4(a.number)}`;
+const STALE_DAYS = 7;
 
-/** Setup and upkeep of the company's bank accounts: how each one syncs, and the statement imports. */
+/**
+ * Setup and upkeep of the company's bank accounts: one row each, with how it syncs, its balance, and at most
+ * one next step. Reconciliation lives in Transactions; statement history opens per account in a side panel.
+ */
 export function AccountsTab({
   onConnect,
   onOpenTransactions,
@@ -31,30 +38,25 @@ export function AccountsTab({
   onAdd: () => void;
 }) {
   const accounts = useBankingStore((s) => s.accounts);
-  const lines = useBankingStore((s) => s.bankLines);
-  const entries = useBankingStore((s) => s.bookEntries);
   const imports = useBankingStore((s) => s.imports);
   const mode = useBankingStore((s) => s.scenario.balance);
   const [show, setShow] = useState<"active" | "inactive">("active");
   const [query, setQuery] = useState("");
   const [verifying, setVerifying] = useState<string[]>([]);
   const [menu, setMenu] = useState<{ id: string; right: number; top?: number; bottom?: number } | null>(null);
+  const [history, setHistory] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
   const list = accounts
     .filter((a) => (show === "active" ? a.active : !a.active))
     .filter((a) => !q || [a.bank, a.nickname, a.number, a.ifsc].some((v) => v.toLowerCase().includes(q)));
-  const connected = list.filter((a) => a.bankKey && a.connection !== "none");
-  const manual = list.filter((a) => !(a.bankKey && a.connection !== "none"));
-  const unverified = accounts.filter((a) => a.active && !a.verified && !(a.bankKey && a.connection === "none"));
 
-  const verify = async (ids: string[]) => {
-    setVerifying((v) => [...v, ...ids]);
-    const results = await Promise.all(ids.map((id) => useBankingStore.getState().verifyOwnAccount(id)));
-    setVerifying((v) => v.filter((x) => !ids.includes(x)));
-    const ok = results.filter(Boolean).length;
-    if (ok) toast(ok === 1 && ids.length === 1 ? `${shortName(accounts.find((a) => a.id === ids[0])!)} verified` : `${ok} of ${ids.length} accounts verified`);
-    if (ok < ids.length) toast("The bank couldn't confirm some accounts. Check the account number and IFSC.", "error");
+  const verify = async (a: CompanyAccount) => {
+    setVerifying((v) => [...v, a.id]);
+    const ok = await useBankingStore.getState().verifyOwnAccount(a.id);
+    setVerifying((v) => v.filter((x) => x !== a.id));
+    if (ok) toast(`${shortName(a)} verified`);
+    else toast(`The bank couldn't confirm ${shortName(a)}. Check the account number and IFSC.`, "error");
   };
 
   const upload = (a: CompanyAccount) =>
@@ -65,44 +67,58 @@ export function AccountsTab({
 
   const row = (a: CompanyAccount) => {
     const bank = bankBalanceOf(a, mode);
-    const recon = reconFor(a.id, lines, entries);
-    const books = bank ? bank.amount - recon.difference : (a.booksBalance ?? (recon.booksOnly.length ? -recon.difference : null));
-    const isVerifying = verifying.includes(a.id);
+    const latest = imports.find((i) => i.accountId === a.id && i.source === "upload");
+    const failed = latest?.status === "failed" ? latest : undefined;
+    const reading = latest?.status === "processing";
+    const age = a.statement ? daysSince(a.statement.date) : undefined;
 
-    let sync: ReactNode;
-    let action: ReactNode = null;
-    if (!a.active) sync = <SyncBadge account={a} />;
-    else if (a.bankKey && a.connection === "connected") sync = <SyncNote account={a}>Synced {a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}</SyncNote>;
-    else if (a.bankKey && a.connection === "expired") {
-      sync = <SyncNote account={a}>{syncedLabel(a.syncedMinutesAgo ?? 0)}</SyncNote>;
-      action = (
-        <Button size="sm" onClick={() => onConnect(a.id)}>
-          <RefreshCw />
-          Reconnect
-        </Button>
+    // How it syncs: a badge, and one short note beside it.
+    let note: ReactNode = null;
+    if (!a.active) note = null;
+    else if (reading)
+      note = (
+        <span className="inline-flex items-center gap-1.5">
+          <CircularSpinner size={12} /> Reading statement…
+        </span>
       );
-    } else if (a.bankKey) {
-      sync = <SyncBadge account={a} />;
-      action = (
-        <Button size="sm" onClick={() => onConnect(a.id)}>
-          <Plug />
-          Connect
-        </Button>
-      );
-    } else {
-      sync = <SyncNote account={a}>{a.statement && daysSince(a.statement.date) > 7 ? `${daysSince(a.statement.date)} days old` : null}</SyncNote>;
-      action = (
-        <Button size="sm" onClick={() => upload(a)}>
-          <Upload />
-          Upload
-        </Button>
-      );
-    }
+    else if (failed) note = <span className="text-[var(--color-destructive-accent)]">Import failed · {failed.reason}</span>;
+    else if (a.bankKey && a.connection === "connected") note = `Synced ${a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}`;
+    else if (a.bankKey && a.connection === "expired") note = syncedLabel(a.syncedMinutesAgo ?? 0);
+    else if (age !== undefined && age > STALE_DAYS) note = <span className="text-[var(--color-warning-accent)]">{age} days old</span>;
+
+    // At most one next step, most urgent first. Healthy accounts get none.
+    const isVerifying = verifying.includes(a.id);
+    const action: ReactNode = !a.active ? null : a.bankKey && a.connection === "expired" ? (
+      <Button size="sm" onClick={() => onConnect(a.id)}>
+        <RefreshCw />
+        Reconnect
+      </Button>
+    ) : a.bankKey && a.connection === "none" ? (
+      <Button size="sm" onClick={() => onConnect(a.id)}>
+        <Plug />
+        Connect
+      </Button>
+    ) : failed ? (
+      <Button size="sm" onClick={() => upload(a)}>
+        <RotateCcw />
+        Upload again
+      </Button>
+    ) : !a.verified ? (
+      <Button size="sm" onClick={() => verify(a)} disabled={isVerifying}>
+        {isVerifying ? <CircularSpinner size={12} /> : <ShieldCheck />}
+        {isVerifying ? "Verifying…" : "Verify"}
+      </Button>
+    ) : !a.bankKey && !reading && (age === undefined || age > STALE_DAYS) ? (
+      <Button size="sm" onClick={() => upload(a)}>
+        <Upload />
+        Upload
+      </Button>
+    ) : null;
 
     return (
       <tr key={a.id} className={cn(trCls, !a.active && "text-muted-foreground")}>
         <td className={tdCls}>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {a.bankKey ? (
               <BankIcon bank={a.bankKey} size={32} />
             ) : (
@@ -111,58 +127,45 @@ export function AccountsTab({
               </span>
             )}
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate font-medium">{a.bank}</span>
-                {a.verified ? (
-                  <BadgeCheck className="size-4 shrink-0 text-[var(--color-success-accent)]" aria-label="Verified" />
-                ) : isVerifying ? (
-                  <CircularSpinner size={12} />
-                ) : (
-                  a.active && (
-                    <button type="button" onClick={() => verify([a.id])} className="cursor-pointer text-xs text-primary hover:underline">
-                      Verify
-                    </button>
-                  )
-                )}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-medium">
+                  {shortName(a)}
+                  {a.nickname && <span className="font-normal text-muted-foreground"> · {a.nickname}</span>}
+                </span>
                 {a.primary && <Badge variant="info">Primary</Badge>}
               </div>
-              <div className="truncate text-xs text-muted-foreground">{[a.nickname, `${a.type} ${last4(a.number)}`, a.ifsc].filter(Boolean).join(" · ")}</div>
+              <div className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                {a.type} · {a.ifsc}
+                {a.verified ? (
+                  <span className="inline-flex items-center gap-0.5 text-[var(--color-success-accent)]">
+                    · <BadgeCheck className="size-3.5" /> Verified
+                  </span>
+                ) : (
+                  <span> · Not verified</span>
+                )}
+              </div>
             </div>
           </div>
         </td>
-        <td className={tdCls}>{sync}</td>
-        <td className={cn(tdCls, "text-right tabular-nums")}>
-          {bank ? <span className={cn(bank.source === "stale" && "text-muted-foreground")}>{fmtINR(bank.amount)}</span> : <span className="text-muted-foreground">—</span>}
+        <td className={tdCls}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <SyncBadge account={a} />
+            {note && <span className="text-xs text-muted-foreground">{note}</span>}
+          </div>
         </td>
         <td className={cn(tdCls, "text-right tabular-nums")}>
-          {books === null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            <button type="button" onClick={() => onOpenTransactions(a.id)} className="cursor-pointer text-right hover:underline">
-              <div>{fmtINR(books)}</div>
-              {bank &&
-                (recon.reconciled ? (
-                  <div className="text-xs text-[var(--color-success-accent)]">Matches the bank</div>
-                ) : recon.difference !== 0 ? (
-                  <div className="text-xs text-[var(--color-warning-accent)]">Differs by {fmtINR(Math.abs(recon.difference))}</div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">
-                    {recon.suggested + recon.needs + recon.booksOnly.length} to review
-                  </div>
-                ))}
-            </button>
-          )}
+          {bank ? <span className={cn(bank.source === "stale" && "text-[var(--color-warning-accent)]")}>{fmtINR(bank.amount)}</span> : <span className="text-muted-foreground">—</span>}
         </td>
         <td className={cn(tdCls, "text-right")}>
           <div className="flex items-center justify-end gap-1.5">
-            {a.active && action}
+            {action}
             <Button
               variant="ghost"
               size="icon-sm"
               aria-label="More actions"
               onClick={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
-                const up = r.bottom + 200 > window.innerHeight;
+                const up = r.bottom + 260 > window.innerHeight;
                 setMenu(menu?.id === a.id ? null : { id: a.id, right: window.innerWidth - r.right, ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
               }}
             >
@@ -177,7 +180,7 @@ export function AccountsTab({
   const menuAccount = menu ? accounts.find((a) => a.id === menu.id) : undefined;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative w-60">
@@ -199,50 +202,34 @@ export function AccountsTab({
             ]}
           />
         </div>
-        <Button onClick={onAdd}>
-          <Plus />
-          Add bank account
-        </Button>
-      </div>
-
-      {show === "active" && unverified.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-[var(--color-primary-soft)]/60 px-4 py-2.5 text-2sm">
-          <span className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-[var(--color-primary-accent)]" />
-            {unverified.length} account{unverified.length > 1 ? "s" : ""} not verified. It's an instant check with the bank; no money is moved.
-          </span>
-          <Button size="sm" onClick={() => verify(unverified.map((a) => a.id))}>
-            Verify all
+        <div className="flex gap-2.5">
+          <Button variant="ghost" onClick={() => setHistory("all")}>
+            <History />
+            Import history
+          </Button>
+          <Button onClick={onAdd}>
+            <Plus />
+            Add bank account
           </Button>
         </div>
-      )}
+      </div>
 
       <Card className="min-w-0">
         <div className="overflow-x-auto">
-          <table className={tableCls}>
+          <table className={cn(tableCls, "table-fixed")}>
             <thead>
               <tr>
                 <th className={cn(thCls, "bg-muted font-medium text-foreground")}>Account</th>
-                <th className={cn(thCls, "w-60 bg-muted font-medium text-foreground")}>How it syncs</th>
-                <th className={cn(thCls, "w-40 bg-muted text-right font-medium text-foreground")}>In bank</th>
-                <th className={cn(thCls, "w-44 bg-muted text-right font-medium text-foreground")}>In your books</th>
-                <th className={cn(thCls, "w-40 bg-muted")} />
+                <th className={cn(thCls, "w-[28%] bg-muted font-medium text-foreground")}>Status</th>
+                <th className={cn(thCls, "w-36 bg-muted text-right font-medium text-foreground")}>Balance</th>
+                <th className={cn(thCls, "w-44 bg-muted")} />
               </tr>
             </thead>
             <tbody>
-              {show === "active" ? (
-                <>
-                  {connected.length > 0 && <GroupRow>Connected banking · {connected.length}</GroupRow>}
-                  {connected.map(row)}
-                  {manual.length > 0 && <GroupRow>Statement upload · {manual.length}</GroupRow>}
-                  {manual.map(row)}
-                </>
-              ) : (
-                list.map(row)
-              )}
+              {list.map(row)}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={5} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
+                  <td colSpan={4} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
                     {q ? "No accounts match your search." : show === "inactive" ? "No inactive accounts." : "No bank accounts yet."}
                   </td>
                 </tr>
@@ -251,66 +238,6 @@ export function AccountsTab({
           </table>
         </div>
       </Card>
-
-      {imports.length > 0 && (
-        <Card className="min-w-0">
-          <CardHeader className="py-3">
-            <div>
-              <CardTitle>Statement imports</CardTitle>
-              <CardDescription>Bank feeds and the statements you upload</CardDescription>
-            </div>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className={tableCls}>
-              <tbody>
-                {imports.slice(0, 8).map((i) => {
-                  const a = accounts.find((x) => x.id === i.accountId);
-                  return (
-                    <tr key={i.id} className={trCls}>
-                      <td className={tdCls}>
-                        <div className="flex items-center gap-2.5">
-                          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-3.5">
-                            {i.source === "api" ? <CloudDownload /> : <FileText />}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="truncate text-2sm">{i.source === "api" ? "Bank feed" : i.file}</div>
-                            <div className="text-xs text-muted-foreground">{a ? shortName(a) : ""}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.period}</td>
-                      <td className={tdCls}>
-                        {i.status === "imported" ? (
-                          <span className="text-2sm">
-                            <Badge variant="success">Imported</Badge> <span className="ms-1 text-muted-foreground">{i.lines} transactions</span>
-                          </span>
-                        ) : i.status === "processing" ? (
-                          <span className="inline-flex items-center gap-2 text-2sm text-muted-foreground">
-                            <CircularSpinner size={14} /> Reading the statement…
-                          </span>
-                        ) : (
-                          <span className="text-2sm">
-                            <Badge variant="destructive">Failed</Badge> <span className="ms-1 text-muted-foreground">{i.reason}</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className={cn(tdCls, "text-2sm text-muted-foreground")}>{i.at}</td>
-                      <td className={cn(tdCls, "w-32 text-right")}>
-                        {i.status === "failed" && a && (
-                          <Button size="sm" onClick={() => upload(a)}>
-                            <RotateCcw />
-                            Upload again
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
 
       {menu && menuAccount && (
         <>
@@ -321,11 +248,13 @@ export function AccountsTab({
               menuAccount.connection === "connected" && {
                 label: "Sync now",
                 run: async () => {
-                  await useBankingStore.getState().syncAccount(menuAccount.id);
-                  toast(`${shortName(menuAccount)} synced`);
+                  const n = await useBankingStore.getState().syncAccount(menuAccount.id);
+                  toast(n ? `${shortName(menuAccount)} synced · ${n} new transaction${n > 1 ? "s" : ""}` : `${shortName(menuAccount)} is up to date`);
                 },
               },
-              menuAccount.active && menuAccount.connection !== "connected" && { label: "Upload statement", run: () => upload(menuAccount) },
+              menuAccount.active && { label: "Upload statement", run: () => upload(menuAccount) },
+              { label: "Statement history", run: () => setHistory(menuAccount.id) },
+              menuAccount.active && !menuAccount.verified && { label: "Verify account", run: () => verify(menuAccount) },
               menuAccount.active && !menuAccount.primary && { label: "Set as primary", run: () => useBankingStore.getState().setPrimary(menuAccount.id) },
               {
                 label: menuAccount.active ? "Deactivate" : "Activate",
@@ -350,25 +279,120 @@ export function AccountsTab({
         </>
       )}
 
+      {history && <ImportHistory accountId={history} onClose={() => setHistory(null)} onUpload={upload} />}
     </div>
   );
 }
 
-function GroupRow({ children }: { children: ReactNode }) {
+const PAGE = 10;
+
+/** Every bank feed and statement upload, newest first, for one account or all — paged so it never grows the page. */
+function ImportHistory({ accountId, onClose, onUpload }: { accountId: string; onClose: () => void; onUpload: (a: CompanyAccount) => void }) {
+  useEscape(onClose);
+  const accounts = useBankingStore((s) => s.accounts);
+  const imports = useBankingStore((s) => s.imports);
+  const [filter, setFilter] = useState(accountId);
+  const [failedOnly, setFailedOnly] = useState(false);
+  const [shown, setShown] = useState(PAGE);
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const rows = imports.filter((i) => (filter === "all" || i.accountId === filter) && (!failedOnly || i.status === "failed"));
+
   return (
-    <tr>
-      <td colSpan={5} className="border-b border-border bg-muted/40 px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {children}
-      </td>
-    </tr>
+    <>
+      <div className={OVERLAY} onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Import history"
+        className="fixed bottom-5 end-5 top-5 z-50 flex w-[520px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
+      >
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="text-base font-semibold">{filter === "all" ? "Import history" : "Statement history"}</div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
+            <X />
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-3">
+          <Select
+            aria-label="Account"
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              setShown(PAGE);
+            }}
+            wrapperClassName="w-60"
+          >
+            <option value="all">All accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {shortName(a)}
+                {a.nickname ? ` · ${a.nickname}` : ""}
+              </option>
+            ))}
+          </Select>
+          <label className="flex cursor-pointer items-center gap-2 text-2sm">
+            <input type="checkbox" checked={failedOnly} onChange={(e) => setFailedOnly(e.target.checked)} className="size-4 accent-primary" />
+            Failed only
+          </label>
+          <span className="ms-auto text-xs text-muted-foreground">{rows.length} imports</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {rows.slice(0, shown).map((i) => (
+            <ImportRow key={i.id} item={i} account={byId.get(i.accountId)} showAccount={filter === "all"} onUpload={onUpload} />
+          ))}
+          {rows.length === 0 && <div className="px-6 py-10 text-center text-2sm text-muted-foreground">No imports yet.</div>}
+          {rows.length > shown && (
+            <div className="px-6 py-3">
+              <Button className="w-full" onClick={() => setShown(shown + PAGE)}>
+                Load {Math.min(PAGE, rows.length - shown)} more
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
-function SyncNote({ account, children }: { account: CompanyAccount; children: ReactNode }) {
+function ImportRow({ item: i, account: a, showAccount, onUpload }: { item: StatementImport; account?: CompanyAccount; showAccount: boolean; onUpload: (a: CompanyAccount) => void }) {
   return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <SyncBadge account={account} />
-      {children && <span className="text-xs text-muted-foreground">{children}</span>}
-    </span>
+    <div className="flex items-center gap-3 border-b border-border px-6 py-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
+        {i.source === "api" ? <CloudDownload /> : <FileText />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-2sm font-medium">{i.source === "api" ? `Bank feed · ${i.period}` : i.file}</div>
+        <div className="truncate text-xs text-muted-foreground">
+          {[showAccount && a ? shortName(a) : null, i.source === "upload" ? i.period : null, i.at].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        {i.status === "imported" ? (
+          <>
+            <Badge variant="success">Imported</Badge>
+            <div className="mt-0.5 text-xs text-muted-foreground">{i.lines} transactions</div>
+          </>
+        ) : i.status === "processing" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CircularSpinner size={12} /> Reading…
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div>
+              <Badge variant="destructive">Failed</Badge>
+              <div className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground" title={i.reason}>
+                {i.reason}
+              </div>
+            </div>
+            {a && (
+              <Button size="sm" onClick={() => onUpload(a)}>
+                <RotateCcw />
+                Again
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

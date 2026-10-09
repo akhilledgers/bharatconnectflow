@@ -309,7 +309,21 @@ export function initialImports(): StatementImport[] {
     { id: "i4", accountId: "p6", source: "upload", file: "Federal_statement_Sep.xlsx", period: "1–20 Sep 2026", status: "imported", lines: 38, at: "20 Sep 2026" },
     { id: "i5", accountId: "p7", source: "upload", file: "AMCB_Q2.pdf", period: "Jul–Sep 2026", status: "failed", reason: "The PDF is password-protected", at: "18 Sep 2026" },
     { id: "i6", accountId: "p4", source: "api", period: "02 Oct 2026", status: "imported", lines: 3, at: "4 Oct 2026" },
+    ...dailyFeeds("p1", 9),
+    ...dailyFeeds("p2", 2),
+    { id: "i7", accountId: "p5", source: "upload", file: "Canara_Aug2026.pdf", period: "1–31 Aug 2026", status: "imported", lines: 167, at: "2 Sep 2026" },
+    { id: "i8", accountId: "p5", source: "upload", file: "Canara_Jul2026.pdf", period: "1–31 Jul 2026", status: "imported", lines: 151, at: "3 Aug 2026" },
+    { id: "i9", accountId: "p6", source: "upload", file: "Federal_Aug.xlsx", period: "1–31 Aug 2026", status: "imported", lines: 44, at: "1 Sep 2026" },
   ];
+}
+
+/** A connected bank's feed comes in every morning: one import per day, going back three weeks. */
+function dailyFeeds(accountId: string, seed: number): StatementImport[] {
+  return Array.from({ length: 20 }, (_, i) => {
+    const d = new Date(2026, 9, 4 - i);
+    const label = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    return { id: `f-${accountId}-${i}`, accountId, source: "api", period: label, status: "imported", lines: ((i * 7 + seed) % 11) + 1, at: label };
+  });
 }
 
 export interface ReconSummary {
