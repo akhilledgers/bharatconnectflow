@@ -293,18 +293,23 @@ function BharatConnectOptions() {
   );
 }
 
-const APPROVAL_OPTIONS = [
-  ["maker-checker", "Maker-Checker"],
-  ["single", "Single"],
-] as const;
+const SELECT = "h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground";
 
-const CONNECTION_OPTIONS: readonly (readonly [BankConnection, string])[] = [
-  ["none", "Off"],
-  ["connected", "Connected"],
-  ["expired", "Expired"],
-];
+/** A section that starts closed: the rarely used switches stay out of the way. */
+function Fold({ label, summary, children }: { label: string; summary: string; children: ReactNode }) {
+  return (
+    <details className="group mb-2 rounded-lg border border-border">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        <span className="shrink-0 text-xs font-medium text-foreground">{label}</span>
+        <span className="ms-auto min-w-0 truncate text-[11px] text-muted-foreground">{summary}</span>
+      </summary>
+      <div className="space-y-3 border-t border-border px-3 py-3">{children}</div>
+    </details>
+  );
+}
 
-/** Banking → Fund Transfer and Accounts scenarios (the design's "Simulate Scenario" panel). */
+/** Banking prototype controls: the business's stage first, then quick actions, then the rarely changed switches. */
 function BankingOptions() {
   const scenario = useBankingStore((s) => s.scenario);
   const accounts = useBankingStore((s) => s.accounts);
@@ -316,122 +321,128 @@ function BankingOptions() {
   const setup = useBankingStore((s) => s.setup);
   const applySetup = useBankingStore((s) => s.applySetup);
   const apiAccounts = accounts.filter((a) => a.bankKey && a.active);
-  const anyConnected = apiAccounts.some((a) => a.connection === "connected");
+  const verifyLabel = { random: "Random", pass: "Always pass", fail: "Always fail" }[scenario.verify];
 
   return (
     <>
-      <Group label="Business stage" hint="Replaces accounts, transactions and payouts with this stage's sample data.">
-        <div className="grid grid-cols-2 gap-1.5">
+      <Group label="Business stage" hint="Swaps in that stage's accounts, transactions and payouts.">
+        <select value={setup} onChange={(e) => applySetup(e.target.value as typeof setup)} className={SELECT} aria-label="Business stage">
           {SETUP_OPTIONS.map((o) => (
-            <button key={o.value} onClick={() => applySetup(o.value)} className={`text-left ${OPTION} ${setup === o.value ? ON : OFF}`}>
+            <option key={o.value} value={o.value}>
               {o.label}
-            </button>
+            </option>
           ))}
+        </select>
+      </Group>
+
+      <Group label="Try">
+        <div className="grid grid-cols-3 gap-1.5">
+          <button onClick={approveAwaiting} className={`${OPTION} ${OFF}`} title="The checker approves every payout waiting in net banking">
+            Approve payouts
+          </button>
+          <button onClick={failProcessing} className={`${OPTION} ${OFF}`} title="The next payout with the bank fails">
+            Fail a payout
+          </button>
+          <button onClick={resetData} className={`${OPTION} ${OFF}`} title="Back to this stage's sample data">
+            Reset data
+          </button>
         </div>
       </Group>
 
-      {apiAccounts.length > 0 && (
-        <Group
-          label="Connected Banking"
-          hint={
-            anyConnected
-              ? "Only connected accounts appear in Fund Transfer's Pay From. ICICI is single-transfer only."
-              : "Nothing connected — Fund Transfer opens the Connect a Bank Account dialog."
-          }
-        >
-          <div className="space-y-2.5">
+      <Fold label="Bank API" summary={`${verifyLabel} · ${scenario.register === "success" ? "connects" : "rejects"}`}>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Account verification (penny-less)</div>
+          <Choice
+            value={scenario.verify}
+            options={[
+              ["random", "Random"],
+              ["pass", "Pass"],
+              ["fail", "Fail"],
+            ]}
+            onChange={(verify) => setScenario({ verify })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Connect / Reconnect banking</div>
+          <Choice
+            value={scenario.register}
+            options={[
+              ["success", "Succeeds"],
+              ["fail", "Rejected"],
+            ]}
+            onChange={(register) => setScenario({ register })}
+          />
+        </div>
+      </Fold>
+
+      <Fold label="Accounts" summary={`${apiAccounts.filter((a) => a.connection === "connected").length} live · ${scenario.balance} balance`}>
+        {apiAccounts.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[11px] text-muted-foreground">Connected banking</div>
             {apiAccounts.map((a) => {
               const meta = CONNECTED_BANKING[a.bankKey!];
               return (
-                <div key={a.id} className="space-y-1.5">
-                  <div className="text-xs text-foreground">
+                <div key={a.id} className="flex items-center gap-1.5">
+                  <span className="w-[5.5rem] shrink-0 truncate text-xs" title={a.nickname}>
                     {meta.short} {last4(a.number)}
-                    {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                  </div>
-                  <Choice
+                  </span>
+                  <select
+                    aria-label={`${meta.short} ${last4(a.number)} connection`}
                     value={a.connection}
-                    options={CONNECTION_OPTIONS}
-                    onChange={(connection) =>
-                      updateAccount(a.id, { connection, ...(connection !== "none" ? { verified: true, syncedMinutesAgo: connection === "expired" ? 2880 : 5 } : {}) })
-                    }
-                  />
+                    onChange={(e) => {
+                      const connection = e.target.value as BankConnection;
+                      updateAccount(a.id, { connection, ...(connection !== "none" ? { verified: true, syncedMinutesAgo: connection === "expired" ? 2880 : 5 } : {}) });
+                    }}
+                    className={SELECT}
+                  >
+                    {([["connected", "Live"], ["expired", "Expired"], ["none", "Off"]] as const).map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
                   {meta.approvalChoice && a.connection !== "none" && (
-                    <Choice value={a.approval} options={APPROVAL_OPTIONS} onChange={(approval: ApprovalMode) => updateAccount(a.id, { approval })} />
+                    <select
+                      aria-label={`${meta.short} ${last4(a.number)} approval`}
+                      value={a.approval}
+                      onChange={(e) => updateAccount(a.id, { approval: e.target.value as ApprovalMode })}
+                      className={SELECT}
+                    >
+                      {([["maker-checker", "Checker"], ["single", "Single"]] as const).map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
                   )}
                 </div>
               );
             })}
           </div>
-        </Group>
-      )}
-
-      <Group
-        label="Account balance"
-        hint={apiAccounts
-          .filter((a) => a.liveBalance)
-          .map((a) => `${CONNECTED_BANKING[a.bankKey!].short} ${last4(a.number)} ₹${a.liveBalance![scenario.balance === "low" ? 1 : 0].toLocaleString("en-IN")}`)
-          .join(" · ")}
-      >
-        <Choice
-          value={scenario.balance}
-          options={[
-            ["normal", "Normal"],
-            ["low", "Low"],
-          ]}
-          onChange={(balance) => setScenario({ balance })}
-        />
-      </Group>
-
-      <Group label="Account verification" hint="Outcome of the penny-less check, for beneficiaries and your own accounts.">
-        <Choice
-          value={scenario.verify}
-          options={[
-            ["random", "Random"],
-            ["pass", "Always pass"],
-            ["fail", "Always fail"],
-          ]}
-          onChange={(verify) => setScenario({ verify })}
-        />
-      </Group>
-
-      <Group label="Register Connected Banking" hint="How the bank's API answers Connect / Reconnect from Banking → Accounts.">
-        <Choice
-          value={scenario.register}
-          options={[
-            ["success", "Succeeds"],
-            ["fail", "Details rejected"],
-          ]}
-          onChange={(register) => setScenario({ register })}
-        />
-      </Group>
-
-      <Group label="Payouts" hint="Payouts with the bank settle as Paid after a few seconds.">
-        <div className="flex gap-1.5">
-          <button onClick={approveAwaiting} className={`flex-1 ${OPTION} ${OFF}`}>
-            Checker approves all
-          </button>
-          <button onClick={failProcessing} className={`flex-1 ${OPTION} ${OFF}`}>
-            Fail next payout
-          </button>
+        )}
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Bank balance</div>
+          <Choice
+            value={scenario.balance}
+            options={[
+              ["normal", "Normal"],
+              ["low", "Low"],
+            ]}
+            onChange={(balance) => setScenario({ balance })}
+          />
         </div>
-      </Group>
-
-      <Group label="Overview layout" hint="Needs attention and Accounts side by side, or stacked as before.">
-        <Choice
-          value={scenario.overviewLayout}
-          options={[
-            ["split", "Side by side"],
-            ["stacked", "Stacked"],
-          ]}
-          onChange={(overviewLayout) => setScenario({ overviewLayout })}
-        />
-      </Group>
-
-      <Group label="Sample data">
-        <button onClick={resetData} className={`w-full ${OPTION} ${OFF}`}>
-          Reset this stage's sample data & payees
-        </button>
-      </Group>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Overview layout</div>
+          <Choice
+            value={scenario.overviewLayout}
+            options={[
+              ["split", "Side by side"],
+              ["stacked", "Stacked"],
+            ]}
+            onChange={(overviewLayout) => setScenario({ overviewLayout })}
+          />
+        </div>
+      </Fold>
     </>
   );
 }
