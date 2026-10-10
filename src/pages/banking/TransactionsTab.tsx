@@ -938,23 +938,23 @@ function SettlePicker({
     );
   };
 
-  const label = isNew ? (
-    <>
-      <Plus className="size-3.5 text-primary" />
-      <span className="font-medium">{newLabel}</span>
-    </>
-  ) : chosen.length === 0 ? (
-    <span className="text-muted-foreground">Choose what it settles…</span>
-  ) : chosen.length === 1 ? (
-    <span className="truncate font-medium">{chosen[0].ref}</span>
-  ) : (
-    <span className="truncate">
-      <span className="font-medium">
-        {chosen.length} {chosen.every((c) => c.isEntry) ? "entries" : chosen[0].note.startsWith("Bill") ? "bills" : "invoices"}
-      </span>
-      <span className="text-muted-foreground"> · {chosen.map((c) => c.ref).join(", ")}</span>
-    </span>
-  );
+  // Two kinds of answer: link an existing receipt/payment, or create a new one (on account, or against invoices/bills).
+  const linking = chosen.some((c) => c.isEntry);
+  const label =
+    chosen.length === 0 && !isNew ? (
+      <span className="text-muted-foreground">Choose…</span>
+    ) : linking ? (
+      <>
+        <Badge variant="secondary">Existing</Badge>
+        <span className="truncate font-medium">{chosen.map((c) => c.ref).join(", ")}</span>
+      </>
+    ) : (
+      <>
+        <Badge variant="primary">New</Badge>
+        <span className="font-medium capitalize">{newLabel.replace("New ", "")}</span>
+        <span className="truncate text-muted-foreground">· {chosen.length ? chosen.map((c) => c.ref).join(", ") : "on account"}</span>
+      </>
+    );
 
   return (
     <>
@@ -965,10 +965,24 @@ function SettlePicker({
         className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-2sm shadow-xs shadow-black/5 hover:bg-accent/40"
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5">{label}</span>
-        {(isNew || chosen.length > 0) && <span className="shrink-0 font-medium tabular-nums">{fmtINR(isNew ? total : total - left)}</span>}
+        {(isNew || chosen.length > 0) && <span className="shrink-0 font-medium tabular-nums">{fmtINR(linking ? total - left : total)}</span>}
         <ChevronDown className="size-4 shrink-0 opacity-60" />
       </button>
-      {emptyNote && !pos && <div className="mt-1.5 text-xs text-muted-foreground">{emptyNote} A new one is recorded for the full amount.</div>}
+      {!pos && !linking && chosen.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+          {chosen.map((c) => (
+            <span key={c.id}>
+              {c.ref} <span className="font-medium text-foreground tabular-nums">{fmtINR(alloc.get(c.id) ?? 0)}</span>
+            </span>
+          ))}
+          {left > 0 && (
+            <span>
+              On account <span className="font-medium text-foreground tabular-nums">{fmtINR(left)}</span>
+            </span>
+          )}
+        </div>
+      )}
+      {emptyNote && !pos && <div className="mt-1.5 text-xs text-muted-foreground">{emptyNote}</div>}
 
       {pos && (
         <>
@@ -991,18 +1005,27 @@ function SettlePicker({
                   className={cn("flex w-full cursor-pointer items-center gap-2.5 border-b border-border px-3 py-2.5 text-left text-2sm", isNew ? "bg-[var(--color-primary-soft)]" : "hover:bg-accent")}
                 >
                   <Plus className="size-4 shrink-0 text-primary" />
-                  <span className="flex-1 font-medium text-primary">Record {newLabel.toLowerCase()}</span>
+                  <span className="flex-1">
+                    <span className="block font-medium text-primary">{newLabel} on account</span>
+                    <span className="block text-xs text-muted-foreground">Or tick {items[0]?.note.startsWith("Bill") ? "bills" : "invoices"} below to set it against them</span>
+                  </span>
                   <span className="tabular-nums">{fmtINR(total)}</span>
                 </button>
               )}
-              <SettleSection title="In your books" rows={entries} picked={picked} alloc={alloc} onToggle={onToggle} />
-              <SettleSection title={items[0]?.note.startsWith("Bill") ? "Open bills" : "Open invoices"} rows={items} picked={picked} alloc={alloc} onToggle={onToggle} />
+              <SettleSection title={`${newLabel} against`} rows={items} picked={picked} alloc={alloc} onToggle={onToggle} />
+              <SettleSection title={`Existing ${newLabel.replace("New ", "")} · link as is`} rows={entries} picked={picked} alloc={alloc} onToggle={onToggle} />
               {shown.length === 0 && options.length > 0 && <div className="px-3 py-3 text-xs text-muted-foreground">Nothing matches “{q}”.</div>}
             </div>
             {!isNew && picked.length > 0 && (
               <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2 text-xs">
                 <span className={left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground"}>
-                  {left === 0 ? `Allocated ${fmtINR(total)} ✓` : `${fmtINR(total - left)} of ${fmtINR(total)} allocated`}
+                  {linking
+                    ? left === 0
+                      ? `Matches ${fmtINR(total)} ✓`
+                      : `${fmtINR(total - left)} of ${fmtINR(total)}`
+                    : left === 0
+                      ? `Fully against invoices ✓`
+                      : `On account ${fmtINR(left)}`}
                 </span>
                 <Button size="sm" variant="primary" onClick={() => setPos(null)}>
                   Done
@@ -1166,9 +1189,9 @@ function MatchPanel({
         rem,
       );
     const settled = items.filter((i) => picked.includes(i.id));
-    const ref = settled.length === 0 ? newRef : settled.length <= 2 ? settled.map((i) => i.ref).join(", ") : `${settled.length} ${inflow ? "invoices" : "bills"}`;
+    const split = [...settled.map((i) => `${i.ref} ${fmtINR(alloc.get(i.id)!)}`), ...(left > 0 ? [`On account ${fmtINR(left)}`] : [])].join(" · ");
     onDone(
-      { kind: settled.length ? (inflow ? "Receipt" : "Bill payment") : inflow ? "Receipt" : "Payment voucher", ref, party: p.name, ledger: left > 0 ? "Advance / on account" : undefined },
+      { kind: inflow ? "Receipt" : "Payment voucher", ref: newRef, party: p.name, reason: split },
       { party: p.name, settle: settled.map((i) => ({ itemId: i.id, amount: alloc.get(i.id)! })) },
       rem,
     );
@@ -1331,7 +1354,7 @@ function MatchPanel({
                 isNew={isNew}
                 allowNew={!!party}
                 newLabel={`New ${voucher}`}
-                emptyNote={party && options.length === 0 ? `No open ${inflow ? "invoices" : "bills"} for ${party.name}.` : undefined}
+                emptyNote={party && options.length === 0 ? `No open ${inflow ? "invoices" : "bills"}.` : undefined}
                 onToggle={toggle}
                 onNew={() => {
                   touch();
@@ -1339,11 +1362,9 @@ function MatchPanel({
                   setPicked([]);
                 }}
               />
-              {!isNew && picked.length > 0 && left > 0 && (
-                <div className="mt-1.5 text-xs text-muted-foreground">
-                  {pickedEntries.length
-                    ? `These entries add up to ${fmtINR(total - left)}; the bank shows ${fmtINR(total)}.`
-                    : `${fmtINR(left)} left over is booked on account for ${party?.name}.`}
+              {pickedEntries.length > 0 && left > 0 && (
+                <div className="mt-1.5 text-xs text-[var(--color-warning-accent)]">
+                  Short by {fmtINR(left)}: these add up to {fmtINR(total - left)}.
                 </div>
               )}
             </Step>
