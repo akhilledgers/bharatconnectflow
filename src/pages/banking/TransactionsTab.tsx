@@ -119,7 +119,7 @@ export function TransactionsTab({
   const [resolvingId, setResolving] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [moveMenu, setMoveMenu] = useState<string | null>(null);
+  const [moveMenu, setMoveMenu] = useState<{ id: string; right: number; top?: number; bottom?: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const [from, to] = periodRange(period, custom);
@@ -570,35 +570,33 @@ export function TransactionsTab({
                   actions={
                     l ? (
                       <LineActions line={l} onAccept={() => accept([l.id])} onReject={(undo) => reject(l.id, undo)} onFind={() => setResolving(l.id)} />
+                    ) : e.assumedAccount && accounts.length < 2 ? (
+                      // Only one account: nothing to move to, just confirm it's the right one.
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          store().moveEntry(e.id, e.accountId);
+                          toast(`${e.ref} confirmed in ${accountName(byId.get(e.accountId)!)}`);
+                        }}
+                      >
+                        <Check />
+                        Confirm account
+                      </Button>
                     ) : e.assumedAccount ? (
-                      <div className="relative inline-block">
-                        <Button size="sm" onClick={() => setMoveMenu(moveMenu === e.id ? null : e.id)}>
-                          Move to… <ChevronDown />
-                        </Button>
-                        {moveMenu === e.id && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setMoveMenu(null)} />
-                            <div className={cn(popoverCls, "absolute end-0 top-full z-20 mt-1 flex w-56 flex-col p-1 text-left")}>
-                              {accounts
-                                .filter((a) => a.id !== e.accountId)
-                                .map((a) => (
-                                  <button
-                                    key={a.id}
-                                    className={menuItemCls}
-                                    onClick={() => {
-                                      store().moveEntry(e.id, a.id);
-                                      setMoveMenu(null);
-                                      toast(`${e.ref} moved to ${accountName(a)}`);
-                                    }}
-                                  >
-                                    {accountName(a)}
-                                    {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
-                                  </button>
-                                ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      <Button
+                        size="sm"
+                        onClick={(ev) => {
+                          const r = ev.currentTarget.getBoundingClientRect();
+                          const up = r.bottom + 280 > window.innerHeight;
+                          setMoveMenu(
+                            moveMenu?.id === e.id
+                              ? null
+                              : { id: e.id, right: window.innerWidth - r.right, ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) },
+                          );
+                        }}
+                      >
+                        Move to… <ChevronDown />
+                      </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">Waiting for the bank</span>
                     )
@@ -627,6 +625,40 @@ export function TransactionsTab({
           </div>
         )}
       </Card>
+
+      {moveMenu &&
+        (() => {
+          const e = entries.find((x) => x.id === moveMenu.id);
+          if (!e) return null;
+          const { id: _id, ...at } = moveMenu;
+          return (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMoveMenu(null)} />
+              <div style={at} className={cn(popoverCls, "fixed z-50 flex w-72 flex-col p-1 text-left")}>
+                <div className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
+                  Saved without a bank account, so LEDGERS assumed {accountName(byId.get(e.accountId)!)}. Which account did it go through?
+                </div>
+                {accounts.map((a) => (
+                  <button
+                    key={a.id}
+                    className={menuItemCls}
+                    onClick={() => {
+                      store().moveEntry(e.id, a.id);
+                      setMoveMenu(null);
+                      toast(a.id === e.accountId ? `${e.ref} confirmed in ${accountName(a)}` : `${e.ref} moved to ${accountName(a)}`);
+                    }}
+                  >
+                    <span className="truncate">
+                      {a.id === e.accountId ? "Keep in " : ""}
+                      {accountName(a)}
+                      {a.nickname && <span className="text-muted-foreground"> · {a.nickname}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          );
+        })()}
 
       {resolving && (
         <MatchPanel

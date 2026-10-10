@@ -315,7 +315,9 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   rememberKey: (partyId, key) => set((s) => ({ parties: s.parties.map((p) => (p.id === partyId && !p.keys.includes(key) ? { ...p, keys: [...p.keys, key] } : p)) })),
 
   moveEntry: (entryId, accountId) =>
-    set((s) => ({ bookEntries: s.bookEntries.map((e) => (e.id === entryId ? { ...e, accountId, assumedAccount: false } : e)) })),
+    set((s) => ({
+      bookEntries: s.bookEntries.map((e) => (e.id === entryId ? { ...e, accountId, assumedAccount: false, note: e.assumedAccount ? "Account confirmed, not seen at the bank yet" : e.note } : e)),
+    })),
 
   addPayout: (p) => {
     const payout: Payout = { ...p, id: `po${payoutSeq}`, ref: `PO-${payoutSeq++}`, initiatedAt: nowLabel(), initiatedBy: "You" };
