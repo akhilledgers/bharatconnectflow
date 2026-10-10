@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { BookOpen, Check, ChevronDown, Landmark, Layers, Plug, RefreshCw, Search, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Landmark, Plus, Layers, Plug, RefreshCw, Search, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -821,8 +821,168 @@ function Step({ n, title, grow, children }: { n: number; title: string; grow?: b
 
 type Settle = { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[] };
 
-/** Items in the "what does it settle" list scroll inside the panel past this many, with a filter. */
-const LIST_FILTER_AT = 5;
+function SettleSection({
+  title,
+  rows,
+  picked,
+  alloc,
+  onToggle,
+}: {
+  title: string;
+  rows: SettleOption[];
+  picked: string[];
+  alloc: Map<string, number>;
+  onToggle: (id: string, isEntry: boolean) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="py-1">
+      <div className="px-3 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div>
+      {rows.map((x) => (
+        <label key={x.id} className={cn("flex cursor-pointer items-center gap-2.5 px-3 py-1.5", picked.includes(x.id) ? "bg-[var(--color-primary-soft)]" : "hover:bg-accent")}>
+          <input type="checkbox" checked={picked.includes(x.id)} onChange={() => onToggle(x.id, x.isEntry)} className="size-4 shrink-0 accent-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-2sm font-medium">{x.ref}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {shortDate(x.date)} · {x.note} {fmtINR(x.amount)}
+            </span>
+          </span>
+          {alloc.has(x.id) && <span className="shrink-0 text-2sm tabular-nums">{fmtINR(alloc.get(x.id)!)}</span>}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+type SettleOption = { id: string; ref: string; date: string; amount: number; note: string; isEntry: boolean };
+
+/**
+ * "What does it settle?" as one multi-select field. Collapsed it reads like the answer (REC 2026-66 · ₹1,23,000,
+ * 2 invoices · ₹…, or New receipt · ₹…); open, it lists entries and open invoices/bills with a search, and
+ * offers a new receipt/payment for the full amount at the top. Floats over the panel so it never pushes it.
+ */
+function SettlePicker({
+  options,
+  picked,
+  alloc,
+  total,
+  left,
+  isNew,
+  allowNew,
+  newLabel,
+  emptyNote,
+  onToggle,
+  onNew,
+}: {
+  options: SettleOption[];
+  picked: string[];
+  alloc: Map<string, number>;
+  total: number;
+  left: number;
+  isNew: boolean;
+  allowNew: boolean;
+  newLabel: string;
+  emptyNote?: string;
+  onToggle: (id: string, isEntry: boolean) => void;
+  onNew: () => void;
+}) {
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  const [q, setQ] = useState("");
+  const chosen = options.filter((o) => picked.includes(o.id));
+  const lq = q.trim().toLowerCase();
+  const shown = lq ? options.filter((o) => o.ref.toLowerCase().includes(lq) || String(o.amount).includes(lq)) : options;
+  const entries = shown.filter((o) => o.isEntry);
+  const items = shown.filter((o) => !o.isEntry);
+
+  const open = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 16;
+    const above = r.top - 16;
+    // Open downwards when there's room, else upwards; never taller than the space available.
+    setPos(
+      below >= 260 || below >= above
+        ? { left: r.left, width: r.width, top: r.bottom + 4, maxHeight: Math.min(380, below) }
+        : { left: r.left, width: r.width, bottom: window.innerHeight - r.top + 4, maxHeight: Math.min(380, above) },
+    );
+  };
+
+  const label = isNew ? (
+    <>
+      <Plus className="size-3.5 text-primary" />
+      <span className="font-medium">{newLabel}</span>
+    </>
+  ) : chosen.length === 0 ? (
+    <span className="text-muted-foreground">Choose what it settles…</span>
+  ) : chosen.length === 1 ? (
+    <span className="truncate font-medium">{chosen[0].ref}</span>
+  ) : (
+    <span className="truncate">
+      <span className="font-medium">
+        {chosen.length} {chosen.every((c) => c.isEntry) ? "entries" : chosen[0].note.startsWith("Bill") ? "bills" : "invoices"}
+      </span>
+      <span className="text-muted-foreground"> · {chosen.map((c) => c.ref).join(", ")}</span>
+    </span>
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => (pos ? setPos(null) : open(e.currentTarget))}
+        aria-expanded={!!pos}
+        className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-2sm shadow-xs shadow-black/5 hover:bg-accent/40"
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">{label}</span>
+        {(isNew || chosen.length > 0) && <span className="shrink-0 font-medium tabular-nums">{fmtINR(isNew ? total : total - left)}</span>}
+        <ChevronDown className="size-4 shrink-0 opacity-60" />
+      </button>
+      {emptyNote && !pos && <div className="mt-1.5 text-xs text-muted-foreground">{emptyNote} A new one is recorded for the full amount.</div>}
+
+      {pos && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setPos(null)} />
+          <div style={pos} className={cn(popoverCls, "fixed z-[61] flex flex-col overflow-hidden p-0")}>
+            {options.length > 3 && (
+              <div className="relative shrink-0 border-b border-border p-2">
+                <Search className="pointer-events-none absolute start-4.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number or amount" className="h-8 ps-8 text-xs" />
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {allowNew && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNew();
+                    setPos(null);
+                  }}
+                  className={cn("flex w-full cursor-pointer items-center gap-2.5 border-b border-border px-3 py-2.5 text-left text-2sm", isNew ? "bg-[var(--color-primary-soft)]" : "hover:bg-accent")}
+                >
+                  <Plus className="size-4 shrink-0 text-primary" />
+                  <span className="flex-1 font-medium text-primary">Record {newLabel.toLowerCase()}</span>
+                  <span className="tabular-nums">{fmtINR(total)}</span>
+                </button>
+              )}
+              <SettleSection title="In your books" rows={entries} picked={picked} alloc={alloc} onToggle={onToggle} />
+              <SettleSection title={items[0]?.note.startsWith("Bill") ? "Open bills" : "Open invoices"} rows={items} picked={picked} alloc={alloc} onToggle={onToggle} />
+              {shown.length === 0 && options.length > 0 && <div className="px-3 py-3 text-xs text-muted-foreground">Nothing matches “{q}”.</div>}
+            </div>
+            {!isNew && picked.length > 0 && (
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2 text-xs">
+                <span className={left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground"}>
+                  {left === 0 ? `Allocated ${fmtINR(total)} ✓` : `${fmtINR(total - left)} of ${fmtINR(total)} allocated`}
+                </span>
+                <Button size="sm" variant="primary" onClick={() => setPos(null)}>
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 /**
  * Everything about one bank transaction, editable in place: what the AI found and why, who it is (search any
@@ -885,7 +1045,6 @@ function MatchPanel({
   const [who, setWho] = useState<string | null>(initialWho);
   const [dirty, setDirty] = useState(false);
   const [q, setQ] = useState("");
-  const [listQ, setListQ] = useState("");
   const party = parties.find((p) => p.id === who);
   const itemsOf = (p?: Party) => (p ? p.items.filter((i) => (inflow ? i.kind === "Invoice" : i.kind === "Bill")) : []);
   const entriesOf = (p?: Party) => (who === "multi" ? linked : p ? openEntries.filter((e) => e.party === p.name || e.lineId === line.id) : []);
@@ -900,9 +1059,8 @@ function MatchPanel({
     return ex ? [ex.id] : [];
   };
   const [picked, setPicked] = useState<string[]>(() => (initialWho === "multi" ? linked.map((e) => e.id) : pickFor(parties.find((p) => p.id === initialWho))));
-  const [mode, setMode] = useState<"link" | "new">("link");
-  const [treatAs, setTreatAs] = useState<"Advance" | "On account">("On account");
-  const [newNote, setNewNote] = useState("");
+  // Nothing to link → a new receipt/payment for the full amount (number generated, booked on account).
+  const [isNew, setIsNew] = useState(() => picked.length === 0);
   const [kind, setKind] = useState<MatchKind>(m && initialWho === "none" ? m.kind : inflow ? "Journal" : "Expense");
   const guessLedger = { "Bank charge": "Bank charges", "Interest credit": "Interest income", "Tax payment": "GST payable" }[describeLine(line)] ?? "";
   const [ledger, setLedger] = useState(m && initialWho === "none" ? (m.ledger ?? guessLedger) : guessLedger);
@@ -914,15 +1072,16 @@ function MatchPanel({
     touch();
     setWho(id);
     setQ("");
-    setListQ("");
-    setMode("link");
-    setPicked(pickFor(parties.find((x) => x.id === id)));
+    const next = pickFor(parties.find((x) => x.id === id));
+    setPicked(next);
+    setIsNew(next.length === 0);
   };
 
   // Entries already in the books and open invoices/bills are alternatives: linking one excludes the other.
   const pickedEntries = entries.filter((e) => picked.includes(e.id));
   const toggle = (id: string, isEntry: boolean) => {
     touch();
+    setIsNew(false);
     setPicked((s) => {
       if (s.includes(id)) return s.filter((x) => x !== id);
       const sameKind = s.filter((x) => (isEntry ? entries.some((e) => e.id === x) : items.some((i) => i.id === x)));
@@ -940,8 +1099,6 @@ function MatchPanel({
     })),
     ...items.map((i) => ({ id: i.id, ref: i.ref, date: i.date, amount: i.due, note: `${i.kind} · due`, isEntry: false })),
   ];
-  const lq = listQ.trim().toLowerCase();
-  const shownOptions = lq ? options.filter((o) => o.ref.toLowerCase().includes(lq) || String(o.amount).includes(lq)) : options;
   const alloc = new Map<string, number>();
   let left = total;
   for (const x of options)
@@ -957,16 +1114,16 @@ function MatchPanel({
   const newRef = inflow ? nextRef.receipt : nextRef.payment;
 
   const canSave =
-    who === "none" ? ledger !== "" : who === "multi" ? pickedEntries.length > 0 && left === 0 : !!party && (mode === "new" || pickedEntries.length === 0 || left === 0);
+    who === "none" ? ledger !== "" : who === "multi" ? pickedEntries.length > 0 && left === 0 : !!party && (isNew || (picked.length > 0 && (pickedEntries.length === 0 || left === 0)));
 
   const submit = () => {
     if (who === "none") return onDone({ kind, party: describeLine(line), ledger }, {});
     if (who === "multi") return onDone(m!, { entryIds: pickedEntries.map((e) => e.id), party: line.party });
     const p = party!;
     const rem = remember && key && !p.keys.includes(key.value) ? { partyId: p.id, key: key.value } : undefined;
-    if (mode === "new")
+    if (isNew)
       return onDone(
-        { kind: inflow ? "Receipt" : "Payment voucher", ref: newRef, party: p.name, ledger: treatAs, reason: newNote.trim() || undefined },
+        { kind: inflow ? "Receipt" : "Payment voucher", ref: newRef, party: p.name, ledger: "On account" },
         { party: p.name },
         rem,
       );
@@ -1132,105 +1289,29 @@ function MatchPanel({
           )}
 
           {(party || who === "multi") && (
-            <Step n={2} title="What does it settle?" grow={mode === "link" && options.length > 3}>
-              {party && (
-                <div role="radiogroup" className="mb-2 flex shrink-0 gap-1 rounded-lg border border-border/80 bg-muted/80 p-0.5">
-                  {(
-                    [
-                      ["link", `Link ${inflow ? "invoices" : "bills"} or entries`],
-                      ["new", `Record new ${voucher}`],
-                    ] as const
-                  ).map(([v, label]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      role="radio"
-                      aria-checked={mode === v}
-                      onClick={() => {
-                        touch();
-                        setMode(v);
-                      }}
-                      className={cn("h-7 flex-1 cursor-pointer rounded-md text-xs", mode === v && "bg-background font-medium shadow-lg shadow-black/5")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {mode === "new" && party ? (
-                <div className="flex flex-col gap-3 rounded-md border border-border p-3.5">
-                  <div className="flex justify-between text-2sm">
-                    <span>
-                      New {voucher} <span className="font-medium">{newRef}</span>
-                    </span>
-                    <span className="font-medium tabular-nums">{fmtINR(total)}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {inflow ? "From" : "To"} {party.name} · dated {fmtDay(toDate(line.date))}, the day it hit the bank
-                  </div>
-                  <div role="radiogroup" className="flex flex-col gap-1.5 text-2sm">
-                    {(
-                      [
-                        ["On account", `On account: adjust against ${inflow ? "invoices" : "bills"} later`],
-                        ["Advance", `Advance ${inflow ? "from customer" : "to vendor"}: before ${inflow ? "an invoice" : "a bill"} is raised`],
-                      ] as const
-                    ).map(([v, label]) => (
-                      <label key={v} className="flex cursor-pointer items-center gap-2">
-                        <input
-                          type="radio"
-                          name="treat"
-                          checked={treatAs === v}
-                          onChange={() => {
-                            touch();
-                            setTreatAs(v);
-                          }}
-                          className="size-4 accent-primary"
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                  <Input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Note (optional)" />
-                </div>
-              ) : options.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-                  No open {inflow ? "invoices" : "bills"} for {party?.name}. Record a new {voucher} instead.
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-                  {options.length > LIST_FILTER_AT && (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <Input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Filter by number or amount" className="h-8 ps-8 text-xs" />
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">{options.length} open</span>
-                    </div>
-                  )}
-                  {/* Takes whatever height is left and scrolls inside, so the panel itself doesn't. */}
-                  <div className={cn("flex flex-col gap-1 overflow-y-auto rounded-md border border-border p-1", options.length > 3 && "min-h-[124px] flex-1")}>
-                    {shownOptions.map((x) => (
-                      <label
-                        key={x.id}
-                        className={cn("flex shrink-0 cursor-pointer items-center gap-2.5 rounded px-2.5 py-1.5", picked.includes(x.id) ? "bg-[var(--color-primary-soft)]" : "hover:bg-accent/60")}
-                      >
-                        <input type="checkbox" checked={picked.includes(x.id)} onChange={() => toggle(x.id, x.isEntry)} className="size-4 shrink-0 accent-primary" />
-                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={`${x.ref} · ${x.note} ${fmtINR(x.amount)}`}>
-                          <span className="text-2sm font-medium text-foreground">{x.ref}</span> · {shortDate(x.date)} · {x.note} {fmtINR(x.amount)}
-                        </span>
-                        {alloc.has(x.id) && <span className="text-2sm tabular-nums">{fmtINR(alloc.get(x.id)!)}</span>}
-                      </label>
-                    ))}
-                    {shownOptions.length === 0 && <div className="px-2 py-3 text-xs text-muted-foreground">Nothing matches “{listQ}”.</div>}
-                  </div>
-                  <div className={cn("shrink-0 text-xs", left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
-                    {left === 0
-                      ? `Allocated ${fmtINR(total)} of ${fmtINR(total)} ✓`
-                      : pickedEntries.length
-                        ? `The entries add up to ${fmtINR(total - left)}; the bank shows ${fmtINR(total)}.`
-                        : `${fmtINR(total - left)} allocated · ${fmtINR(left)} left will be recorded as an advance / on account`}
-                  </div>
+            <Step n={2} title="What does it settle?">
+              <SettlePicker
+                options={options}
+                picked={picked}
+                alloc={alloc}
+                total={total}
+                left={left}
+                isNew={isNew}
+                allowNew={!!party}
+                newLabel={`New ${voucher}`}
+                emptyNote={party && options.length === 0 ? `No open ${inflow ? "invoices" : "bills"} for ${party.name}.` : undefined}
+                onToggle={toggle}
+                onNew={() => {
+                  touch();
+                  setIsNew(true);
+                  setPicked([]);
+                }}
+              />
+              {!isNew && picked.length > 0 && left > 0 && (
+                <div className="mt-1.5 text-xs text-muted-foreground">
+                  {pickedEntries.length
+                    ? `These entries add up to ${fmtINR(total - left)}; the bank shows ${fmtINR(total)}.`
+                    : `${fmtINR(left)} left over is booked on account for ${party?.name}.`}
                 </div>
               )}
             </Step>
