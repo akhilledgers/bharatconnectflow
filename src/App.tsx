@@ -6,7 +6,7 @@ import { ProfilePage } from "./pages/settings/bharatconnect/profile/ProfilePage"
 import { IdsPage } from "./pages/settings/bharatconnect/IdsPage";
 import { InvoiceListPage } from "./pages/invoices/InvoiceListPage";
 import { InvoiceViewPage } from "./pages/invoices/InvoiceViewPage";
-import { InvoiceCreatePage } from "./pages/invoices/InvoiceCreatePage";
+import { InvoiceCreatePage, InvoiceEditPage } from "./pages/invoices/InvoiceCreatePage";
 import { ContactsListPage } from "./pages/contacts/ContactsListPage";
 import { ContactViewPage } from "./pages/contacts/ContactViewPage";
 import { BankingPage } from "./pages/banking/BankingPage";
@@ -25,10 +25,12 @@ export default function App() {
 
           <Route path="/sales/invoices" element={<InvoiceListPage kind="sales" />} />
           <Route path="/sales/invoices/create" element={<InvoiceCreatePage kind="sales" />} />
+          <Route path="/sales/invoices/:id/edit" element={<InvoiceEditPage kind="sales" />} />
           <Route path="/sales/invoices/:id" element={<InvoiceViewPage kind="sales" />} />
 
           <Route path="/expenses/bills" element={<InvoiceListPage kind="purchase" />} />
           <Route path="/expenses/bills/create" element={<InvoiceCreatePage kind="purchase" />} />
+          <Route path="/expenses/bills/:id/edit" element={<InvoiceEditPage kind="purchase" />} />
           <Route path="/expenses/bills/:id" element={<InvoiceViewPage kind="purchase" />} />
 
           <Route path="/banking" element={<BankingPage />} />

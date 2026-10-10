@@ -10,7 +10,21 @@ import type {
 } from "../types";
 import { makeSeedBusinesses, makeSeedInvoices, makeSeedContacts, STOCK_HOLDING_ID } from "../mock/seed";
 import { baseId, existingIdFor } from "../lib/id-standard";
-import type { Invoice } from "../types";
+import type { BuyerResponse, Invoice, InvoiceNote, Receipt } from "../types";
+
+/** "07-10-2026, 11:20" — the stamp shown on Notes entries. */
+function noteStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function bcNote(event: string, text: string, author: string): InvoiceNote {
+  return { id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, kind: "bc", event, text, author, at: noteStamp() };
+}
+
+const RESPONSE_STATUS = { accept: "accepted", return: "returned", reject: "rejected" } as const;
+const RESPONSE_PAST = { accept: "Accepted", return: "Returned", reject: "Rejected" } as const;
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
@@ -116,8 +130,15 @@ interface StoreState {
   promoteVerificationLevel: (businessId: string) => void;
 
   // Invoices / Bills
-  sendInvoiceViaBharatConnect: (invoiceId: string) => Promise<void>;
-  respondToBill: (invoiceId: string, decision: "accept" | "reject") => Promise<void>;
+  sendInvoiceViaBharatConnect: (invoiceId: string, noteToBuyer?: string) => Promise<void>;
+  respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string) => Promise<void>;
+  addInvoiceNote: (invoiceId: string, text: string, shareOnSend: boolean) => void;
+  recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id">) => Promise<void>;
+  updateInvoice: (invoiceId: string, patch: Partial<Invoice>) => Promise<void>;
+  resendInvoice: (invoiceId: string, changeNote: string) => Promise<void>;
+  cancelInvoice: (invoiceId: string, reason: string) => Promise<void>;
+  simulateBuyerResponse: (invoiceId: string, decision: BuyerResponse, comment: string) => void;
+  simulateSupplierResend: (invoiceId: string, changeNote: string) => void;
   createInvoice: (invoice: Invoice) => Promise<void>;
 
   // Dev-panel: simulate the buyer's webhook confirming/rejecting a sent sales invoice
@@ -579,7 +600,105 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
-  sendInvoiceViaBharatConnect: async (invoiceId) => {
+  sendInvoiceViaBharatConnect: async (invoiceId, noteToBuyer) => {
+    const { delay } = await import("../mock/api");
+    set((s) => ({
+      invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, bcSendStatus: "sending" as const } : i)),
+    }));
+    await delay(undefined, 900, 1300);
+    set((s) => ({
+      invoices: s.invoices.map((i) => {
+        if (i.id !== invoiceId) return i;
+        // The latest note ticked "Share with buyer when sent" travels as invoiceRemarks (one per send).
+        const notes = i.notes ?? [];
+        const shared = [...notes].reverse().find((n) => n.shareOnSend);
+        return {
+          ...i,
+          bcSendStatus: "sent" as const,
+          bcConfirmationStatus: "pending" as const,
+          notes: [
+            ...notes.map((n) => (n.shareOnSend ? { ...n, shareOnSend: false } : n)),
+            // A note typed in the Bharat Connect card wins; otherwise the latest ticked note (invoiceRemarks).
+            bcNote(`Sent to ${i.counterpartyName}`, noteToBuyer?.trim() || shared?.text || "", "You"),
+          ],
+        };
+      }),
+    }));
+    get().pushToast("Sent via Bharat Connect. Waiting for the buyer to respond.");
+  },
+
+  respondToBill: async (invoiceId, decision, comment) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 600, 1000);
+    const bill = get().invoices.find((i) => i.id === invoiceId);
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? {
+              ...i,
+              bcConfirmationStatus: RESPONSE_STATUS[decision],
+              notes: [...(i.notes ?? []), bcNote(`${RESPONSE_PAST[decision]} by you`, comment, "You")],
+            }
+          : i,
+      ),
+    }));
+    const who = bill?.counterpartyName ?? "the supplier";
+    get().pushToast(
+      decision === "accept" ? `Bill accepted. ${who} has been told.` : decision === "return" ? `Bill returned to ${who}.` : `Bill rejected. ${who} has been told.`,
+      decision === "reject" ? "error" : "success",
+    );
+  },
+
+  addInvoiceNote: (invoiceId, text, shareOnSend) => {
+    const note: InvoiceNote = {
+      id: `n-${Date.now()}`,
+      kind: "internal",
+      text,
+      author: "You",
+      at: noteStamp(),
+      shareOnSend,
+    };
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? {
+              ...i,
+              // Only one note can travel with a send, so ticking a new one unticks the others.
+              notes: [...(i.notes ?? []).map((n) => (shareOnSend ? { ...n, shareOnSend: false } : n)), note],
+            }
+          : i,
+      ),
+    }));
+  },
+
+  updateInvoice: async (invoiceId, patch) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 400, 700);
+    set((s) => ({ invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, ...patch } : i)) }));
+  },
+
+  recordReceipt: async (invoiceId, receipt) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    let settled = false;
+    set((s) => ({
+      invoices: s.invoices.map((i) => {
+        if (i.id !== invoiceId) return i;
+        const prefix = i.kind === "sales" ? "RCPT" : "PV";
+        const receipts = [...(i.receipts ?? []), { ...receipt, id: `${prefix}-${Math.floor(Math.random() * 900 + 100)}` }];
+        // TDS deducted by the customer counts towards settling the invoice.
+        const received = receipts.reduce((sum, r) => sum + r.amount + (r.tds ?? 0), 0);
+        settled = received >= i.amount - 0.005;
+        return { ...i, receipts, status: settled ? ("paid" as const) : ("partly_paid" as const) };
+      }),
+    }));
+    const inv = get().invoices.find((i) => i.id === invoiceId);
+    get().pushToast(
+      `${inv?.kind === "sales" ? "Receipt" : "Payment"} of INR ${receipt.amount.toLocaleString("en-IN")} recorded. ${invoiceId} is now ${settled ? "fully paid" : "partly paid"}.`,
+    );
+  },
+
+  resendInvoice: async (invoiceId, changeNote) => {
     const { delay } = await import("../mock/api");
     set((s) => ({
       invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, bcSendStatus: "sending" as const } : i)),
@@ -587,23 +706,66 @@ export const useStore = create<StoreState>((set, get) => ({
     await delay(undefined, 900, 1300);
     set((s) => ({
       invoices: s.invoices.map((i) =>
-        i.id === invoiceId ? { ...i, bcSendStatus: "sent" as const, bcConfirmationStatus: "pending" as const } : i,
-      ),
-    }));
-    get().pushToast("Sent via Bharat Connect. Waiting for the buyer to confirm.");
-  },
-
-  respondToBill: async (invoiceId, decision) => {
-    const { delay } = await import("../mock/api");
-    await delay(undefined, 600, 1000);
-    set((s) => ({
-      invoices: s.invoices.map((i) =>
         i.id === invoiceId
-          ? { ...i, bcConfirmationStatus: decision === "accept" ? ("accepted" as const) : ("failure" as const) }
+          ? {
+              ...i,
+              bcSendStatus: "sent" as const,
+              bcConfirmationStatus: "pending" as const,
+              version: (i.version ?? 1) + 1,
+              notes: [...(i.notes ?? []), bcNote("Revised and re-sent by you", changeNote, "You")],
+            }
           : i,
       ),
     }));
-    get().pushToast(decision === "accept" ? "Bill accepted." : "Bill rejected.", decision === "accept" ? "success" : "error");
+    get().pushToast("Revised invoice sent. Waiting for the buyer to respond.");
+  },
+
+  cancelInvoice: async (invoiceId, reason) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 500, 900);
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? { ...i, bcConfirmationStatus: "cancelled" as const, notes: [...(i.notes ?? []), bcNote("Cancelled by you", reason, "You")] }
+          : i,
+      ),
+    }));
+    get().pushToast(`Invoice ${invoiceId} cancelled. The buyer has been told.`);
+  },
+
+  simulateBuyerResponse: (invoiceId, decision, comment) => {
+    const invoice = get().invoices.find((i) => i.id === invoiceId);
+    const who = invoice?.counterpartyName ?? "Buyer";
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? {
+              ...i,
+              bcConfirmationStatus: RESPONSE_STATUS[decision],
+              notes: [...(i.notes ?? []), bcNote(`${RESPONSE_PAST[decision]} by ${who}`, comment, who)],
+            }
+          : i,
+      ),
+    }));
+    get().pushToast(`${who} ${RESPONSE_PAST[decision].toLowerCase()} ${invoiceId}.`, decision === "accept" ? "success" : "error");
+  },
+
+  simulateSupplierResend: (invoiceId, changeNote) => {
+    const bill = get().invoices.find((i) => i.id === invoiceId);
+    const who = bill?.counterpartyName ?? "Supplier";
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? {
+              ...i,
+              bcConfirmationStatus: "pending" as const,
+              version: (i.version ?? 1) + 1,
+              notes: [...(i.notes ?? []), bcNote(`Revised and re-sent by ${who}`, changeNote, who)],
+            }
+          : i,
+      ),
+    }));
+    get().pushToast(`${who} sent a revised ${invoiceId}.`);
   },
 
   createInvoice: async (invoice) => {

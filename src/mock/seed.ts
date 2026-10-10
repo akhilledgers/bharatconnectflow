@@ -221,6 +221,10 @@ export function makeSeedInvoices(): Invoice[] {
       lineItems: [{ id: "li-1", name: "Office furniture set", price: 55084.75, qty: 1, gstPercent: 18 }],
       bcSendStatus: "sent",
       bcConfirmationStatus: "pending",
+      notes: [
+        { id: "lp43a", kind: "internal", text: "Confirm delivery date with Jonnay before following up.", author: "Kaviprabhu T", at: "16-09-2026, 10:05" },
+        { id: "xlbq03", kind: "bc", event: "Sent to Jonnay", text: "Office furniture as per PO 3381. Delivered on 15-09.", author: "You", at: "16-09-2026, 11:20" },
+      ],
     },
     {
       id: "LP-42",
@@ -291,6 +295,9 @@ export function makeSeedInvoices(): Invoice[] {
       lineItems: [{ id: "li-1", name: "Consulting retainer", price: 2966.1, qty: 1, gstPercent: 18 }],
       bcSendStatus: "sent",
       bcConfirmationStatus: "pending",
+      notes: [
+        { id: "dwhg8e", kind: "bc", event: "Sent by Verve Financial Services Private Limited", text: "Retainer for September. Please pay to the account on the invoice.", author: "Verve Financial Services Private Limited", at: "18-09-2026, 09:40" },
+      ],
     },
     {
       id: "BILL-2030",
@@ -343,6 +350,9 @@ export function makeSeedInvoices(): Invoice[] {
       lineItems: [{ id: "li-1", name: "Bulk inventory purchase", price: 2301000, qty: 1, gstPercent: 18 }],
       bcSendStatus: "sent",
       bcConfirmationStatus: "pending",
+      notes: [
+        { id: "6m5uuu", kind: "bc", event: "Sent by Pugal - Einvoice Sandbox GSTIN", text: "Bulk order against PO 7712, dispatched in two lots.", author: "Pugal - Einvoice Sandbox GSTIN", at: "21-08-2026, 16:10" },
+      ],
     },
     {
       id: "BILL-2026",
@@ -355,7 +365,11 @@ export function makeSeedInvoices(): Invoice[] {
       date: "19-08-2026",
       lineItems: [{ id: "li-1", name: "Electrical fittings", price: 15805.08, qty: 1, gstPercent: 18 }],
       bcSendStatus: "sent",
-      bcConfirmationStatus: "failure",
+      bcConfirmationStatus: "rejected",
+      notes: [
+        { id: "9iorbs", kind: "bc", event: "Sent by Om Traders", text: "", author: "Om Traders", at: "19-08-2026, 12:00" },
+        { id: "1rixj6", kind: "bc", event: "Rejected by you", text: "Duplicate of BILL-2019, already recorded.", author: "You", at: "20-08-2026, 10:30" },
+      ],
     },
     {
       id: "BILL-2025",

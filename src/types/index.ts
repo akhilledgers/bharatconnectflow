@@ -126,7 +126,31 @@ export interface Business {
 }
 
 export type BcSendStatus = "not_sent" | "sending" | "sent";
-export type BcConfirmationStatus = "pending" | "accepted" | "failure";
+/**
+ * Bharat Connect status after sending, from handbook Annexure H. "pending" = Sent To Buyer,
+ * "returned" = Under Review (buyer returned it for correction). "failure" is a technical send
+ * failure only — a buyer saying no is "rejected".
+ */
+export type BcConfirmationStatus = "pending" | "accepted" | "returned" | "rejected" | "cancelled" | "failure";
+
+/** Buyer's answer to an invoice (reqConfirmInvoice → buyerResponse). */
+export type BuyerResponse = "accept" | "return" | "reject";
+
+/**
+ * One entry in an invoice's Notes card. "internal" notes never leave LEDGERS; "bc" entries are
+ * Bharat Connect events (sent, returned, accepted…) with the comment that travelled with them.
+ */
+export interface InvoiceNote {
+  id: string;
+  kind: "internal" | "bc";
+  text: string;
+  /** Bharat Connect event label, e.g. "Sent to Bharat Retail", "Returned by you". */
+  event?: string;
+  author: string;
+  at: string;
+  /** Internal note ticked to go out with the next send (invoiceRemarks, max 256). */
+  shareOnSend?: boolean;
+}
 
 export interface InvoiceLineItem {
   id: string;
@@ -157,6 +181,26 @@ export interface Invoice {
   bcSendStatus: BcSendStatus;
   /** Either side: how the counterparty (sales) or this business (purchase, inbound) responded. */
   bcConfirmationStatus: BcConfirmationStatus | null;
+  /** Notes card entries, oldest first. */
+  notes?: InvoiceNote[];
+  /** Bumped on every re-send after a return. */
+  version?: number;
+  /** E-invoices (with an IRN) can't be edited after a return (Annexure H). */
+  isEInvoice?: boolean;
+  /** Receipts (sales) / payments (bills) recorded against this document. */
+  receipts?: Receipt[];
+  /** LEDGERS-only expense category on bills (editable even on bills received over Bharat Connect). */
+  category?: string;
+}
+
+export interface Receipt {
+  id: string;
+  date: string;
+  amount: number;
+  mode: string;
+  depositTo: string;
+  reference?: string;
+  tds?: number;
 }
 
 export type ContactType = "customer" | "supplier";

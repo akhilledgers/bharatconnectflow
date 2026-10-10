@@ -145,6 +145,9 @@ function BharatConnectOptions() {
   const setVerificationLevel = useStore((s) => s.setVerificationLevel);
   const invoices = useStore((s) => s.invoices);
   const simulateInvoiceConfirmation = useStore((s) => s.simulateInvoiceConfirmation);
+  const simulateBuyerResponse = useStore((s) => s.simulateBuyerResponse);
+  const simulateSupplierResend = useStore((s) => s.simulateSupplierResend);
+  const returnedBills = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus === "returned");
   const devProfileSaveOutcome = useStore((s) => s.devProfileSaveOutcome);
   const setDevProfileSaveOutcome = useStore((s) => s.setDevProfileSaveOutcome);
   const setGstConnected = useStore((s) => s.setGstConnected);
@@ -259,36 +262,40 @@ function BharatConnectOptions() {
         </div>
       </Group>
 
-      <Group label="Simulate invoice confirmation">
+      <Group label="Simulate buyer response">
         {awaitingConfirmation.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">No sent invoices are awaiting confirmation right now.</p>
+          <p className="text-[11px] text-muted-foreground">No sent invoices are waiting for the buyer right now.</p>
         ) : (
           <div className="space-y-1.5">
             {awaitingConfirmation.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-medium text-foreground">{inv.id}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{inv.counterpartyName}</div>
+              <div key={inv.id} className="rounded-md border border-border px-2 py-1.5">
+                <div className="truncate text-xs font-medium text-foreground">
+                  {inv.id} <span className="font-normal text-muted-foreground">· {inv.counterpartyName}</span>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    onClick={() => simulateInvoiceConfirmation(inv.id, "accepted")}
-                    className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => simulateInvoiceConfirmation(inv.id, "failure")}
-                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
-                  >
-                    Fail
-                  </button>
+                <div className="mt-1 grid grid-cols-4 gap-1">
+                  <button onClick={() => simulateBuyerResponse(inv.id, "accept", "Looks good")} className="rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 px-1.5 py-1 text-[11px] font-medium">Accept</button>
+                  <button onClick={() => simulateBuyerResponse(inv.id, "return", "Wrong GST, should be 12%")} className="rounded-md border border-amber-200 bg-amber-50 text-amber-700 px-1.5 py-1 text-[11px] font-medium">Return</button>
+                  <button onClick={() => simulateBuyerResponse(inv.id, "reject", "Not ordered")} className="rounded-md border border-red-200 bg-red-50 text-red-700 px-1.5 py-1 text-[11px] font-medium">Reject</button>
+                  <button onClick={() => simulateInvoiceConfirmation(inv.id, "failure")} className="rounded-md border border-border text-muted-foreground px-1.5 py-1 text-[11px] font-medium">Fail</button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </Group>
+
+      {returnedBills.length > 0 && (
+        <Group label="Simulate supplier resend">
+          <div className="space-y-1.5">
+            {returnedBills.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
+                <span className="truncate text-xs text-foreground">{inv.id}</span>
+                <button onClick={() => simulateSupplierResend(inv.id, "Corrected as requested")} className="rounded-md border border-border text-foreground px-1.5 py-1 text-[11px] font-medium">Resend</button>
+              </div>
+            ))}
+          </div>
+        </Group>
+      )}
     </>
   );
 }

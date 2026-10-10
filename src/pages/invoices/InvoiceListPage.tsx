@@ -1,22 +1,29 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Calendar,
-  Check,
+  ArrowDownToLine,
+  CalendarDays,
   Copy,
-  Download,
-  Edit3,
   Eye,
-  Filter,
-  Layers,
+  Funnel,
   MoreHorizontal,
+  Plus,
   Printer,
-  Share2,
+  Search,
+  Send,
+  Settings2,
+  Split,
+  SquareMenu,
+  SquarePen,
   Trash2,
-  X,
 } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Checkbox, Input } from "../../components/ui/input";
+import { menuItemCls, popoverCls } from "../../components/ui/popover";
+import { tableCls, thCls, tdCls, trCls, TablePagination } from "../../components/ui/table";
+import { editRule } from "../../lib/editRules";
 import { useStore } from "../../store/useStore";
-import { statusLabel, statusVariant, confirmationMeta } from "../../lib/invoiceStatus";
+import { statusLabel, statusVariant, confirmationMeta, latestBcComment } from "../../lib/invoiceStatus";
 import { Badge } from "../../components/ui/badge";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
@@ -24,49 +31,51 @@ import { ConnectBharatConnectBanner } from "../../components/ConnectBharatConnec
 import { PendingActionsBanner } from "../../components/layout/PendingActionsBanner";
 import { InviteBcTooltip } from "../../components/InviteBcTooltip";
 import { FilterMenu } from "../../components/FilterMenu";
-import { configFor, sumAmount, sumUnpaid, inr, money } from "./kindConfig";
+import { configFor, sumAmount, sumUnpaid, inr } from "./kindConfig";
 import type { Invoice } from "../../types";
 
+// Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, FY range.
 function StatCard({ label, value, className }: { label: string; value: string; className: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="text-sm text-foreground">{label}</div>
-      <div className={`mt-2 text-xl font-semibold ${className}`}>{value}</div>
-      <div className="mt-1 text-xs text-muted-foreground">01-04-2026 - 31-03-2027</div>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <p className={`text-xl font-semibold tracking-tight tabular-nums ${className}`}>{value}</p>
+        <p className="text-xs text-muted-foreground">01-04-2026 - 31-03-2027</p>
+      </div>
     </div>
   );
 }
 
-type BcFilter = "all" | "not_sent" | "awaiting" | "accepted" | "failure" | "pending";
+const toolbarIconBtn =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground shadow-xs shadow-black/5 hover:bg-accent [&_svg]:size-4 [&_svg]:opacity-60";
 
+type BcFilter = "all" | "not_sent" | "pending" | "accepted" | "returned" | "rejected" | "cancelled" | "failure";
+
+// Statuses from handbook Annexure H. "pending" is Sent To Buyer (sales) / Awaiting Response (bills).
 const SALES_BC_FILTERS: { value: BcFilter; label: string }[] = [
   { value: "all", label: "All Bharat Connect statuses" },
   { value: "not_sent", label: "Pending to send" },
-  { value: "awaiting", label: "Awaiting confirmation" },
+  { value: "pending", label: "Sent To Buyer" },
   { value: "accepted", label: "Accepted" },
+  { value: "returned", label: "Returned" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
   { value: "failure", label: "Failed" },
 ];
 
 const PURCHASE_BC_FILTERS: { value: BcFilter; label: string }[] = [
   { value: "all", label: "All Bharat Connect statuses" },
-  { value: "pending", label: "Pending to accept" },
+  { value: "pending", label: "Awaiting Response" },
   { value: "accepted", label: "Accepted" },
-  { value: "failure", label: "Failed" },
+  { value: "returned", label: "Returned" },
+  { value: "rejected", label: "Rejected" },
 ];
 
-function matchesBcFilter(invoice: Invoice, kind: "sales" | "purchase", filter: BcFilter): boolean {
+function matchesBcFilter(invoice: Invoice, filter: BcFilter): boolean {
   if (filter === "all") return true;
-  if (kind === "sales") {
-    if (filter === "not_sent") return invoice.bcSendStatus === "not_sent";
-    if (filter === "awaiting") return invoice.bcSendStatus === "sent" && invoice.bcConfirmationStatus === "pending";
-    if (filter === "accepted") return invoice.bcConfirmationStatus === "accepted";
-    if (filter === "failure") return invoice.bcConfirmationStatus === "failure";
-    return true;
-  }
-  if (filter === "pending") return invoice.bcConfirmationStatus === "pending";
-  if (filter === "accepted") return invoice.bcConfirmationStatus === "accepted";
-  if (filter === "failure") return invoice.bcConfirmationStatus === "failure";
-  return true;
+  if (filter === "not_sent") return invoice.bcSendStatus === "not_sent";
+  return invoice.bcConfirmationStatus === filter;
 }
 
 export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
@@ -75,13 +84,12 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const business = useStore((s) => s.currentBusiness());
   const allInvoices = useStore((s) => s.invoices);
   const sendInvoiceViaBharatConnect = useStore((s) => s.sendInvoiceViaBharatConnect);
-  const respondToBill = useStore((s) => s.respondToBill);
   const connected = business.connectionState === "connected";
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [bcFilter, setBcFilter] = useState<BcFilter>("all");
 
   const rows = allInvoices.filter((i) => i.kind === kind);
-  const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, kind, bcFilter)) : rows;
+  const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, bcFilter)) : rows;
   const total = sumAmount(rows);
   const outstanding = sumUnpaid(rows);
 
@@ -94,15 +102,12 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">{config.pageTitle}</h1>
-        <button
-          onClick={() => navigate(`${config.basePath}/create`)}
-          className="flex items-center gap-1.5 rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
-        >
-          <span className="text-base leading-none">+</span>
+      <div className="mb-5 flex items-center justify-between">
+        <h1 className="text-xl font-medium text-foreground">{config.pageTitle}</h1>
+        <Button variant="outline" onClick={() => navigate(`${config.basePath}/create`)}>
+          <Plus />
           {config.createLabel}
-        </button>
+        </Button>
       </div>
 
       <ConnectBharatConnectBanner
@@ -116,21 +121,21 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
         <PendingActionsBanner kind={kind} onReview={() => setBcFilter(kind === "sales" ? "not_sent" : "pending")} />
       )}
 
-      <div className="mb-6 grid grid-cols-4 gap-4">
+      <div className="mb-5 grid grid-cols-4 gap-5">
         {stats.map((s) => (
           <StatCard key={s.label} {...s} />
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <input
-            placeholder={`Search ${config.singular}...`}
-            className="w-72 rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs shadow-black/5">
+        <div className="flex items-center justify-between gap-3 px-5 py-3">
+          <div className="relative w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder={`Search ${config.singular}...`} className="ps-9" />
+          </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent">
-              <Calendar className="h-4 w-4" />
+            <button className="inline-flex h-8.5 w-56 items-center gap-2 rounded-md border border-input bg-background px-3 text-2sm text-muted-foreground/80 shadow-xs shadow-black/5">
+              <CalendarDays className="size-4 text-muted-foreground" />
               Select Date range
             </button>
             {connected ? (
@@ -141,35 +146,38 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 options={kind === "sales" ? SALES_BC_FILTERS : PURCHASE_BC_FILTERS}
               />
             ) : (
-              <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
-                <Filter className="h-4 w-4" />
+              <button className={toolbarIconBtn} title="Filter">
+                <Funnel />
               </button>
             )}
-            <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
-              <Layers className="h-4 w-4" />
+            <button className={toolbarIconBtn} title="Group by">
+              <Split />
             </button>
-            <button className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent">
-              <Share2 className="h-4 w-4" />
+            <button className={toolbarIconBtn} title="Columns">
+              <SquareMenu />
+            </button>
+            <button className={toolbarIconBtn} title="Settings">
+              <Settings2 />
             </button>
           </div>
         </div>
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-foreground">
-              <th className="w-10 px-4 py-3">
-                <input type="checkbox" className="h-4 w-4 rounded border-input" />
+        <table className={`${tableCls} table-fixed`}>
+          <thead className="bg-muted/40">
+            <tr>
+              <th className={`${thCls} w-12`}>
+                <Checkbox aria-label="Select all" />
               </th>
-              <th className="px-2 py-3 font-medium">{config.singular} Number</th>
-              <th className="px-2 py-3 font-medium">{config.singular} Date</th>
-              <th className="px-2 py-3 font-medium">{config.counterpartyLabel}</th>
-              <th className="px-2 py-3 text-right font-medium">Amount</th>
-              <th className="px-2 py-3 font-medium">{config.singular} Status</th>
-              {connected && <th className="px-2 py-3 font-medium">Bharat Connect</th>}
-              <th className="px-4 py-3 text-right font-medium">Action</th>
+              <th className={thCls}>{config.singular} Number</th>
+              <th className={thCls}>{config.singular} Date</th>
+              <th className={`${thCls} w-[22%]`}>{config.counterpartyLabel}</th>
+              <th className={thCls}>Amount</th>
+              <th className={thCls}>{config.singular} Status</th>
+              {connected && <th className={`${thCls} w-44`}>Bharat Connect</th>}
+              <th className={`${thCls} w-20`}>Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody>
             {filteredRows.map((inv) => (
               <InvoiceRow
                 key={inv.id}
@@ -181,13 +189,11 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 onCloseMenu={() => setOpenMenuId(null)}
                 onView={() => navigate(`${config.basePath}/${inv.id}`)}
                 onSend={() => sendInvoiceViaBharatConnect(inv.id)}
-                onAccept={() => respondToBill(inv.id, "accept")}
-                onReject={() => respondToBill(inv.id, "reject")}
               />
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-xs text-muted-foreground">
                   {rows.length === 0
                     ? `No ${config.pageTitle.toLowerCase()} yet.`
                     : `No ${config.pageTitle.toLowerCase()} match this Bharat Connect filter.`}
@@ -197,18 +203,8 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
           </tbody>
         </table>
 
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted-foreground">
-          <span>
-            Showing Records 1 to {filteredRows.length} of {filteredRows.length} total records
-          </span>
-          <div className="flex gap-2">
-            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
-              Previous
-            </button>
-            <button className="rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent" disabled>
-              Next
-            </button>
-          </div>
+        <div className="flex min-h-14 items-center px-5">
+          <TablePagination from={1} to={filteredRows.length} total={filteredRows.length} />
         </div>
       </div>
     </div>
@@ -227,13 +223,8 @@ function MenuItem({
   danger?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
-        danger ? "text-red-600" : "text-foreground"
-      }`}
-    >
-      <Icon className="h-4 w-4" strokeWidth={1.75} />
+    <button onClick={onClick} className={danger ? `${menuItemCls} !text-destructive [&_svg]:!opacity-100` : menuItemCls}>
+      <Icon />
       {label}
     </button>
   );
@@ -248,8 +239,6 @@ function InvoiceRow({
   onCloseMenu,
   onView,
   onSend,
-  onAccept,
-  onReject,
 }: {
   invoice: Invoice;
   config: ReturnType<typeof configFor>;
@@ -259,41 +248,41 @@ function InvoiceRow({
   onCloseMenu: () => void;
   onView: () => void;
   onSend: () => void;
-  onAccept: () => void;
-  onReject: () => void;
 }) {
-  const confirmation = confirmationMeta(invoice.bcConfirmationStatus);
-  const showAcceptReject = connected && config.kind === "purchase" && invoice.bcConfirmationStatus === "pending";
+  const navigate = useNavigate();
+  const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
+  const bcComment = latestBcComment(invoice);
+  const showRespond = connected && config.kind === "purchase" && invoice.bcConfirmationStatus === "pending";
   const showSend = connected && config.kind === "sales" && invoice.bcSendStatus === "not_sent";
   const showSending = connected && invoice.bcSendStatus === "sending";
   const showRetry = connected && config.kind === "sales" && invoice.bcConfirmationStatus === "failure";
   const counterpartyOnBc = !!invoice.counterpartyB2bId;
 
   return (
-    <tr className="relative hover:bg-accent/60">
-      <td className="px-4 py-4">
-        <input type="checkbox" className="h-4 w-4 rounded border-input" />
+    <tr className={`relative ${trCls}`}>
+      <td className={tdCls}>
+        <Checkbox aria-label={`Select ${invoice.id}`} />
       </td>
-      <td className="px-2 py-4">
-        <button onClick={onView} className="font-medium text-primary hover:underline">
+      <td className={`${tdCls} text-xs`}>
+        <button onClick={onView} className="text-primary hover:underline">
           {invoice.id}
         </button>
       </td>
-      <td className="px-2 py-4 text-foreground">{invoice.date}</td>
-      <td className="px-2 py-4">
+      <td className={`${tdCls} text-xs text-foreground`}>{invoice.date}</td>
+      <td className={`${tdCls} truncate text-xs`}>
         <button onClick={onView} className="text-primary hover:underline">
           {invoice.counterpartyName}
         </button>
-        {invoice.counterpartyEmail && <div className="text-xs text-muted-foreground">{invoice.counterpartyEmail}</div>}
+        {invoice.counterpartyEmail && <div className="truncate text-muted-foreground">{invoice.counterpartyEmail}</div>}
       </td>
-      <td className="px-2 py-4 text-right text-foreground">{money(invoice.amount)}</td>
-      <td className="px-2 py-4">
+      <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
+      <td className={tdCls}>
         <Badge variant={statusVariant(invoice.status)}>
           {statusLabel(invoice.status)}
         </Badge>
       </td>
       {connected && (
-        <td className="px-2 py-4">
+        <td className={tdCls}>
           {showSend ? (
             counterpartyOnBc ? (
               <button
@@ -313,23 +302,11 @@ function InvoiceRow({
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <CircularSpinner size={12} /> Sending…
             </span>
-          ) : showAcceptReject ? (
-            <div className="flex gap-1.5">
-              <button
-                onClick={onAccept}
-                title="Accept"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-              >
-                <Check className="h-3 w-3" strokeWidth={3} />
-              </button>
-              <button
-                onClick={onReject}
-                title="Reject"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
-              >
-                <X className="h-3 w-3" strokeWidth={3} />
-              </button>
-            </div>
+          ) : showRespond ? (
+            // Accept / Return / Reject need a comment, so they live on the bill; this opens it.
+            <Button variant="outline" size="sm" onClick={onView}>
+              Respond
+            </Button>
           ) : showRetry ? (
             <div className="flex items-center gap-2">
               <Badge variant={confirmation!.variant}>
@@ -340,9 +317,15 @@ function InvoiceRow({
               </button>
             </div>
           ) : confirmation ? (
-            <Badge variant={confirmation.variant}>
-              {confirmation.label}
-            </Badge>
+            // Hover shows the comment that came with the status (e.g. the buyer's reason for a return).
+            <span title={bcComment} className="inline-flex items-center gap-1.5">
+              <Badge variant={confirmation.variant}>{confirmation.label}</Badge>
+              {config.kind === "sales" && invoice.bcConfirmationStatus === "returned" && (
+                <button onClick={onView} className="text-xs font-medium text-primary hover:text-primary/80">
+                  Review
+                </button>
+              )}
+            </span>
           ) : config.kind === "purchase" ? (
             // A bill entered by hand: it didn't come over Bharat Connect. "Not sent" would be wrong —
             // bills are received, never sent.
@@ -364,19 +347,20 @@ function InvoiceRow({
           )}
         </td>
       )}
-      <td className="px-4 py-4 text-right">
+      <td className={tdCls}>
         <div className="relative inline-block">
           <button
             onClick={onToggleMenu}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Actions"
+            className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreHorizontal className="size-4" />
           </button>
 
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
-              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-border bg-card p-1.5 shadow-lg">
+              <div className={`absolute right-0 z-20 mt-1 w-48 space-y-0.5 p-1 ${popoverCls}`}>
                 <MenuItem
                   icon={Eye}
                   label="View Details"
@@ -385,12 +369,40 @@ function InvoiceRow({
                     onView();
                   }}
                 />
-                <MenuItem icon={Check} label="Mark as paid" onClick={onCloseMenu} />
-                <MenuItem icon={Edit3} label="Edit invoice" onClick={onCloseMenu} />
-                <MenuItem icon={Copy} label="Copy invoice" onClick={onCloseMenu} />
+                {/* Bharat Connect action sits with the LEDGERS ones, only when it applies. */}
+                {(showSend && counterpartyOnBc) || showRetry ? (
+                  <MenuItem
+                    icon={Send}
+                    label={showRetry ? "Retry Bharat Connect" : config.bcSendActionLabel}
+                    onClick={() => {
+                      onCloseMenu();
+                      onSend();
+                    }}
+                  />
+                ) : null}
+                {(() => {
+                  const rule = editRule(invoice, connected);
+                  return rule.mode === "blocked" ? (
+                    <span title={rule.reason} className="block">
+                      <button disabled className={`${menuItemCls} cursor-not-allowed opacity-50`}>
+                        <SquarePen />
+                        Edit {config.singular}
+                      </button>
+                    </span>
+                  ) : (
+                    <MenuItem
+                      icon={SquarePen}
+                      label={rule.mode === "resend" ? `Edit & Resend (v${rule.nextVersion})` : `Edit ${config.singular}`}
+                      onClick={() => {
+                        onCloseMenu();
+                        navigate(`${config.basePath}/${invoice.id}/edit`);
+                      }}
+                    />
+                  );
+                })()}
+                <MenuItem icon={Copy} label={`Copy ${config.singular}`} onClick={onCloseMenu} />
                 <MenuItem icon={Printer} label="Print" onClick={onCloseMenu} />
-                <MenuItem icon={Download} label="Download" onClick={onCloseMenu} />
-                <div className="my-1 border-t border-border" />
+                <MenuItem icon={ArrowDownToLine} label="Download" onClick={onCloseMenu} />
                 <MenuItem icon={Trash2} label="Delete" danger onClick={onCloseMenu} />
               </div>
             </>
