@@ -806,12 +806,13 @@ function BooksSide({ line: l }: { line: BankLine }) {
   );
 }
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+/** A numbered step in the match panel. `grow` lets it take the panel's spare height (for the scrolling list). */
+function Step({ n, title, grow, children }: { n: number; title: string; grow?: boolean; children: ReactNode }) {
   return (
-    <div className="flex gap-3">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-xs font-semibold text-[var(--color-primary-accent)]">{n}</span>
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 text-sm font-medium">{title}</div>
+    <div className={cn("flex gap-2.5", grow ? "min-h-0 flex-1" : "shrink-0")}>
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[11px] font-semibold text-[var(--color-primary-accent)]">{n}</span>
+      <div className={cn("min-w-0 flex-1", grow && "flex min-h-0 flex-col")}>
+        <div className="mb-1.5 text-2sm font-medium leading-5">{title}</div>
         {children}
       </div>
     </div>
@@ -906,6 +907,7 @@ function MatchPanel({
   const guessLedger = { "Bank charge": "Bank charges", "Interest credit": "Interest income", "Tax payment": "GST payable" }[describeLine(line)] ?? "";
   const [ledger, setLedger] = useState(m && initialWho === "none" ? (m.ledger ?? guessLedger) : guessLedger);
   const [remember, setRemember] = useState(true);
+  const [fullNarration, setFullNarration] = useState(false);
   const touch = () => setDirty(true);
 
   const choose = (id: string | null) => {
@@ -992,44 +994,48 @@ function MatchPanel({
         aria-label="Bank transaction"
         className="fixed bottom-5 end-5 top-5 z-50 flex w-[500px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
       >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="text-base font-semibold">Bank transaction</div>
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
-            <X />
-          </Button>
-        </div>
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
-          {/* The transaction */}
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-medium">{lineParty(line)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {fmtDay(toDate(line.date))} · {accountLabel}
-                  {balance !== undefined && ` · balance after ${fmtINR(balance)}`}
-                </div>
+        {/* The transaction is the header: who, when, how much, and the narration on one line. */}
+        <div className="shrink-0 border-b border-border px-6 pb-3 pt-4">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-base font-semibold">{lineParty(line)}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {fmtDay(toDate(line.date))} · {accountLabel}
+                {balance !== undefined && ` · bal ${fmtINR(balance)}`}
               </div>
-              <Amount value={line.amount} className="shrink-0 text-xl font-semibold" />
             </div>
-            <div className="mt-2.5 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{line.narration}</div>
+            <Amount value={line.amount} className="shrink-0 pt-0.5 text-lg font-semibold" />
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close" className="-me-2">
+              <X />
+            </Button>
           </div>
+          <button
+            type="button"
+            onClick={() => setFullNarration(!fullNarration)}
+            title={fullNarration ? "Show less" : "Show the full narration"}
+            className={cn("mt-2 block w-full cursor-pointer rounded bg-muted/60 px-2 py-1 text-left font-mono text-[11px] text-muted-foreground", fullNarration ? "[overflow-wrap:anywhere]" : "truncate")}
+          >
+            {line.narration}
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
 
           {/* What the AI found / current state */}
           {m && line.status === "suggested" && (
-            <div className="flex items-start gap-2.5 rounded-md border border-[var(--color-primary-accent)]/20 bg-[var(--color-primary-soft)] px-3 py-2.5 text-xs">
-              <Sparkles className="mt-px size-4 shrink-0 text-primary" />
-              <div className="min-w-0 flex-1">
-                <div className="text-2sm text-foreground">
+            <div className="flex shrink-0 items-center gap-2 rounded-md border border-[var(--color-primary-accent)]/20 bg-[var(--color-primary-soft)] px-3 py-2 text-xs">
+              <Sparkles className="size-4 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1 truncate" title={m.reason}>
+                <span className="text-foreground">
                   AI suggests <span className="font-medium">{[m.kind, m.ref ?? m.ledger].filter(Boolean).join(" · ")}</span>
-                </div>
-                {m.reason && <div className="mt-0.5 text-muted-foreground">Why: {m.reason}</div>}
+                </span>
+                {m.reason && <span className="text-muted-foreground"> · {m.reason}</span>}
               </div>
               {m.confidence !== undefined && <Badge variant={m.confidence < 90 ? "warning" : "primary"}>{m.confidence}% sure</Badge>}
             </div>
           )}
           {m && line.status !== "suggested" && (
-            <div className="flex items-center gap-2 rounded-md bg-[var(--color-success-soft)] px-3 py-2 text-xs text-[var(--color-success-accent)]">
-              <Check className="size-4" />
+            <div className="flex shrink-0 items-center gap-2 rounded-md bg-[var(--color-success-soft)] px-3 py-2 text-xs text-[var(--color-success-accent)]">
+              <Check className="size-4 shrink-0" />
               Matched by {line.status === "auto" ? "AI" : "you"}: {[m.kind, m.ref ?? m.ledger].filter(Boolean).join(" · ")}. Change it below if it's wrong.
             </div>
           )}
@@ -1126,9 +1132,9 @@ function MatchPanel({
           )}
 
           {(party || who === "multi") && (
-            <Step n={2} title="What does it settle?">
+            <Step n={2} title="What does it settle?" grow={mode === "link" && options.length > 3}>
               {party && (
-                <div role="radiogroup" className="mb-3 flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
+                <div role="radiogroup" className="mb-2 flex shrink-0 gap-1 rounded-lg border border-border/80 bg-muted/80 p-0.5">
                   {(
                     [
                       ["link", `Link ${inflow ? "invoices" : "bills"} or entries`],
@@ -1144,7 +1150,7 @@ function MatchPanel({
                         touch();
                         setMode(v);
                       }}
-                      className={cn("h-8 flex-1 cursor-pointer rounded-md text-2sm", mode === v && "bg-background font-medium shadow-lg shadow-black/5")}
+                      className={cn("h-7 flex-1 cursor-pointer rounded-md text-xs", mode === v && "bg-background font-medium shadow-lg shadow-black/5")}
                     >
                       {label}
                     </button>
@@ -1192,9 +1198,9 @@ function MatchPanel({
                   No open {inflow ? "invoices" : "bills"} for {party?.name}. Record a new {voucher} instead.
                 </div>
               ) : (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex min-h-0 flex-1 flex-col gap-1.5">
                   {options.length > LIST_FILTER_AT && (
-                    <div className="mb-1 flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <div className="relative flex-1">
                         <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Filter by number or amount" className="h-8 ps-8 text-xs" />
@@ -1202,25 +1208,23 @@ function MatchPanel({
                       <span className="shrink-0 text-xs text-muted-foreground">{options.length} open</span>
                     </div>
                   )}
-                  <div className={cn("flex flex-col gap-1.5", options.length > LIST_FILTER_AT && "max-h-64 overflow-y-auto rounded-md border border-border p-1.5")}>
+                  {/* Takes whatever height is left and scrolls inside, so the panel itself doesn't. */}
+                  <div className={cn("flex flex-col gap-1 overflow-y-auto rounded-md border border-border p-1", options.length > 3 && "min-h-[124px] flex-1")}>
                     {shownOptions.map((x) => (
                       <label
                         key={x.id}
-                        className={cn("flex shrink-0 cursor-pointer items-center gap-3 rounded-md border px-3 py-2", picked.includes(x.id) ? "border-primary bg-[var(--color-primary-soft)]" : "border-input hover:bg-accent/60")}
+                        className={cn("flex shrink-0 cursor-pointer items-center gap-2.5 rounded px-2.5 py-1.5", picked.includes(x.id) ? "bg-[var(--color-primary-soft)]" : "hover:bg-accent/60")}
                       >
-                        <input type="checkbox" checked={picked.includes(x.id)} onChange={() => toggle(x.id, x.isEntry)} className="size-4 accent-primary" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-2sm font-medium">{x.ref}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {shortDate(x.date)} · {x.note} {fmtINR(x.amount)}
-                          </span>
+                        <input type="checkbox" checked={picked.includes(x.id)} onChange={() => toggle(x.id, x.isEntry)} className="size-4 shrink-0 accent-primary" />
+                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={`${x.ref} · ${x.note} ${fmtINR(x.amount)}`}>
+                          <span className="text-2sm font-medium text-foreground">{x.ref}</span> · {shortDate(x.date)} · {x.note} {fmtINR(x.amount)}
                         </span>
                         {alloc.has(x.id) && <span className="text-2sm tabular-nums">{fmtINR(alloc.get(x.id)!)}</span>}
                       </label>
                     ))}
                     {shownOptions.length === 0 && <div className="px-2 py-3 text-xs text-muted-foreground">Nothing matches “{listQ}”.</div>}
                   </div>
-                  <div className={cn("mt-1 text-xs", left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
+                  <div className={cn("shrink-0 text-xs", left === 0 ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
                     {left === 0
                       ? `Allocated ${fmtINR(total)} of ${fmtINR(total)} ✓`
                       : pickedEntries.length
@@ -1233,19 +1237,16 @@ function MatchPanel({
           )}
 
           {party && key && !party.keys.includes(key.value) && (
-            <Step n={3} title="Next time">
-              <label className="flex cursor-pointer items-start gap-2.5 text-2sm">
-                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="mt-0.5 size-4 accent-primary" />
-                <span>
-                  Remember {key.label} <span className="font-mono text-xs">{key.value}</span> is {party.name}
-                  <span className="block text-xs text-muted-foreground">The AI will match transactions like this to {party.name} on its own.</span>
-                </span>
-              </label>
-            </Step>
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs" title={`The AI will match transactions like this to ${party.name} on its own.`}>
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 shrink-0 accent-primary" />
+              <span className="min-w-0 truncate">
+                Next time, treat {key.label} <span className="font-mono">{key.value}</span> as {party.name}
+              </span>
+            </label>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 border-t border-border px-6 py-4">
+        <div className="flex shrink-0 items-center justify-end gap-2.5 border-t border-border px-6 py-3">
           {line.status === "suggested" && (
             <Button variant="ghost" className="me-auto" onClick={() => onReject(false)}>
               <X />
