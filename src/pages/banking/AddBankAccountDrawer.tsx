@@ -7,7 +7,7 @@ import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, FY_START, digitsOnly, fmtINR, last4, type CompanyAccount } from "./data";
+import { CONNECTED_BANKING, FY_START, digitsOnly, last4, type CompanyAccount } from "./data";
 import { lookupIfsc, type IfscResult } from "./ifscLookup";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
@@ -16,10 +16,6 @@ const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const toDMY = (iso: string) => iso.split("-").reverse().join("-");
-const fyLabel = (iso: string) => {
-  const y = Number(iso.slice(0, 4));
-  return `FY ${y}–${String(y + 1).slice(2)}`;
-};
 
 /** Banking → Accounts → Add bank account. IFSC first: it identifies the bank and branch. */
 export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => void; onConnect: (accountId: string) => void }) {
@@ -179,9 +175,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                   </div>
                 ) : result?.status === "unreachable" ? (
                   <p className="text-xs text-[var(--color-warning-accent)]">Couldn't reach the IFSC directory to confirm the branch. You can still add the account.</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">We'll find the bank and branch.</p>
-                )}
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -228,13 +222,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                   />
                 </div>
               </div>
-              <p className={cn("-mt-3 text-xs", mismatch ? "text-destructive" : confirm && confirm === number ? "text-[var(--color-success-accent)]" : "text-muted-foreground")}>
-                {mismatch
-                  ? "Account numbers don't match."
-                  : confirm && confirm === number
-                    ? `Account numbers match · ending ${number.slice(-4)}`
-                    : "The first number is hidden. Type it again to confirm; pasting is turned off."}
-              </p>
+              {mismatch && <p className="-mt-3 text-xs text-destructive">Numbers don't match</p>}
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="add-nickname" className="text-xs font-medium">
@@ -262,10 +250,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
               </div>
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">
-                <div>
-                  <div className="text-sm font-medium">Opening balance</div>
-                  <p className="text-xs text-muted-foreground">The balance your books start from for this account, so your balance sheet is right.</p>
-                </div>
+                <div className="text-sm font-medium">Opening balance</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <label htmlFor="add-opening" className="text-xs font-medium">
@@ -287,44 +272,23 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                     <Input id="add-opening-date" type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
                   </div>
                 </div>
-                <div role="radiogroup" aria-label="Balance type" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
-                  {([false, true] as const).map((od) => (
-                    <button
-                      key={String(od)}
-                      type="button"
-                      role="radio"
-                      aria-checked={overdrawn === od}
-                      onClick={() => setOverdrawn(od)}
-                      className={cn("h-8 flex-1 cursor-pointer rounded-md text-2sm", overdrawn === od && "bg-background font-medium shadow-lg shadow-black/5")}
-                    >
-                      {od ? "Overdrawn (OD / CC)" : "Money in the account"}
-                    </button>
-                  ))}
-                </div>
-                <p className={cn("text-xs", beforeFy ? "text-[var(--color-warning-accent)]" : "text-muted-foreground")}>
-                  {beforeFy
-                    ? `That's before your financial year starts (${fmtDate(FY_START)}). Enter the balance as on ${fmtDate(FY_START)} instead.`
-                    : openingDate === FY_START
-                      ? `Start of ${fyLabel(FY_START)}. Opened later in the year? Pick the opening date and enter 0 or the first deposit.`
-                      : `Opened during ${fyLabel(FY_START)}: the balance before ${fmtDate(openingDate)} is taken as zero.`}
-                  {opening !== null && opening > 0 && !beforeFy && ` ${fmtINR(overdrawn ? -opening : opening)} as on ${fmtDate(openingDate)}.`}
-                </p>
+                <label className="flex cursor-pointer items-center gap-2 text-2sm">
+                  <input type="checkbox" checked={overdrawn} onChange={(e) => setOverdrawn(e.target.checked)} className="size-4 accent-primary" />
+                  Overdrawn (OD / CC)
+                </label>
+                {beforeFy && <p className="text-xs text-destructive">Use a date on or after {fmtDate(FY_START)}, the start of your financial year</p>}
               </div>
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">
-                <label className="flex cursor-pointer items-start gap-2.5 text-2sm">
-                  <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} className="mt-0.5 size-4 accent-primary" />
+                <label className="flex cursor-pointer items-center gap-2.5 text-2sm">
+                  <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} className="size-4 accent-primary" />
                   <span>
-                    Verify account now
-                    <span className="block text-xs text-muted-foreground">Instant check with the bank. No money is moved.</span>
+                    Verify account now <span className="text-muted-foreground">(no money moved)</span>
                   </span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-2.5 text-2sm">
-                  <input type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} className="mt-0.5 size-4 accent-primary" />
-                  <span>
-                    Set as primary account
-                    <span className="block text-xs text-muted-foreground">Shown on invoices and used by default.</span>
-                  </span>
+                <label className="flex cursor-pointer items-center gap-2.5 text-2sm">
+                  <input type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} className="size-4 accent-primary" />
+                  <span>Set as primary account</span>
                 </label>
               </div>
             </div>
