@@ -60,7 +60,7 @@ export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
       { key: "checkerCode", label: "Checker user code", placeholder: "Checker user code" },
     ],
     netBankingApproval: {
-      url: "https://indusnet.indusind.com/",
+      url: "https://www.indusind.bank.in/",
       steps: ["Log in to IndusInd net banking", "Open Connected Banking requests", "Approve the request from LEDGERS"],
     },
   },
