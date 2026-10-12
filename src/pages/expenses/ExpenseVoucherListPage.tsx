@@ -19,12 +19,11 @@ export function ExpenseVoucherListPage() {
   const navigate = useNavigate();
   const payDocs = usePayDocs();
   const payouts = useBankingStore((s) => s.payouts);
-  const recorded = useBankingStore((s) => s.recordedDocs);
   const [selected, setSelected] = useState<string[]>([]);
   const [menu, setMenu] = useState<string | null>(null);
 
   const rows = EXPENSE_VOUCHERS;
-  const inPayment = (v: ExpenseVoucher) => !!recorded[v.number] || payouts.some((p) => p.docs?.includes(v.number) && ["awaiting", "processing", "paid"].includes(p.status));
+  const inPayment = (v: ExpenseVoucher) => payouts.some((p) => p.docs?.includes(v.number) && ["awaiting", "processing", "paid"].includes(p.status));
   const selectedRows = rows.filter((v) => selected.includes(v.number));
   const toPay = selectedRows.filter((v) => !v.paidBy && !inPayment(v));
   const allSelected = rows.every((v) => selected.includes(v.number));
@@ -150,7 +149,6 @@ function VoucherRow({
   onMenu: (open: boolean) => void;
 }) {
   const payment = useDocPayment(v.number);
-  const recorded = useBankingStore((s) => s.recordedDocs[v.number]);
   const paidHere = useDocPaid(v.number);
   const paid = !!v.paidBy || paidHere;
   const canPay = onPay && !payment && !paid;
@@ -183,7 +181,7 @@ function VoucherRow({
         </button>
       </td>
       <td className={`${tdCls} text-xs tabular-nums`}>{inr(voucherTotal(v))}</td>
-      <td className={`${tdCls} text-xs text-muted-foreground`}>{v.paidBy ?? recorded?.mode ?? (payment ? "Bank" : "—")}</td>
+      <td className={`${tdCls} text-xs text-muted-foreground`}>{v.paidBy ?? (payment ? "Bank" : "—")}</td>
       <td className={tdCls}>
         <Badge variant={paid ? "success" : "destructive"}>{paid ? "Paid" : "Not Paid"}</Badge>
         {payment && !paid && <div className="mt-1 text-xs text-muted-foreground">{paymentLabel(payment)}</div>}

@@ -95,7 +95,6 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const [selected, setSelected] = useState<string[]>([]);
   const payDocs = usePayDocs();
   const payouts = useBankingStore((s) => s.payouts);
-  const recorded = useBankingStore((s) => s.recordedDocs);
 
   const rows = allInvoices.filter((i) => i.kind === kind);
   const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, bcFilter)) : rows;
@@ -104,7 +103,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
 
   // Bills: pay straight from the list. Only bills still owed and not already being paid from the bank.
   const purchase = kind === "purchase";
-  const inPayment = (i: Invoice) => !!recorded[i.id] || payouts.some((p) => p.docs?.includes(i.id) && ["awaiting", "processing", "paid"].includes(p.status));
+  const inPayment = (i: Invoice) => payouts.some((p) => p.docs?.includes(i.id) && ["awaiting", "processing", "paid"].includes(p.status));
   const selectedRows = filteredRows.filter((i) => selected.includes(i.id));
   const toPay = selectedRows.filter((i) => isPayableBill(i) && !inPayment(i));
   const allSelected = filteredRows.length > 0 && filteredRows.every((i) => selected.includes(i.id));

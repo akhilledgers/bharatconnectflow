@@ -6,7 +6,7 @@ import { Card } from "../../components/ui/card";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { useDocPaid } from "../banking/PayDocs";
-import { PayDocSection } from "../banking/PayDocSection";
+import { PayDocButton, PayDocStatus } from "../banking/PayDocSection";
 import { amountInWords } from "../invoices/invoiceDoc";
 import { money } from "../invoices/kindConfig";
 import { NotesSection } from "../invoices/NotesCard";
@@ -74,20 +74,13 @@ export function ExpenseVoucherViewPage() {
             <h2 className="text-base font-semibold text-gray-800">
               INR {money2(total)} {paid ? "Paid" : "Due"}
             </h2>
-            <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : "bg-red-500"}`}>{paid ? "Paid" : "Not Paid"}</span>
+            <div className="flex items-center gap-2">
+              <PayDocButton key={v.number} doc={voucherDoc(v)} payable={!v.paidBy} />
+              <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : "bg-red-500"}`}>{paid ? "Paid" : "Not Paid"}</span>
+            </div>
           </div>
           <div className="space-y-5 p-4">
-            {v.paidBy ? (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-gray-700">Payment</h3>
-                <div className="rounded-md border border-border px-3 py-2.5 text-xs text-muted-foreground">
-                  Paid by {v.paidBy === "Bank" ? "bank transfer" : v.paidBy} on {v.date}
-                </div>
-              </div>
-            ) : (
-              <PayDocSection key={`pay-${v.number}`} doc={voucherDoc(v)} payable />
-            )}
-            <hr className="border-dashed" />
+            <PayDocStatus doc={voucherDoc(v)} />
             <VoucherNotes key={`notes-${v.number}`} voucher={v} />
           </div>
         </Card>

@@ -25,11 +25,9 @@ export function useDocPayment(number: string): Payout | undefined {
   return useBankingStore((s) => s.payouts.find((p) => p.docs?.includes(number) && LIVE.includes(p.status)));
 }
 
-/** Paid, either from the bank through LEDGERS or recorded by hand. */
+/** Paid from the bank through LEDGERS. */
 export function useDocPaid(number: string) {
-  const payment = useDocPayment(number);
-  const recorded = useBankingStore((s) => s.recordedDocs[number]);
-  return payment?.status === "paid" || !!recorded;
+  return useDocPayment(number)?.status === "paid";
 }
 
 /** One line on where a document's bank payment stands, for lists and the view page. */

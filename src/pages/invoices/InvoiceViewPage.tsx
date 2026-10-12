@@ -19,7 +19,7 @@ import { NotesSection } from "./NotesCard";
 import { CancelDialog, InlineResponse } from "./BcDialogs";
 import { editRule } from "../../lib/editRules";
 import { useDocPaid } from "../banking/PayDocs";
-import { PayDocSection } from "../banking/PayDocSection";
+import { PayDocButton, PayDocStatus } from "../banking/PayDocSection";
 import { billDoc, isPayableBill } from "./payBill";
 import { amountInWords, bankFromIfsc, longDate, stateFromGstin } from "./invoiceDoc";
 
@@ -133,7 +133,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
           <Card>
             <DueHeader invoice={invoice} />
             <div className="space-y-5 p-4">
-              {kind === "purchase" && <PayDocSection key={invoice.id} doc={billDoc(invoice)} payable={isPayableBill(invoice)} />}
+              {kind === "purchase" && <PayDocStatus doc={billDoc(invoice)} />}
               <ReconciliationSection invoice={invoice} kind={kind} />
               <hr className="border-dashed" />
               <div className="flex items-center justify-between">
@@ -397,9 +397,12 @@ function DueHeader({ invoice }: { invoice: Invoice }) {
       <h2 className="text-base font-semibold text-gray-800">
         INR {money2(paid ? invoice.amount : due)} {paid ? "Paid" : "Due"}
       </h2>
-      <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : invoice.status === "partly_paid" ? "bg-amber-500" : "bg-red-500"}`}>
-        {statusLabel(paid ? "paid" : invoice.status)}
-      </span>
+      <div className="flex items-center gap-2">
+        {invoice.kind === "purchase" && <PayDocButton key={invoice.id} doc={billDoc(invoice)} payable={isPayableBill(invoice)} />}
+        <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : invoice.status === "partly_paid" ? "bg-amber-500" : "bg-red-500"}`}>
+          {statusLabel(paid ? "paid" : invoice.status)}
+        </span>
+      </div>
     </div>
   );
 }
