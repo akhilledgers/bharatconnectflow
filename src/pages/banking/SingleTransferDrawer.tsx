@@ -9,15 +9,11 @@ import { payeeKey, useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
-  BeneTypeTabs,
   ClickAway,
   DrawerFooter,
-  EmployeePicker,
-  ContactPicker,
+  PayeePicker,
   ErrorText,
-  Field,
   FieldLabel,
-  Hint,
   LG,
   Note,
   OtpStep,
@@ -52,7 +48,11 @@ type Beneficiary =
   | { kind: "other"; name: string; bank: string; ifsc: string };
 
 /** Inline panel replacing the picker while a new contact / extra account is being entered. */
-type AddPanel = { type: "new-contact"; name: string } | { type: "contact-account"; contactId: string } | { type: "employee-account"; employeeId: string };
+type AddPanel =
+  | { type: "new-contact"; name: string }
+  | { type: "contact-account"; contactId: string }
+  | { type: "employee-account"; employeeId: string }
+  | { type: "one-off" };
 
 export interface SingleTransferPreset {
   payFromId?: string;
@@ -80,7 +80,6 @@ export function SingleTransferDrawer({
   const [payFromId, setPayFromId] = useState(accounts.find((a) => a.id === preset?.payFromId)?.id ?? accounts[0].id);
   const payFrom = accounts.find((a) => a.id === payFromId) ?? accounts[0];
 
-  const [beneType, setBeneTypeRaw] = useState<BeneType>("contact");
   const [beneficiary, setBeneficiary] = useState<Beneficiary | null>(preset?.beneficiary ?? null);
   const [panel, setPanel] = useState<AddPanel | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -153,13 +152,6 @@ export function SingleTransferDrawer({
     setBillIds([]);
     setHistoryOpen(false);
     setBillOpen(false);
-  };
-
-  const setBeneType = (t: BeneType) => {
-    setBeneTypeRaw(t);
-    clearBeneficiary();
-    setPanel(null);
-    setBillSearch("");
   };
 
   const verifySelected = async () => {
@@ -246,7 +238,7 @@ export function SingleTransferDrawer({
           </div>
         ) : bene.verified ? (
           <div className="mt-1.5 flex items-center gap-[5px] text-xs font-semibold text-[var(--color-success-accent)]">
-            <VerifiedDot size={14} /> Verified · {bene.name} · {bene.bank}
+            <VerifiedDot size={14} /> Verified
           </div>
         ) : (
           <>
@@ -310,28 +302,25 @@ export function SingleTransferDrawer({
           }}
         />
       );
-    if (beneType === "contact")
+    if (panel?.type === "one-off")
       return (
-        <ContactPicker
-          onSelect={(c, a) => pick({ kind: "contact", contactId: c.id, accountId: a.id }, "contact", { contact: c })}
-          onAddNew={(name) => setPanel({ type: "new-contact", name })}
-          onAddAccount={(c) => setPanel({ type: "contact-account", contactId: c.id })}
-        />
-      );
-    if (beneType === "employee")
-      return (
-        <EmployeePicker
-          onSelect={(e) => pick({ kind: "employee", employeeId: e.id }, "employee")}
-          onNeedsAccount={(e) => setPanel({ type: "employee-account", employeeId: e.id })}
+        <AccountForm
+          withPayeeName
+          onCancel={() => setPanel(null)}
+          onSubmit={({ name, accountNumber, ifsc, verified, saveAsContact }) => {
+            if (saveAsContact) store().addContact(name, { accountNumber, ifsc, verified });
+            pick({ kind: "other", name, bank: bankFromIfsc(ifsc), ifsc }, "other");
+          }}
         />
       );
     return (
-      <AccountForm
-        withPayeeName
-        onSubmit={({ name, accountNumber, ifsc, verified, saveAsContact }) => {
-          if (saveAsContact) store().addContact(name, { accountNumber, ifsc, verified });
-          pick({ kind: "other", name, bank: bankFromIfsc(ifsc), ifsc }, "other");
-        }}
+      <PayeePicker
+        onSelectContact={(c, a) => pick({ kind: "contact", contactId: c.id, accountId: a.id }, "contact", { contact: c })}
+        onAddContact={(name) => setPanel({ type: "new-contact", name })}
+        onAddContactAccount={(c) => setPanel({ type: "contact-account", contactId: c.id })}
+        onSelectEmployee={(e) => pick({ kind: "employee", employeeId: e.id }, "employee")}
+        onEmployeeNeedsAccount={(e) => setPanel({ type: "employee-account", employeeId: e.id })}
+        onOneOff={() => setPanel({ type: "one-off" })}
       />
     );
   })();
@@ -347,17 +336,8 @@ export function SingleTransferDrawer({
           <>
             <PayFromSelect account={payFrom} options={accounts} onSelect={setPayFromId} />
 
-            <Field label="Beneficiary Type">
-              <BeneTypeTabs value={beneType} onChange={setBeneType} />
-            </Field>
-
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <FieldLabel>Beneficiary</FieldLabel>
-                <Button variant="link" className="text-xs" disabled={!payFrom.bulkSupported} onClick={switchToBulk}>
-                  Paying multiple people? Switch to Bulk Transfer
-                </Button>
-              </div>
+              <FieldLabel>Pay to</FieldLabel>
               {picker}
             </div>
 
@@ -407,7 +387,7 @@ export function SingleTransferDrawer({
               )}
               <FieldLabel>Amount</FieldLabel>
               <AmountInput value={amount} onChange={(v) => setAmount(amountOnly(v))} />
-              {amountError ? <ErrorText>{amountError}</ErrorText> : <Hint>Available balance: {fmtINR(payFrom.balance)}</Hint>}
+              {amountError && <ErrorText>{amountError}</ErrorText>}
               {pastTransfers.length > 0 && (
                 <>
                   <Button variant="link" className="mt-0.5 self-start text-xs" onClick={() => setHistoryOpen(!historyOpen)}>
@@ -429,21 +409,41 @@ export function SingleTransferDrawer({
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel>Transfer Mode</FieldLabel>
-              {!modeExpanded ? (
-                <div className="flex items-center justify-between rounded-md border border-border px-3 py-[11px]">
-                  <div>
-                    <span className="text-2sm font-semibold">{mode}</span>
-                    <span className="text-xs text-muted-foreground"> · {MODES.find((m) => m.value === mode)!.note} · Bank charges may apply</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)] gap-3">
+              <div className="relative flex min-w-0 flex-col gap-1.5">
+                <FieldLabel>Purpose</FieldLabel>
+                {purposeOpen && <ClickAway onClose={() => setPurposeOpen(false)} />}
+                <SelectButton onClick={() => setPurposeOpen(!purposeOpen)} className={cn(purposeOpen && "z-20")}>
+                  <span className={cn("truncate", purpose ? "text-foreground" : "text-muted-foreground")}>{purposeOpt?.label ?? "Select purpose"}</span>
+                </SelectButton>
+                {purposeOpen && (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
+                    {PURPOSES.map((p) => (
+                      <div
+                        key={p.value}
+                        onClick={() => {
+                          setPurpose(p.value);
+                          setPurposeOpen(false);
+                        }}
+                        className="cursor-pointer border-b border-border px-3 py-2.5 text-2sm last:border-b-0 hover:bg-accent/60"
+                      >
+                        {p.label}
+                      </div>
+                    ))}
                   </div>
-                  <Button variant="link" className="shrink-0 text-xs" onClick={() => setModeExpanded(true)}>
-                    Change
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
+                )}
+              </div>
+              <div className="relative flex min-w-0 flex-col gap-1.5">
+                <FieldLabel>Mode</FieldLabel>
+                {modeExpanded && <ClickAway onClose={() => setModeExpanded(false)} />}
+                <SelectButton onClick={() => setModeExpanded(!modeExpanded)} className={cn(modeExpanded && "z-20")}>
+                  <span className="truncate">
+                    <span className="font-semibold">{mode}</span>
+                    <span className="text-muted-foreground"> · {MODES.find((m) => m.value === mode)!.label}</span>
+                  </span>
+                </SelectButton>
+                {modeExpanded && (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
                     {MODES.map((m) => {
                       const disabled = m.value === "RTGS" && rtgsDisabled;
                       return (
@@ -454,53 +454,29 @@ export function SingleTransferDrawer({
                             setModeOverride(m.value);
                             setModeExpanded(false);
                           }}
+                          title={disabled ? "RTGS is for ₹2,00,000 and above" : undefined}
                           className={cn(
-                            "flex-1 cursor-pointer rounded-md border border-border p-2.5 text-center",
-                            !disabled && mode === m.value && "border-[1.5px] border-primary bg-[var(--color-primary-soft)]",
+                            "cursor-pointer border-b border-border px-3 py-2.5 text-2sm last:border-b-0 hover:bg-accent/60",
+                            mode === m.value && "bg-[var(--color-primary-soft)]",
                             disabled && "cursor-not-allowed opacity-45",
                           )}
                         >
-                          <div className="text-2sm font-bold">{m.value}</div>
-                          <div className="mt-[3px] text-[11px] text-muted-foreground">{m.label}</div>
+                          <span className="font-semibold">{m.value}</span>
+                          <span className="text-muted-foreground"> · {m.label}</span>
                         </div>
                       );
                     })}
                   </div>
-                  {rtgsDisabled && <Hint>RTGS is available for transfers of ₹2,00,000 and above.</Hint>}
-                  <Hint>Bank charges may apply.</Hint>
-                  <Button variant="link" className="self-start text-xs" onClick={() => setModeExpanded(false)}>
-                    Done
-                  </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+            {purpose === "other" && <Input value={purposeOther} onChange={(e) => setPurposeOther(e.target.value)} placeholder="Describe the purpose" className="-mt-3" />}
 
-            <div className="relative flex flex-col gap-1.5">
-              <FieldLabel>Purpose</FieldLabel>
-              {purposeOpen && <ClickAway onClose={() => setPurposeOpen(false)} />}
-              <SelectButton onClick={() => setPurposeOpen(!purposeOpen)} className={cn(purposeOpen && "z-20")}>
-                <span className={purpose ? "text-foreground" : "text-muted-foreground"}>{purposeOpt?.label ?? "Select Purpose"}</span>
-              </SelectButton>
-              {purposeOpen && (
-                <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
-                  {PURPOSES.map((p) => (
-                    <div
-                      key={p.value}
-                      onClick={() => {
-                        setPurpose(p.value);
-                        setPurposeOpen(false);
-                      }}
-                      className="cursor-pointer border-b border-border px-3 py-2.5 text-2sm last:border-b-0 hover:bg-accent/60"
-                    >
-                      {p.label}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {purpose === "other" && (
-                <Input value={purposeOther} onChange={(e) => setPurposeOther(e.target.value)} placeholder="Describe the purpose" className="mt-1" />
-              )}
-            </div>
+            {payFrom.bulkSupported && (
+              <Button variant="link" className="self-start text-xs" onClick={switchToBulk}>
+                Paying several people? Use bulk transfer
+              </Button>
+            )}
           </>
         )}
 

@@ -113,6 +113,17 @@ export function PayFromSelect({
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Nothing to choose between: show the account, not a dropdown.
+  if (options.length < 2)
+    return (
+      <div className="flex flex-col gap-1.5">
+        <FieldLabel>Pay From</FieldLabel>
+        <div className="rounded-md border border-border px-3 py-2">
+          <AccountLine account={account} />
+        </div>
+        {note && <Hint>{note}</Hint>}
+      </div>
+    );
   return (
     <div className={cn("relative flex flex-col gap-1.5", open && "z-30")}>
       <FieldLabel>Pay From</FieldLabel>
@@ -614,6 +625,161 @@ export function ReviewRow({ label, children }: { label: string; children: ReactN
     <div className="flex justify-between gap-2.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-right text-2sm font-semibold">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * One search for everyone you can pay: contacts (pick one of their bank accounts) and employees, labelled by
+ * kind. "Pay someone new" covers one-off payees; an unmatched name can be added as a contact.
+ */
+export function PayeePicker({
+  onSelectContact,
+  onAddContact,
+  onAddContactAccount,
+  onSelectEmployee,
+  onEmployeeNeedsAccount,
+  onOneOff,
+}: {
+  onSelectContact: (contact: PayeeContact, account: BankAccount) => void;
+  onAddContact: (name: string) => void;
+  onAddContactAccount: (contact: PayeeContact) => void;
+  onSelectEmployee: (employee: Employee) => void;
+  onEmployeeNeedsAccount: (employee: Employee) => void;
+  onOneOff: () => void;
+}) {
+  const contacts = useBankingStore((s) => s.contacts);
+  const employees = useBankingStore((s) => s.employees);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const q = search.trim().toLowerCase();
+  const cs = q ? contacts.filter((c) => c.name.toLowerCase().includes(q)) : contacts;
+  const es = q ? employees.filter((e) => e.name.toLowerCase().includes(q)) : employees;
+  const close = () => {
+    setOpen(false);
+    setExpandedId(null);
+  };
+  const tag = (label: string) => <span className="rounded bg-muted px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>;
+
+  return (
+    <div className="relative flex flex-col gap-1.5">
+      {open && <ClickAway onClose={close} />}
+      <Input
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOpen(true);
+        }}
+        onClick={() => setOpen(true)}
+        placeholder="Search contacts or employees"
+        className="relative z-20"
+      />
+      {open && (
+        <div className={cn(LIST_PANEL, "max-h-[360px] overflow-y-auto")}>
+          {cs.map((c) => {
+            const expanded = expandedId === c.id;
+            return (
+              <div key={c.id} className="border-b border-border">
+                <div
+                  onClick={() => (c.accounts.length === 1 ? (close(), setSearch(""), onSelectContact(c, c.accounts[0])) : setExpandedId(expanded ? null : c.id))}
+                  className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2.5 hover:bg-accent/60"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-2sm font-semibold">
+                      <span className="truncate">{c.name}</span>
+                      {tag("Contact")}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {c.accounts.length === 1 ? `${c.accounts[0].bank} · ${maskIfsc(c.accounts[0].ifsc)}` : `${c.accounts.length} bank accounts`}
+                    </div>
+                  </div>
+                  {c.accounts.length > 1 ? (
+                    <ChevronDown className={cn("size-4 shrink-0 opacity-60 transition-transform", expanded && "rotate-180")} />
+                  ) : c.accounts[0]?.verified ? (
+                    <VerifiedDot />
+                  ) : (
+                    <Badge variant="warning">Unverified</Badge>
+                  )}
+                </div>
+                {expanded && (
+                  <>
+                    {c.accounts.map((a) => (
+                      <div
+                        key={a.id}
+                        onClick={() => {
+                          close();
+                          setSearch("");
+                          onSelectContact(c, a);
+                        }}
+                        className="flex cursor-pointer items-center justify-between gap-2 border-t border-border bg-muted py-2.5 pe-3 ps-6 hover:bg-accent"
+                      >
+                        <span className="text-2sm">
+                          {a.bank} · {maskIfsc(a.ifsc)}
+                        </span>
+                        {a.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>}
+                      </div>
+                    ))}
+                    <div
+                      onClick={() => {
+                        close();
+                        onAddContactAccount(c);
+                      }}
+                      className="cursor-pointer border-t border-border bg-muted py-2.5 pe-3 ps-6 text-xs font-semibold text-primary hover:bg-accent"
+                    >
+                      + Another bank account
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {es.map((e) => (
+            <div
+              key={e.id}
+              onClick={() => {
+                close();
+                setSearch("");
+                if (e.account) onSelectEmployee(e);
+                else onEmployeeNeedsAccount(e);
+              }}
+              className="flex cursor-pointer items-center justify-between gap-2 border-b border-border px-3 py-2.5 hover:bg-accent/60"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-2sm font-semibold">
+                  <span className="truncate">{e.name}</span>
+                  {tag("Employee")}
+                </div>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {e.account ? `${e.account.bank} · ${maskIfsc(e.account.ifsc)}` : "No bank account yet"}
+                </div>
+              </div>
+              {e.account && (e.account.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>)}
+            </div>
+          ))}
+          {q && cs.length === 0 && es.length === 0 && (
+            <div
+              onClick={() => {
+                close();
+                onAddContact(search.trim());
+              }}
+              className="cursor-pointer border-b border-border px-3 py-2.5 text-2sm font-medium text-primary hover:bg-accent/60"
+            >
+              + Add “{search.trim()}” as a contact
+            </div>
+          )}
+          <div
+            onClick={() => {
+              close();
+              onOneOff();
+            }}
+            className="cursor-pointer px-3 py-2.5 text-2sm font-medium text-primary hover:bg-accent/60"
+          >
+            + Pay someone new (one-off)
+          </div>
+        </div>
+      )}
     </div>
   );
 }
