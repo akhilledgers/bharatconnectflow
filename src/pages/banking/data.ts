@@ -283,11 +283,6 @@ export function payFromAccounts(accounts: CompanyAccount[], s: BankingScenario):
     }));
 }
 
-export function approvalNote(mode: ApprovalMode) {
-  return mode === "maker-checker"
-    ? "Requires a checker's approval in netbanking after you initiate here."
-    : "Approved by a single operator — no separate checker step.";
-}
 
 export function maskIfsc(ifsc: string) {
   return ifsc.slice(0, 4) + "•••" + ifsc.slice(-3);

@@ -35,7 +35,6 @@ import {
   PURPOSES,
   RTGS_MIN,
   amountOnly,
-  approvalNote,
   autoMode,
   bankFromIfsc,
   fmtINR,
@@ -234,7 +233,8 @@ export function SingleTransferDrawer({
   }
 
   const selectedCard = bene && (
-    <div className={cn(PANEL, "flex items-start justify-between gap-2.5 p-3")}>
+    <div className={cn(PANEL, "p-3")}>
+    <div className="flex items-start justify-between gap-2.5">
       <div className="min-w-0">
         <div className="text-2sm font-semibold">{bene.name}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
@@ -267,6 +267,8 @@ export function SingleTransferDrawer({
       <Button variant="link" className="shrink-0 text-xs" onClick={clearBeneficiary}>
         Change
       </Button>
+    </div>
+      <BeneficiaryGate embedded payFrom={payFrom} payees={beneKeys.map((key) => ({ key, name: bene.name }))} />
     </div>
   );
 
@@ -343,7 +345,7 @@ export function SingleTransferDrawer({
       <div className="flex flex-1 flex-col gap-[22px] overflow-y-auto overflow-x-hidden px-6 pb-6 pt-5">
         {step === 1 && (
           <>
-            <PayFromSelect account={payFrom} options={accounts} note={approvalNote(payFrom.approvalMode)} onSelect={setPayFromId} />
+            <PayFromSelect account={payFrom} options={accounts} onSelect={setPayFromId} />
 
             <Field label="Beneficiary Type">
               <BeneTypeTabs value={beneType} onChange={setBeneType} />
@@ -357,7 +359,6 @@ export function SingleTransferDrawer({
                 </Button>
               </div>
               {picker}
-              {bene && <BeneficiaryGate payFrom={payFrom} payees={beneKeys.map((key) => ({ key, name: bene.name }))} />}
             </div>
 
             <div className="flex flex-col gap-1.5">

@@ -109,7 +109,7 @@ export function PayFromSelect({
 }: {
   account: PayFromAccount;
   options: PayFromAccount[];
-  note: ReactNode;
+  note?: ReactNode;
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -120,7 +120,7 @@ export function PayFromSelect({
       <SelectButton onClick={() => setOpen(!open)} className={cn("py-2", open && "z-20")}>
         <AccountLine account={account} />
       </SelectButton>
-      <Hint>{note}</Hint>
+      {note && <Hint>{note}</Hint>}
       {open && (
         <div className={LIST_PANEL}>
           {options.map((a) => (

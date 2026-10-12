@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BadgeCheck, Clock, ExternalLink, UserPlus } from "lucide-react";
+import { cn } from "../../lib/cn";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
@@ -17,7 +18,7 @@ type Step = { kind: "codes" } | { kind: "otp" };
  * suggested from the payee's name); then a single user confirms with an OTP and they're active at once, while
  * under maker & checker they wait for the checker to approve in net banking.
  */
-export function BeneficiaryGate({ payFrom, payees }: { payFrom: PayFromAccount; payees: { key: string; name: string }[] }) {
+export function BeneficiaryGate({ payFrom, payees, embedded }: { payFrom: PayFromAccount; payees: { key: string; name: string }[]; embedded?: boolean }) {
   const list = useBankingStore((s) => s.beneficiaries[payFrom.id]) ?? {};
   const [step, setStep] = useState<Step | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({});
@@ -96,113 +97,130 @@ export function BeneficiaryGate({ payFrom, payees }: { payFrom: PayFromAccount; 
     else setNotYet(true);
   };
 
-  if (missing.length === 0 && pending.length === 0)
-    return one ? (
-      <div className="flex items-center gap-1.5 text-xs text-[var(--color-success-accent)]">
-        <BadgeCheck className="size-3.5" /> In your {payFrom.short} beneficiaries as <span className="font-mono font-medium">{list[payees[0].key]?.code}</span>
-      </div>
-    ) : null;
+  const shell = cn("text-xs", embedded ? "mt-3 border-t border-border pt-3" : "rounded-md border border-border px-3.5 py-3");
+  const active = missing.length === 0 && pending.length === 0;
+  if (active && !one) return null;
+
+  const inputRow = (props: { value: string; onChange: (v: string) => void; label: string; error?: string | null; mono?: boolean; numeric?: boolean; autoFocus?: boolean; placeholder?: string }) => (
+    <div className="min-w-0 flex-1">
+      <Input
+        autoFocus={props.autoFocus}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        aria-label={props.label}
+        aria-invalid={props.error ? true : undefined}
+        inputMode={props.numeric ? "numeric" : undefined}
+        placeholder={props.placeholder}
+        className={cn(props.mono && "font-mono uppercase", props.numeric && "tabular-nums tracking-widest")}
+      />
+      {props.error && <div className="mt-1 text-destructive">{props.error}</div>}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-md border border-[var(--color-warning-accent)]/30 bg-[var(--color-warning-soft)] px-3 py-2.5 text-xs">
-      {step?.kind === "codes" ? (
-        <>
-          <div className="text-foreground">
-            <span className="font-medium">Beneficiary code</span> · the name you'll search for in {payFrom.short} net banking. Letters and digits, up to {max}.
-          </div>
-          <div className="flex flex-col gap-2">
-            {missing.map((p) => {
-              const err = codeError(p.key);
-              return (
-                <div key={p.key} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {!one && <span className="w-36 truncate text-foreground">{p.name}</span>}
-                  <div className={one ? "w-full" : "w-52"}>
-                  <Input
-                    autoFocus={p.key === missing[0].key}
-                    value={codeOf(p.key)}
-                    onChange={(e) => setCodes((c) => ({ ...c, [p.key]: cleanCode(e.target.value, max) }))}
-                    aria-label={`Beneficiary code for ${p.name}`}
-                    aria-invalid={err ? true : undefined}
-                    className="h-8 bg-background font-mono uppercase"
-                  />
+    <div className={shell}>
+      {active ? (
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <BadgeCheck className="size-3.5 text-[var(--color-success-accent)]" />
+          {payFrom.short} beneficiary · <span className="font-mono text-foreground">{list[payees[0].key]?.code}</span>
+        </div>
+      ) : step?.kind === "codes" ? (
+        <div className="flex flex-col gap-2">
+          <div className="font-medium text-foreground">Beneficiary code</div>
+          {one ? (
+            <div className="flex items-start gap-2">
+              {inputRow({
+                autoFocus: true,
+                value: codeOf(missing[0].key),
+                onChange: (v) => setCodes((c) => ({ ...c, [missing[0].key]: cleanCode(v, max) })),
+                label: `Beneficiary code for ${missing[0].name}`,
+                error: codes[missing[0].key] !== undefined ? codeError(missing[0].key) : null,
+                mono: true,
+              })}
+              <Button variant="primary" disabled={!codesValid} onClick={submitCodes}>
+                {payFrom.approvalMode === "single" ? "Continue" : "Send to checker"}
+              </Button>
+              <Button variant="ghost" onClick={() => setStep(null)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+                {missing.map((p, i) => (
+                  <div key={p.key} className="contents">
+                    <div className="truncate pt-2 text-2sm text-foreground">{p.name}</div>
+                    {inputRow({
+                      autoFocus: i === 0,
+                      value: codeOf(p.key),
+                      onChange: (v) => setCodes((c) => ({ ...c, [p.key]: cleanCode(v, max) })),
+                      label: `Beneficiary code for ${p.name}`,
+                      error: codeError(p.key),
+                      mono: true,
+                    })}
                   </div>
-                  {err && <span className="text-destructive">{err}</span>}
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="primary" disabled={!codesValid} onClick={submitCodes}>
-              {payFrom.approvalMode === "single" ? "Continue" : one ? "Send to checker" : `Send ${missing.length} to checker`}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setStep(null)}>
-              Cancel
-            </Button>
-          </div>
-        </>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setStep(null)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" disabled={!codesValid} onClick={submitCodes}>
+                  {payFrom.approvalMode === "single" ? "Continue" : `Send ${missing.length} to checker`}
+                </Button>
+              </div>
+            </>
+          )}
+          <div className="text-muted-foreground">You'll find {one ? "this payee" : "them"} by this in {payFrom.short} net banking.</div>
+        </div>
       ) : step?.kind === "otp" ? (
-        <>
-          <div className="text-foreground">Enter the OTP {payFrom.short} sent to your registered mobile to add {one ? "this payee" : count(missing.length)}.</div>
-          <div className="flex gap-2">
-            <Input
-              autoFocus
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              inputMode="numeric"
-              placeholder="6-digit OTP"
-              aria-label="OTP"
-              className="h-8 w-36 bg-background tabular-nums tracking-widest"
-            />
-            <Button size="sm" variant="primary" disabled={otp.length !== 6 || busy} onClick={confirmOtp}>
+        <div className="flex flex-col gap-2">
+          <div className="font-medium text-foreground">OTP sent to your registered mobile</div>
+          <div className="flex items-start gap-2">
+            {inputRow({ autoFocus: true, value: otp, onChange: (v) => setOtp(v.replace(/\D/g, "").slice(0, 6)), label: "OTP", numeric: true, placeholder: "6-digit OTP" })}
+            <Button variant="primary" disabled={otp.length !== 6 || busy} onClick={confirmOtp}>
               {busy ? <CircularSpinner size={12} className="!text-primary-foreground" /> : null}
               Verify
             </Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setStep({ kind: "codes" })}>
+            <Button variant="ghost" disabled={busy} onClick={() => setStep({ kind: "codes" })}>
               Back
             </Button>
           </div>
-        </>
+        </div>
       ) : missing.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-foreground">
-            <UserPlus className="size-3.5 text-[var(--color-warning-accent)]" />
-            {one ? `Not in your ${payFrom.short} beneficiaries yet` : `${count(missing.length)} not in your ${payFrom.short} beneficiaries yet`}
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <UserPlus className="size-3.5" />
+            {one ? `Not in your ${payFrom.short} beneficiaries` : `${count(missing.length)} not in your ${payFrom.short} beneficiaries`}
           </span>
           <Button size="sm" onClick={startAdd}>
             {one ? "Add beneficiary" : `Add all ${missing.length}`}
           </Button>
         </div>
       ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-foreground">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
               <Clock className="size-3.5 shrink-0 text-[var(--color-warning-accent)]" />
-              <span>
-                {one ? "Waiting for your checker to approve" : `${count(pending.length)} waiting for your checker to approve`} in {payFrom.short} net banking
-                {one && (
-                  <>
-                    {" "}· search <span className="font-mono font-medium">{list[pending[0].key]?.code}</span>
-                  </>
-                )}
+              <span className="min-w-0">
+                Waiting for checker approval{!one && ` · ${count(pending.length)}`} · search{" "}
+                <span className="font-mono text-foreground">{pending.map((p) => list[p.key]?.code).join(", ")}</span>
               </span>
             </span>
-            <Button size="sm" onClick={check} disabled={busy}>
+            <Button size="sm" variant="ghost" onClick={check} disabled={busy} className="shrink-0">
               {busy ? <CircularSpinner size={12} /> : null}
               Check status
             </Button>
           </div>
-          {!one && (
-            <div className="text-muted-foreground">
-              Search for: <span className="font-mono text-foreground">{pending.map((p) => list[p.key]?.code).join(", ")}</span>
-            </div>
-          )}
-          {netBanking && (
-            <a href={netBanking} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 self-start font-medium text-primary hover:underline">
-              Open {payFrom.short} net banking <ExternalLink className="size-3" />
-            </a>
-          )}
-          {notYet && <div className="text-[var(--color-warning-accent)]">Not approved yet.</div>}
-        </>
+          <div className="flex items-center gap-3">
+            {netBanking && (
+              <a href={netBanking} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                Open {payFrom.short} net banking <ExternalLink className="size-3" />
+              </a>
+            )}
+            {notYet && <span className="text-[var(--color-warning-accent)]">Not approved yet</span>}
+          </div>
+        </div>
       )}
     </div>
   );
