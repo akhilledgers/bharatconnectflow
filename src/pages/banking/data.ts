@@ -1,4 +1,5 @@
 // Mock data + helpers for the Banking → Fund Transfer prototype (from the "Fund Transfer" Claude Design handoff).
+import { BANK_CONNECTORS } from "./bankConnectors";
 
 export interface BankAccount {
   id: string;
@@ -80,11 +81,9 @@ export interface BankingScenario {
 export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
-export const CONNECTED_BANKING: Record<BankKey, { short: string; bulk: boolean; approvalChoice: boolean }> = {
-  axis: { short: "Axis", bulk: true, approvalChoice: true },
-  icici: { short: "ICICI", bulk: false, approvalChoice: false },
-  indusind: { short: "IndusInd", bulk: true, approvalChoice: true },
-};
+export const CONNECTED_BANKING = Object.fromEntries(
+  Object.values(BANK_CONNECTORS).map((c) => [c.key, { short: c.short, bulk: c.bulk, approvalChoice: c.approval }]),
+) as Record<BankKey, { short: string; bulk: boolean; approvalChoice: boolean }>;
 
 /** e.g. "Axis and IndusInd" — the banks that support bulk transfer. */
 export const BULK_BANKS_LABEL = Object.values(CONNECTED_BANKING)

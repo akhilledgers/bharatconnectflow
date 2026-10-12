@@ -6,64 +6,15 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankLogo } from "./BankLogo";
-import { CONNECTED_BANKING, last4, type ApprovalMode, type BankKey } from "./data";
+import { APPROVAL_CHOICES, BANK_CONNECTORS, type ConnectField } from "./bankConnectors";
+import { last4, type ApprovalMode } from "./data";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
 
-type FieldKey = "customerId" | "corporateId" | "userId" | "aliasId" | "userCode" | "makerCode" | "checkerCode";
-
-interface FieldSpec {
-  key: FieldKey;
-  label: string;
-  placeholder: string;
-  hint?: string;
-}
-
 /**
- * What each bank's Register Connected Banking API needs from the customer. Anything LEDGERS already
- * knows (business name, the account, LEDGERS's own fintech code) is never asked for.
+ * Connect (or reconnect) Connected Banking for one account. Generic: what to ask comes from the bank's entry
+ * in BANK_CONNECTORS. Order: the bank's IDs, then how payments are approved, then the user codes that choice needs.
  */
-const BANK_FORMS: Record<
-  BankKey,
-  { intro?: string; ids: FieldSpec[]; approval: boolean; single: FieldSpec[]; makerChecker: FieldSpec[] }
-> = {
-  indusind: {
-    ids: [{ key: "customerId", label: "Customer ID", placeholder: "e.g. 41238870", hint: "On your welcome letter or net banking profile." }],
-    approval: true,
-    single: [{ key: "userCode", label: "Net banking user code", placeholder: "User code" }],
-    makerChecker: [
-      { key: "makerCode", label: "Maker user code", placeholder: "Maker user code" },
-      { key: "checkerCode", label: "Checker user code", placeholder: "Checker user code" },
-    ],
-  },
-  icici: {
-    intro: "Use your self-created Login ID. If you haven't created one, use your Corporate ID and User ID.",
-    ids: [
-      { key: "corporateId", label: "Corporate ID", placeholder: "Corporate ID" },
-      { key: "userId", label: "User ID", placeholder: "User ID" },
-      { key: "aliasId", label: "Alias ID", placeholder: "Alias ID" },
-    ],
-    approval: false,
-    single: [],
-    makerChecker: [],
-  },
-  // Placeholder until Axis's API fields are confirmed.
-  axis: {
-    ids: [{ key: "corporateId", label: "Corporate ID", placeholder: "Corporate ID" }],
-    approval: true,
-    single: [{ key: "userId", label: "User ID", placeholder: "User ID" }],
-    makerChecker: [
-      { key: "makerCode", label: "Maker user ID", placeholder: "Maker user ID" },
-      { key: "checkerCode", label: "Checker user ID", placeholder: "Checker user ID" },
-    ],
-  },
-};
-
-const APPROVAL_CHOICES: { value: ApprovalMode; title: string; body: string }[] = [
-  { value: "single", title: "One user", body: "One user raises and approves payments." },
-  { value: "maker-checker", title: "Maker & checker", body: "A maker raises payments; a checker approves them." },
-];
-
 export function RegisterBankDialog({
   accountId,
   onClose,
@@ -75,57 +26,69 @@ export function RegisterBankDialog({
 }) {
   const registerBank = useBankingStore((s) => s.registerBank);
   const stored = useBankingStore((s) => s.accounts.find((a) => a.id === accountId)!);
-  const bank: BankKey = stored.bankKey!;
-  const account = { bank: stored.bank, short: CONNECTED_BANKING[bank].short, masked: last4(stored.number) };
+  const bank = BANK_CONNECTORS[stored.bankKey!];
+  const masked = last4(stored.number);
   // Captured on open: the store flips the account to "connected" before the success screen shows.
   const [reconnect] = useState(stored.connection === "expired");
   const verb = reconnect ? "Reconnect" : "Connect";
-  const form = BANK_FORMS[bank];
   useEscape(onClose);
 
-  const [values, setValues] = useState<Partial<Record<FieldKey, string>>>({});
-  const [approval, setApproval] = useState<ApprovalMode | null>(form.approval ? (stored.connection === "expired" ? stored.approval : null) : "single");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [approval, setApproval] = useState<ApprovalMode | null>(bank.approval ? (reconnect ? stored.approval : null) : "single");
   const [phase, setPhase] = useState<"form" | "verifying" | "connected">("form");
   const [error, setError] = useState<string | null>(null);
+  const [whereOpen, setWhereOpen] = useState<string | null>(null);
 
-  const approvalFields = approval === "maker-checker" ? form.makerChecker : approval === "single" ? form.single : [];
-  const fields = [...form.ids, ...approvalFields];
-  const val = (k: FieldKey) => (values[k] ?? "").trim();
+  const approvalFields = !bank.approval ? [] : approval === "maker-checker" ? bank.makerChecker : approval === "single" ? bank.single : [];
+  const fields = [...bank.ids, ...approvalFields];
+  const val = (k: string) => (values[k] ?? "").trim();
   const sameMakerChecker = approval === "maker-checker" && val("makerCode") !== "" && val("makerCode") === val("checkerCode");
   const canSubmit = approval !== null && fields.every((f) => val(f.key) !== "") && !sameMakerChecker && phase === "form";
 
-  const set = (k: FieldKey, v: string) => {
-    setValues((prev) => ({ ...prev, [k]: v.toUpperCase().replace(/\s/g, "") }));
+  const set = (f: ConnectField, v: string) => {
+    setValues((prev) => ({ ...prev, [f.key]: f.numeric ? v.replace(/\D/g, "") : v.toUpperCase().replace(/\s/g, "") }));
     setError(null);
   };
 
   const submit = async () => {
     if (!canSubmit) return;
     setPhase("verifying");
-    const ok = await registerBank(accountId, form.approval ? approval! : undefined);
+    const ok = await registerBank(accountId, bank.approval ? approval! : undefined);
     if (ok) return setPhase("connected");
     setPhase("form");
-    setError(
-      `${account.bank} couldn't match these details to account ${account.masked}. Check them in ${account.short} net banking and try again.`,
-    );
+    setError(`${bank.name} couldn't match these details to account ${masked}. Check them in ${bank.short} net banking and try again.`);
   };
 
-  const field = (f: FieldSpec) => (
+  const field = (f: ConnectField, autoFocus = false) => (
     <div key={f.key} className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={`reg-${f.key}`} className="text-xs font-medium text-foreground">
-        {f.label}
-      </label>
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={`reg-${f.key}`} className="text-xs font-medium text-foreground">
+          {f.label}
+        </label>
+        {f.where && (
+          <button
+            type="button"
+            onClick={() => setWhereOpen(whereOpen === f.key ? null : f.key)}
+            aria-expanded={whereOpen === f.key}
+            className="cursor-pointer text-xs text-primary hover:underline"
+          >
+            Where do I find it?
+          </button>
+        )}
+      </div>
       <Input
         id={`reg-${f.key}`}
         value={values[f.key] ?? ""}
-        onChange={(e) => set(f.key, e.target.value)}
+        onChange={(e) => set(f, e.target.value)}
         placeholder={f.placeholder}
+        inputMode={f.numeric ? "numeric" : undefined}
         autoComplete="off"
+        autoFocus={autoFocus}
         disabled={phase !== "form"}
         aria-invalid={f.key === "checkerCode" && sameMakerChecker ? true : undefined}
-        className="uppercase placeholder:normal-case"
+        className={cn(!f.numeric && "uppercase placeholder:normal-case", f.numeric && "tabular-nums")}
       />
-      {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
+      {whereOpen === f.key && <p className="rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">{f.where}</p>}
     </div>
   );
 
@@ -135,17 +98,10 @@ export function RegisterBankDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`${verb} ${account.bank}`}
+        aria-label={`${verb} ${bank.name}`}
         className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[512px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[fade-in_.15s_ease]"
       >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="absolute end-4 top-4"
-          onClick={onClose}
-          disabled={phase === "verifying"}
-          aria-label="Close"
-        >
+        <Button variant="ghost" size="icon-sm" className="absolute end-4 top-4" onClick={onClose} disabled={phase === "verifying"} aria-label="Close">
           <X />
         </Button>
 
@@ -155,12 +111,12 @@ export function RegisterBankDialog({
               <Check className="size-6" />
             </div>
             <div>
-              <div className="text-base font-semibold">{account.bank} {reconnect ? "reconnected" : "connected"}</div>
+              <div className="text-base font-semibold">
+                {bank.name} {reconnect ? "reconnected" : "connected"}
+              </div>
               <p className="mt-1.5 text-2sm leading-relaxed text-muted-foreground">
-                Account {account.masked} is live in LEDGERS. Balance and statements now sync automatically.
-                {approval === "maker-checker"
-                  ? ` Payments you start here go to your checker for approval in ${account.short} net banking.`
-                  : " You can send payments from Banking → Fund Transfer."}
+                Account {masked} is live. Balance and statements sync automatically.
+                {approval === "maker-checker" ? ` Payments you start here go to your checker in ${bank.short} net banking.` : ""}
               </p>
             </div>
             <div className="mt-2 flex w-full gap-2.5">
@@ -173,31 +129,35 @@ export function RegisterBankDialog({
             </div>
           </div>
         ) : (
-          <>
+          <form
+            className="flex min-h-0 flex-col"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
             <div className="flex flex-col gap-4 overflow-y-auto px-6 pb-6 pt-6">
               <div className="flex flex-col gap-3 pe-8">
-                <BankLogo bank={bank} size="sm" />
+                <BankLogo bank={bank.key} size="sm" />
                 <div>
                   <h2 className="text-base font-semibold text-foreground">
-                    {verb} {stored.type.toLowerCase()} account <span className="tabular-nums">{account.masked}</span>
+                    {verb} {stored.type.toLowerCase()} account <span className="tabular-nums">{masked}</span>
                   </h2>
                   <p className="mt-1 text-2sm text-muted-foreground">
-                    {reconnect
-                      ? `The connection expired, so balance and statements stopped syncing. Re-enter your ${account.short} details to resume.`
-                      : "Send payments, check balance and sync statements from LEDGERS."}
+                    {reconnect ? "The connection expired. Re-enter your details to resume syncing." : "Send payments, check balance and sync statements from LEDGERS."}
                   </p>
                 </div>
               </div>
 
-              {form.intro && <p className="text-xs text-muted-foreground">{form.intro}</p>}
-              {form.ids.map(field)}
+              {bank.intro && <p className="text-xs text-muted-foreground">{bank.intro}</p>}
+              {bank.ids.map((f, i) => field(f, i === 0))}
 
-              {form.approval && (
+              {bank.approval && (
                 <div className="flex flex-col gap-1.5">
                   <div id="reg-approval" className="text-xs font-medium text-foreground">
-                    Payment approval
+                    How are payments approved in {bank.short} net banking?
                   </div>
-                  <div role="radiogroup" aria-labelledby="reg-approval" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
+                  <div role="radiogroup" aria-labelledby="reg-approval" className="grid grid-cols-2 gap-2">
                     {APPROVAL_CHOICES.map((c) => (
                       <button
                         key={c.value}
@@ -207,23 +167,19 @@ export function RegisterBankDialog({
                         disabled={phase !== "form"}
                         onClick={() => setApproval(c.value)}
                         className={cn(
-                          "h-8 flex-1 cursor-pointer rounded-md px-3 text-2sm text-foreground",
-                          approval === c.value && "bg-background font-medium shadow-lg shadow-black/5",
+                          "flex cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left",
+                          approval === c.value ? "border-primary bg-[var(--color-primary-soft)]" : "border-input hover:bg-accent/60",
                         )}
                       >
-                        {c.title}
+                        <span className="text-2sm font-medium text-foreground">{c.title}</span>
+                        <span className="text-xs text-muted-foreground">{c.body}</span>
                       </button>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {APPROVAL_CHOICES.find((c) => c.value === approval)?.body ?? `As set up in your ${account.short} net banking.`}
-                  </p>
                 </div>
               )}
 
-              {approvalFields.length > 0 && (
-                <div className={cn("grid gap-3", approvalFields.length > 1 && "grid-cols-2")}>{approvalFields.map(field)}</div>
-              )}
+              {approvalFields.length > 0 && <div className={cn("grid gap-3", approvalFields.length > 1 && "grid-cols-2")}>{approvalFields.map((f) => field(f))}</div>}
               {sameMakerChecker && <p className="-mt-1 text-xs text-destructive">Maker and checker must be different users.</p>}
 
               {error && (
@@ -234,20 +190,20 @@ export function RegisterBankDialog({
             </div>
 
             <div className="flex justify-end gap-2.5 border-t border-border px-6 py-4">
-              <Button onClick={onClose} disabled={phase === "verifying"}>
+              <Button type="button" onClick={onClose} disabled={phase === "verifying"}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={submit} disabled={!canSubmit && phase === "form"}>
+              <Button type="submit" variant="primary" disabled={!canSubmit && phase === "form"}>
                 {phase === "verifying" ? (
                   <>
-                    <CircularSpinner size={14} className="!text-primary-foreground" /> Verifying with {account.short}…
+                    <CircularSpinner size={14} className="!text-primary-foreground" /> Verifying with {bank.short}…
                   </>
                 ) : (
-                  `${verb} ${account.short}`
+                  `${verb} ${bank.short}`
                 )}
               </Button>
             </div>
-          </>
+          </form>
         )}
       </div>
     </>
