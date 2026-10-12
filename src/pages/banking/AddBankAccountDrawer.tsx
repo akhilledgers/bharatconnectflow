@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Eye, EyeOff, Landmark, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { Input, Select } from "../../components/ui/input";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
@@ -16,8 +16,20 @@ const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const toDMY = (iso: string) => iso.split("-").reverse().join("-");
+const fyLabel = (iso: string) => {
+  const y = Number(iso.slice(0, 4));
+  return `FY ${String(y).slice(2)}–${String(y + 1).slice(2)}`;
+};
+/** Opening balances are taken at the start of a financial year: this one and the few before it. */
+const FY_STARTS = [0, 1, 2, 3].map((n) => `${Number(FY_START.slice(0, 4)) - n}${FY_START.slice(4)}`);
+/** Digits with an optional leading minus (overdrawn) and one decimal point. */
+const signedAmount = (v: string) => {
+  const neg = v.trim().startsWith("-");
+  return (neg ? "-" : "") + v.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+};
+const ACCOUNT_TYPES: CompanyAccount["type"][] = ["Current", "Savings", "Cash credit (CC)", "Overdraft (OD)"];
 
-/** Banking → Accounts → Add bank account. IFSC first: it identifies the bank and branch. */
+/** Banking → Accounts → Add bank account: account number (twice), IFSC, then type and opening balance. */
 export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => void; onConnect: (accountId: string) => void }) {
   const hasPrimary = useBankingStore((s) => s.accounts.some((a) => a.active && a.primary));
   const [ifsc, setIfsc] = useState("");
@@ -30,7 +42,6 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
   const [showNumber, setShowNumber] = useState(false);
   const [lookup, setLookup] = useState<{ code: string; result: IfscResult | null }>({ code: "", result: null });
   const [openingAmount, setOpeningAmount] = useState("");
-  const [overdrawn, setOverdrawn] = useState(false);
   const [openingDate, setOpeningDate] = useState(FY_START);
   const [phase, setPhase] = useState<"form" | "saving" | "added">("form");
   const [added, setAdded] = useState<{ account: CompanyAccount; verified: boolean } | null>(null);
@@ -53,9 +64,9 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
 
   // Only flag a mismatch once the second number is as long as the first, so typing isn't shouted at.
   const mismatch = confirm.length >= number.length && confirm !== "" && confirm !== number;
-  const opening = openingAmount === "" ? null : Number(openingAmount);
-  const beforeFy = openingDate < FY_START;
-  const canSave = ifscValid && !notFound && !checking && number.length >= 9 && confirm === number && opening !== null && !!openingDate && !beforeFy && phase === "form";
+  const showConfirm = number.length >= 9 || confirm !== "";
+  const opening = openingAmount === "" || openingAmount === "-" ? null : Number(openingAmount);
+  const canSave = ifscValid && !notFound && !checking && number.length >= 9 && confirm === number && opening !== null && phase === "form";
 
   const save = async () => {
     if (!canSave) return;
@@ -68,7 +79,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
       type,
       primary,
       bank: info?.bank,
-      opening: { amount: overdrawn ? -opening! : opening!, date: toDMY(openingDate) },
+      opening: { amount: opening!, date: toDMY(openingDate) },
     });
     const verified = verify ? await store.verifyOwnAccount(account.id) : false;
     if (verify && !verified)
@@ -124,6 +135,55 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
         ) : (
           <>
             <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+              <div className={cn("grid gap-3", showConfirm && "grid-cols-2")}>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label htmlFor="add-number" className="text-xs font-medium">
+                    Account number
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id="add-number"
+                      type={showNumber ? "text" : "password"}
+                      value={number}
+                      onChange={(e) => setNumber(digitsOnly(e.target.value))}
+                      onCopy={(e) => e.preventDefault()}
+                      onCut={(e) => e.preventDefault()}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      autoFocus
+                      className="pe-9 tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNumber(!showNumber)}
+                      aria-label={showNumber ? "Hide account number" : "Show account number"}
+                      className="absolute end-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
+                    >
+                      {showNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+                {showConfirm && (
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label htmlFor="add-confirm" className="text-xs font-medium">
+                    Confirm account number
+                  </label>
+                  <Input
+                    id="add-confirm"
+                    value={confirm}
+                    onChange={(e) => setConfirm(digitsOnly(e.target.value))}
+                    onPaste={(e) => e.preventDefault()}
+                    onDrop={(e) => e.preventDefault()}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    aria-invalid={mismatch ? true : undefined}
+                    className="tabular-nums"
+                  />
+                </div>
+                )}
+              </div>
+              {mismatch && <p className="-mt-3 text-xs text-destructive">Numbers don't match</p>}
+
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="add-ifsc" className="text-xs font-medium">
                   IFSC code
@@ -133,7 +193,6 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                   value={ifsc}
                   onChange={(e) => setIfsc(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11))}
                   placeholder="e.g. INDB0000007"
-                  autoFocus
                   aria-invalid={ifsc.length === 11 && !ifscValid ? true : undefined}
                   className="uppercase tabular-nums placeholder:normal-case"
                 />
@@ -178,51 +237,6 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <label htmlFor="add-number" className="text-xs font-medium">
-                    Account number
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="add-number"
-                      type={showNumber ? "text" : "password"}
-                      value={number}
-                      onChange={(e) => setNumber(digitsOnly(e.target.value))}
-                      onCopy={(e) => e.preventDefault()}
-                      onCut={(e) => e.preventDefault()}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      className="pe-9 tabular-nums"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNumber(!showNumber)}
-                      aria-label={showNumber ? "Hide account number" : "Show account number"}
-                      className="absolute end-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
-                    >
-                      {showNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <label htmlFor="add-confirm" className="text-xs font-medium">
-                    Confirm account number
-                  </label>
-                  <Input
-                    id="add-confirm"
-                    value={confirm}
-                    onChange={(e) => setConfirm(digitsOnly(e.target.value))}
-                    onPaste={(e) => e.preventDefault()}
-                    onDrop={(e) => e.preventDefault()}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    aria-invalid={mismatch ? true : undefined}
-                    className="tabular-nums"
-                  />
-                </div>
-              </div>
-              {mismatch && <p className="-mt-3 text-xs text-destructive">Numbers don't match</p>}
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="add-nickname" className="text-xs font-medium">
@@ -232,21 +246,16 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <div className="text-xs font-medium">Account type</div>
-                <div role="radiogroup" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
-                  {(["Current", "Savings"] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      role="radio"
-                      aria-checked={type === t}
-                      onClick={() => setType(t)}
-                      className={cn("h-8 flex-1 cursor-pointer rounded-md text-2sm", type === t && "bg-background font-medium shadow-lg shadow-black/5")}
-                    >
+                <label htmlFor="add-type" className="text-xs font-medium">
+                  Account type
+                </label>
+                <Select id="add-type" value={type} onChange={(e) => setType(e.target.value as CompanyAccount["type"])}>
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
                       {t}
-                    </button>
+                    </option>
                   ))}
-                </div>
+                </Select>
               </div>
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">
@@ -259,9 +268,9 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                     <Input
                       id="add-opening"
                       value={openingAmount}
-                      onChange={(e) => setOpeningAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+                      onChange={(e) => setOpeningAmount(signedAmount(e.target.value))}
                       inputMode="decimal"
-                      placeholder="0.00"
+                      placeholder="e.g. 25000 or -15000"
                       className="tabular-nums"
                     />
                   </div>
@@ -269,21 +278,22 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                     <label htmlFor="add-opening-date" className="text-xs font-medium">
                       As on
                     </label>
-                    <Input id="add-opening-date" type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
+                    <Select id="add-opening-date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)}>
+                      {FY_STARTS.map((d) => (
+                        <option key={d} value={d}>
+                          {fmtDate(d)} · {fyLabel(d)}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                 </div>
-                <label className="flex cursor-pointer items-center gap-2 text-2sm">
-                  <input type="checkbox" checked={overdrawn} onChange={(e) => setOverdrawn(e.target.checked)} className="size-4 accent-primary" />
-                  Overdrawn (OD / CC)
-                </label>
-                {beforeFy && <p className="text-xs text-destructive">Use a date on or after {fmtDate(FY_START)}, the start of your financial year</p>}
               </div>
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">
                 <label className="flex cursor-pointer items-center gap-2.5 text-2sm">
                   <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} className="size-4 accent-primary" />
                   <span>
-                    Verify account now <span className="text-muted-foreground">(no money moved)</span>
+                    Verify account now
                   </span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2.5 text-2sm">

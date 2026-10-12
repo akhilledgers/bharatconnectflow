@@ -110,7 +110,7 @@ export interface CompanyAccount {
   number: string;
   ifsc: string;
   nickname: string;
-  type: "Current" | "Savings";
+  type: "Current" | "Savings" | "Cash credit (CC)" | "Overdraft (OD)";
   primary: boolean;
   active: boolean;
   /** Ownership confirmed by the penny-less verification API (or by connecting). */
