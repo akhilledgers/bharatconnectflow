@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, ExternalLink, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
+import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankLogo } from "./BankLogo";
 import { APPROVAL_CHOICES, BANK_CONNECTORS, type ConnectField } from "./bankConnectors";
@@ -25,6 +26,7 @@ export function RegisterBankDialog({
   onMakeTransfer: () => void;
 }) {
   const registerBank = useBankingStore((s) => s.registerBank);
+  const checkConnection = useBankingStore((s) => s.checkConnection);
   const stored = useBankingStore((s) => s.accounts.find((a) => a.id === accountId)!);
   const bank = BANK_CONNECTORS[stored.bankKey!];
   const masked = last4(stored.number);
@@ -35,7 +37,9 @@ export function RegisterBankDialog({
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [approval, setApproval] = useState<ApprovalMode | null>(bank.approval ? (reconnect ? stored.approval : null) : "single");
-  const [phase, setPhase] = useState<"form" | "verifying" | "connected">("form");
+  // A connection already waiting on net-banking approval opens straight on the approve step.
+  const [phase, setPhase] = useState<"form" | "verifying" | "approve" | "checking" | "connected">(stored.connection === "pending" ? "approve" : "form");
+  const [notYet, setNotYet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [whereOpen, setWhereOpen] = useState<string | null>(null);
 
@@ -54,9 +58,23 @@ export function RegisterBankDialog({
     if (!canSubmit) return;
     setPhase("verifying");
     const ok = await registerBank(accountId, bank.approval ? approval! : undefined);
-    if (ok) return setPhase("connected");
+    if (ok) return setPhase(useBankingStore.getState().accounts.find((a) => a.id === accountId)?.connection === "pending" ? "approve" : "connected");
     setPhase("form");
     setError(`${bank.name} couldn't match these details to account ${masked}. Check them in ${bank.short} net banking and try again.`);
+  };
+
+  const check = async () => {
+    setPhase("checking");
+    setNotYet(false);
+    const ok = await checkConnection(accountId);
+    if (ok) return setPhase("connected");
+    setPhase("approve");
+    setNotYet(true);
+  };
+
+  const later = () => {
+    useStore.getState().pushToast(`${bank.short} ${masked} is waiting for your approval in net banking. We'll keep checking.`);
+    onClose();
   };
 
   const field = (f: ConnectField, autoFocus = false) => (
@@ -105,7 +123,54 @@ export function RegisterBankDialog({
           <X />
         </Button>
 
-        {phase === "connected" ? (
+        {(phase === "approve" || phase === "checking") && bank.netBankingApproval ? (
+          <div className="flex flex-col gap-5 px-6 pb-6 pt-6">
+            <div className="flex flex-col gap-3 pe-8">
+              <BankLogo bank={bank.key} size="sm" />
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Approve in {bank.short} net banking</h2>
+                <p className="mt-1 text-2sm text-muted-foreground">Details verified. Approve LEDGERS to start using account {masked}.</p>
+              </div>
+            </div>
+            <ol className="flex flex-col gap-2.5">
+              {bank.netBankingApproval.steps.map((step, i) => (
+                <li key={step} className="flex items-center gap-3 text-2sm">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-xs font-semibold text-[var(--color-primary-accent)]">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <a
+              href={bank.netBankingApproval.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 self-start rounded-md border border-input px-3 text-2sm font-medium hover:bg-accent"
+            >
+              Open {bank.short} net banking <ExternalLink className="size-3.5 opacity-60" />
+            </a>
+            {notYet && (
+              <div role="alert" className="rounded-md bg-[var(--color-warning-soft)] px-3 py-2.5 text-xs text-[var(--color-warning-accent)]">
+                Not approved yet. It can take a few minutes to show after you approve.
+              </div>
+            )}
+            <div className="-mx-6 -mb-6 flex justify-end gap-2.5 border-t border-border px-6 py-4">
+              <Button onClick={later} disabled={phase === "checking"}>
+                Later
+              </Button>
+              <Button variant="primary" onClick={check} disabled={phase === "checking"}>
+                {phase === "checking" ? (
+                  <>
+                    <CircularSpinner size={14} className="!text-primary-foreground" /> Checking…
+                  </>
+                ) : (
+                  "I've approved it"
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : phase === "connected" ? (
           <div className="flex flex-col items-center gap-4 px-6 pb-8 pt-10 text-center">
             <div className="flex size-[52px] items-center justify-center rounded-full bg-[var(--color-success-soft)] text-[var(--color-success-accent)]">
               <Check className="size-6" />

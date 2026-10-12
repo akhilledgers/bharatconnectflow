@@ -9,6 +9,7 @@ export function SyncBadge({ account: a }: { account: CompanyAccount }) {
   if (!a.active) label = "Inactive";
   else if (a.bankKey && a.connection === "connected") [variant, label] = ["success", "Live"];
   else if (a.bankKey && a.connection === "expired") [variant, label] = ["warning", "Connection expired"];
+  else if (a.bankKey && a.connection === "pending") [variant, label] = ["warning", "Awaiting approval"];
   else if (a.statement) label = `Statement · ${shortDate(a.statement.date)}`;
   else label = a.bankKey ? "Not connected" : "No statement yet";
   return <Badge variant={variant}>{label}</Badge>;

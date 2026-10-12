@@ -31,6 +31,11 @@ export interface BankConnector {
   makerChecker: ConnectField[];
   /** A line above the fields, when the bank's IDs need explaining. */
   intro?: string;
+  /**
+   * Banks that make the customer approve LEDGERS inside their net banking before the connection goes live.
+   * Without this, a connection is live as soon as the bank verifies the details.
+   */
+  netBankingApproval?: { url: string; steps: string[] };
 }
 
 export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
@@ -54,6 +59,10 @@ export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
       { key: "makerCode", label: "Maker user code", placeholder: "Maker user code" },
       { key: "checkerCode", label: "Checker user code", placeholder: "Checker user code" },
     ],
+    netBankingApproval: {
+      url: "https://indusnet.indusind.com/",
+      steps: ["Log in to IndusInd net banking", "Open Connected Banking requests", "Approve the request from LEDGERS"],
+    },
   },
   icici: {
     key: "icici",

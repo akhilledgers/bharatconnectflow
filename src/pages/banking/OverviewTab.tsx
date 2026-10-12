@@ -112,6 +112,16 @@ export function OverviewTab({
       action: "View",
       run: () => onGo("payouts"),
     });
+  for (const r of rows.filter((r) => r.a.bankKey && r.a.connection === "pending"))
+    items.push({
+      key: `pending-${r.a.id}`,
+      tone: "warning",
+      icon: <ShieldCheck />,
+      title: `Approve LEDGERS in ${CONNECTED_BANKING[r.a.bankKey!].short} net banking`,
+      detail: `${accountLabel(r.a)} is connected but waiting for your approval. Payouts and sync start after that.`,
+      action: "Check",
+      run: () => onConnect(r.a.id),
+    });
   for (const r of rows.filter((r) => r.a.connection === "expired"))
     items.push({
       key: `exp-${r.a.id}`,

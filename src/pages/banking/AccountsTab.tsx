@@ -84,11 +84,17 @@ export function AccountsTab({
     else if (failed) note = <span className="text-[var(--color-destructive-accent)]">Import failed · {failed.reason}</span>;
     else if (a.bankKey && a.connection === "connected") note = `Synced ${a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}`;
     else if (a.bankKey && a.connection === "expired") note = syncedLabel(a.syncedMinutesAgo ?? 0);
+    else if (a.bankKey && a.connection === "pending") note = `in ${CONNECTED_BANKING[a.bankKey].short} net banking`;
     else if (age !== undefined && age > STALE_DAYS) note = <span className="text-[var(--color-warning-accent)]">{age} days old</span>;
 
     // At most one next step, most urgent first. Healthy accounts get none.
     const isVerifying = verifying.includes(a.id);
-    const action: ReactNode = !a.active ? null : a.bankKey && a.connection === "expired" ? (
+    const action: ReactNode = !a.active ? null : a.bankKey && a.connection === "pending" ? (
+      <Button size="sm" onClick={() => onConnect(a.id)}>
+        <RefreshCw />
+        Check status
+      </Button>
+    ) : a.bankKey && a.connection === "expired" ? (
       <Button size="sm" onClick={() => onConnect(a.id)}>
         <RefreshCw />
         Reconnect

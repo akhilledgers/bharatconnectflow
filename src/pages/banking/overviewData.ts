@@ -13,7 +13,7 @@ export const RECONCILED_TO: Record<string, string> = {
 
 /** Balance shown for an account on the bank side: live if connected (or last known if expired), else last statement. */
 export function bankBalanceOf(a: CompanyAccount, mode: "normal" | "low"): { amount: number; source: "live" | "stale" | "statement" } | null {
-  if (a.connection !== "none" && a.liveBalance) return { amount: a.liveBalance[mode === "low" ? 1 : 0], source: a.connection === "connected" ? "live" : "stale" };
+  if ((a.connection === "connected" || a.connection === "expired") && a.liveBalance) return { amount: a.liveBalance[mode === "low" ? 1 : 0], source: a.connection === "connected" ? "live" : "stale" };
   if (a.statement) return { amount: a.statement.balance, source: "statement" };
   return null;
 }

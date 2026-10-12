@@ -1,3 +1,4 @@
+import { BANK_CONNECTORS } from "../pages/banking/bankConnectors";
 import { create } from "zustand";
 import {
   DEFAULT_SCENARIO,
@@ -83,6 +84,8 @@ interface BankingState {
    * On success the account goes live (and its approval mode is recorded); outcome follows the dev panel.
    */
   registerBank: (accountId: string, approval?: ApprovalMode) => Promise<boolean>;
+  /** For a connection waiting on net-banking approval: ask the bank whether it's been approved (goes live if so). */
+  checkConnection: (accountId: string) => Promise<boolean>;
   /** Penny-less verification of one of the company's own accounts. */
   verifyOwnAccount: (accountId: string) => Promise<boolean>;
   addCompanyAccount: (input: NewCompanyAccountInput) => CompanyAccount;
@@ -182,17 +185,23 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     new Promise((resolve) => {
       setTimeout(() => {
         if (get().scenario.register === "fail") return resolve(false);
-        get().updateAccount(accountId, {
-          connection: "connected",
-          verified: true,
-          syncedMinutesAgo: 0,
-          ...(approval ? { approval } : {}),
-        });
-        set((s) => ({
-          accounts: s.accounts.map((a) => (a.id !== accountId || a.liveBalance ? a : { ...a, liveBalance: [215400, 2000] })),
-        }));
+        const key = get().accounts.find((a) => a.id === accountId)?.bankKey;
+        // Banks that need approval in net banking wait in "pending" until the customer approves there.
+        const needsApproval = !!(key && BANK_CONNECTORS[key].netBankingApproval);
+        get().updateAccount(accountId, { verified: true, ...(approval ? { approval } : {}) });
+        if (needsApproval) get().updateAccount(accountId, { connection: "pending" });
+        else goLive(accountId);
         resolve(true);
       }, 1500);
+    }),
+
+  checkConnection: (accountId) =>
+    new Promise((resolve) => {
+      setTimeout(() => {
+        if (get().scenario.bankApproval !== "approved") return resolve(false);
+        goLive(accountId);
+        resolve(true);
+      }, 1200);
     }),
 
   verifyOwnAccount: async (accountId) => {
@@ -361,6 +370,15 @@ export function usePayFromAccounts() {
   const accounts = useBankingStore((s) => s.accounts);
   const scenario = useBankingStore((s) => s.scenario);
   return payFromAccounts(accounts, scenario);
+}
+
+/** The connection is live: balance and statements start syncing. */
+function goLive(accountId: string) {
+  useBankingStore.setState((s) => ({
+    accounts: s.accounts.map((a) =>
+      a.id === accountId ? { ...a, connection: "connected", syncedMinutesAgo: 0, liveBalance: a.liveBalance ?? [215400, 2000] } : a,
+    ),
+  }));
 }
 
 /** A payout with the bank settles a few seconds later (unless the dev panel failed it first). */

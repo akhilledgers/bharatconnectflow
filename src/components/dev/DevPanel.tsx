@@ -370,6 +370,17 @@ function BankingOptions() {
           />
         </div>
         <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Approved in net banking (IndusInd), when checked</div>
+          <Choice
+            value={scenario.bankApproval}
+            options={[
+              ["approved", "Approved"],
+              ["pending", "Not yet"],
+            ]}
+            onChange={(bankApproval) => setScenario({ bankApproval })}
+          />
+        </div>
+        <div className="space-y-1.5">
           <div className="text-[11px] text-muted-foreground">Connect / Reconnect banking</div>
           <Choice
             value={scenario.register}
@@ -402,7 +413,7 @@ function BankingOptions() {
                     }}
                     className={SELECT}
                   >
-                    {([["connected", "Live"], ["expired", "Expired"], ["none", "Off"]] as const).map(([v, label]) => (
+                    {([["connected", "Live"], ["pending", "Approval"], ["expired", "Expired"], ["none", "Off"]] as const).map(([v, label]) => (
                       <option key={v} value={v}>
                         {label}
                       </option>

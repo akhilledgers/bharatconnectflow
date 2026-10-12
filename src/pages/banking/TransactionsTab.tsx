@@ -303,6 +303,14 @@ export function TransactionsTab({
                   {syncing ? "Syncing…" : "Sync now"}
                 </Button>
               </>
+            ) : account.bankKey && account.connection === "pending" ? (
+              <>
+                <Badge variant="warning">Awaiting approval</Badge>
+                <Button onClick={() => onConnect(account.id)}>
+                  <RefreshCw />
+                  Check status
+                </Button>
+              </>
             ) : account.bankKey && account.connection === "expired" ? (
               <>
                 <Badge variant="warning">Connection expired</Badge>

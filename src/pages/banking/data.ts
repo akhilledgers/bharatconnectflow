@@ -74,11 +74,13 @@ export interface BankingScenario {
   verify: "random" | "pass" | "fail";
   /** How the bank's API answers a Register Connected Banking request. */
   register: "success" | "fail";
+  /** Whether the customer has approved LEDGERS in their net banking when the app checks (banks that ask for it). */
+  bankApproval: "approved" | "pending";
   /** Overview: Needs attention and Accounts side by side, or stacked (the earlier layout). */
   overviewLayout: "split" | "stacked";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", overviewLayout: "split" };
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
 export const CONNECTED_BANKING = Object.fromEntries(
@@ -91,7 +93,8 @@ export const BULK_BANKS_LABEL = Object.values(CONNECTED_BANKING)
   .map((b) => b.short)
   .join(" and ");
 
-export type BankConnection = "none" | "connected" | "expired";
+/** none → (details verified) pending, waiting for approval in net banking → connected; connected can expire. */
+export type BankConnection = "none" | "pending" | "connected" | "expired";
 
 /** One of the company's own bank accounts (Banking → Accounts). */
 export interface CompanyAccount {
