@@ -357,7 +357,7 @@ export function SingleTransferDrawer({
                 </Button>
               </div>
               {picker}
-              {bene && <BeneficiaryGate payFrom={payFrom} keys={beneKeys} label={bene.name} />}
+              {bene && <BeneficiaryGate payFrom={payFrom} payees={beneKeys.map((key) => ({ key, name: bene.name }))} />}
             </div>
 
             <div className="flex flex-col gap-1.5">

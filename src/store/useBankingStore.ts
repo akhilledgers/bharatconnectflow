@@ -67,7 +67,7 @@ interface BankingState {
    * Beneficiary lists for banks that need one (IndusInd), per connected account (= customer ID): payee key →
    * status. Payee keys: contact:<contactId>:<accountId>, employee:<employeeId>, other:<ifsc>:<name>.
    */
-  beneficiaries: Record<string, Record<string, BeneficiaryStatus>>;
+  beneficiaries: Record<string, Record<string, Beneficiary>>;
   /** Contacts with their open invoices and bills, for matching bank lines by hand. */
   parties: Party[];
   moneyFlow: MoneyFlow;
@@ -92,9 +92,9 @@ interface BankingState {
   /** For a connection waiting on net-banking approval: ask the bank whether it's been approved (goes live if so). */
   checkConnection: (accountId: string) => Promise<boolean>;
   /** Single user: the OTP for adding these payees is confirmed and they're active straight away. */
-  addBeneficiariesWithOtp: (accountId: string, keys: string[]) => Promise<void>;
+  addBeneficiariesWithOtp: (accountId: string, payees: { key: string; code: string }[]) => Promise<void>;
   /** Maker & checker: the payees are added and wait for the checker to approve in net banking. */
-  requestBeneficiaries: (accountId: string, keys: string[]) => void;
+  requestBeneficiaries: (accountId: string, payees: { key: string; code: string }[]) => void;
   /** Ask the bank whether the checker has approved them; resolves with how many are now active. */
   checkBeneficiaries: (accountId: string, keys: string[]) => Promise<number>;
   /** Penny-less verification of one of the company's own accounts. */
@@ -207,21 +207,22 @@ export const useBankingStore = create<BankingState>((set, get) => ({
       }, 1500);
     }),
 
-  addBeneficiariesWithOtp: (accountId, keys) =>
+  addBeneficiariesWithOtp: (accountId, payees) =>
     new Promise((resolve) =>
       setTimeout(() => {
-        setBeneficiaries(accountId, keys, "active");
+        setBeneficiaries(accountId, payees, "active");
         resolve();
       }, 900),
     ),
 
-  requestBeneficiaries: (accountId, keys) => setBeneficiaries(accountId, keys, "pending"),
+  requestBeneficiaries: (accountId, payees) => setBeneficiaries(accountId, payees, "pending"),
 
   checkBeneficiaries: (accountId, keys) =>
     new Promise((resolve) =>
       setTimeout(() => {
         if (get().scenario.beneficiaryApproval !== "approved") return resolve(0);
-        const pending = keys.filter((k) => get().beneficiaries[accountId]?.[k] === "pending");
+        const list = get().beneficiaries[accountId] ?? {};
+        const pending = keys.filter((k) => list[k]?.status === "pending").map((k) => ({ key: k, code: list[k].code }));
         setBeneficiaries(accountId, pending, "active");
         resolve(pending.length);
       }, 1100),
@@ -418,16 +419,28 @@ function goLive(accountId: string) {
   });
 }
 
-export type BeneficiaryStatus = "active" | "pending";
-
-/** What the bank's beneficiary list returns on connect, matched to contacts by account number + IFSC. */
-function syncedBeneficiaries(): Record<string, BeneficiaryStatus> {
-  return { "contact:c1:a1": "active", "contact:c7:a8": "active", "employee:e1": "active", "employee:e5": "active" };
+/** A payee on the bank's beneficiary list, with the code the customer finds it by in net banking. */
+export interface Beneficiary {
+  status: "active" | "pending";
+  code: string;
 }
 
-function setBeneficiaries(accountId: string, keys: string[], status: BeneficiaryStatus) {
+/** What the bank's beneficiary list returns on connect (codes as set in net banking), matched to contacts by account number + IFSC. */
+function syncedBeneficiaries(): Record<string, Beneficiary> {
+  return {
+    "contact:c1:a1": { status: "active", code: "KAVYATEX" },
+    "contact:c7:a8": { status: "active", code: "VERTEXPACK" },
+    "employee:e1": { status: "active", code: "MEERAIYER" },
+    "employee:e5": { status: "active", code: "NEHAK" },
+  };
+}
+
+function setBeneficiaries(accountId: string, payees: { key: string; code: string }[], status: Beneficiary["status"]) {
   useBankingStore.setState((s) => ({
-    beneficiaries: { ...s.beneficiaries, [accountId]: { ...s.beneficiaries[accountId], ...Object.fromEntries(keys.map((k) => [k, status])) } },
+    beneficiaries: {
+      ...s.beneficiaries,
+      [accountId]: { ...s.beneficiaries[accountId], ...Object.fromEntries(payees.map((p) => [p.key, { status, code: p.code }])) },
+    },
   }));
 }
 

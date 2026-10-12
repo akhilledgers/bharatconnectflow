@@ -166,11 +166,16 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                       <div className="text-2sm font-semibold">{row.name}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {row.bank} · {row.maskedIfsc}
-                        {payFrom.needsBeneficiary && beneList?.[row.key] !== "active" && (
-                          <span className="ms-1.5 text-[var(--color-warning-accent)]">
-                            · {beneList?.[row.key] === "pending" ? "Waiting for checker" : `Not in ${payFrom.short} beneficiaries`}
-                          </span>
-                        )}
+                        {payFrom.needsBeneficiary &&
+                          (beneList?.[row.key]?.status === "active" ? (
+                            <span className="ms-1.5">
+                              · <span className="font-mono">{beneList[row.key].code}</span>
+                            </span>
+                          ) : (
+                            <span className="ms-1.5 text-[var(--color-warning-accent)]">
+                              · {beneList?.[row.key]?.status === "pending" ? "Waiting for checker" : `Not in ${payFrom.short} beneficiaries`}
+                            </span>
+                          ))}
                       </div>
                     </div>
                     <div className="text-2sm tabular-nums">{row.amount ? fmtINR(parseFloat(row.amount) || 0) : "—"}</div>
@@ -189,7 +194,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
             )}
             {rows.length > 0 && (
               <div className="max-w-[600px] shrink-0">
-                <BeneficiaryGate payFrom={payFrom} keys={rows.map((r) => r.key)} />
+                <BeneficiaryGate payFrom={payFrom} payees={rows.map((r) => ({ key: r.key, name: r.name }))} />
               </div>
             )}
           </div>
