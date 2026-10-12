@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { BuyerResponse } from "../../types";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -7,22 +7,23 @@ import { Textarea } from "../../components/ui/input";
 // Comment limits come from the API: buyerRemarks / supplierRemarks are required, 1–100 characters;
 // invoiceRemarks on a send or re-send is optional, up to 256.
 const REMARKS_MAX = 100;
+
 const INVOICE_REMARKS_MAX = 256;
 
 const RESPONSE_COPY: Record<BuyerResponse, { title: string; description: string; label: string; picks: string[]; preset: string; button: string; variant: "success" | "primary" | "destructive" }> = {
   accept: {
     title: "Accept this bill?",
-    description: "The supplier is told you've accepted it. You can then pay it.",
-    label: "Comment for the supplier",
+    description: "",
+    label: "Comment",
     picks: [],
     preset: "Accepted",
     button: "Accept Bill",
     variant: "success",
   },
   return: {
-    title: "Return this bill?",
-    description: "The supplier can correct it and send it again.",
-    label: "What needs fixing?",
+    title: "Return for correction?",
+    description: "",
+    label: "Comment",
     picks: ["Wrong amount", "Wrong quantity", "Wrong GST", "Wrong details"],
     preset: "",
     button: "Return to Supplier",
@@ -30,8 +31,8 @@ const RESPONSE_COPY: Record<BuyerResponse, { title: string; description: string;
   },
   reject: {
     title: "Reject this bill?",
-    description: "The supplier can't change a rejected bill. They can only cancel it.",
-    label: "Why are you rejecting it?",
+    description: "",
+    label: "Comment",
     picks: ["Not ordered", "Duplicate", "Wrong business"],
     preset: "",
     button: "Reject Bill",
@@ -97,11 +98,16 @@ export function InlineResponse({
   supplier,
   onCancel,
   onSubmit,
+  children,
+  canSubmit = true,
 }: {
   decision: BuyerResponse;
   supplier: string;
   onCancel: () => void;
   onSubmit: (decision: BuyerResponse, comment: string) => Promise<void>;
+  /** Extra step shown above the comment (the items list on Accept). */
+  children?: ReactNode;
+  canSubmit?: boolean;
 }) {
   const copy = RESPONSE_COPY[decision];
   const [comment, setComment] = useState(copy.preset);
@@ -110,8 +116,9 @@ export function InlineResponse({
     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
       <div>
         <div className="text-sm font-medium text-foreground">{copy.title}</div>
-        <p className="text-xs text-muted-foreground">{copy.description.replace("The supplier", supplier)}</p>
+        {copy.description && <p className="text-xs text-muted-foreground">{copy.description.replace("The supplier", supplier)}</p>}
       </div>
+      {children}
       <CommentField label={copy.label} value={comment} onChange={setComment} max={REMARKS_MAX} required picks={copy.picks} />
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
@@ -120,7 +127,7 @@ export function InlineResponse({
         <Button
           variant={copy.variant}
           size="sm"
-          disabled={!comment.trim() || busy}
+          disabled={!comment.trim() || !canSubmit || busy}
           onClick={async () => {
             setBusy(true);
             await onSubmit(decision, comment.trim());
@@ -218,15 +225,32 @@ export function ResendDialog({ open, onClose, onSubmit }: { open: boolean; onClo
 }
 
 /** Supplier cancels a sent, returned or rejected invoice (reqStatusChangeInvoice). Reason is required. */
-export function CancelDialog({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
+export function CancelDialog({
+  open,
+  onClose,
+  onSubmit,
+  title = "Cancel invoice?",
+  description = "This can't be revoked.",
+  confirmLabel = "Cancel Invoice",
+  picks = [],
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => Promise<void>;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  /** One-tap reasons above the field. */
+  picks?: string[];
+}) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title="Cancel this invoice?"
-      description="The buyer is told it's cancelled. This can't be undone."
+      title={title}
+      description={description}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -242,12 +266,12 @@ export function CancelDialog({ open, onClose, onSubmit }: { open: boolean; onClo
               onClose();
             }}
           >
-            {busy ? "Cancelling…" : "Cancel Invoice"}
+            {busy ? "Cancelling…" : confirmLabel}
           </Button>
         </>
       }
     >
-      <CommentField label="Reason" value={reason} onChange={setReason} max={REMARKS_MAX} required placeholder="Raised by mistake" />
+      <CommentField label="Reason" value={reason} onChange={setReason} max={REMARKS_MAX} required picks={picks} placeholder="Raised by mistake" />
     </Dialog>
   );
 }

@@ -10,7 +10,24 @@ export const tdCls = "border-b border-border px-4 py-3 align-middle";
 /** Line-item tables (invoice editor) use uppercase xs headers. */
 export const lineThCls = "h-12 border-b border-border px-4 text-left align-middle text-xs font-medium uppercase text-muted-foreground";
 
-export function TablePagination({ from, to, total, children }: { from: number; to: number; total: number; children?: ReactNode }) {
+export function TablePagination({
+  from,
+  to,
+  total,
+  page = 0,
+  pages = 1,
+  onPage,
+  children,
+}: {
+  from: number;
+  to: number;
+  total: number;
+  /** Optional paging: zero-based current page, page count, and a setter. */
+  page?: number;
+  pages?: number;
+  onPage?: (page: number) => void;
+  children?: ReactNode;
+}) {
   return (
     <div className="flex grow flex-col items-center justify-between gap-2.5 py-2.5 sm:flex-row">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -23,11 +40,29 @@ export function TablePagination({ from, to, total, children }: { from: number; t
           {total === 0 ? 0 : from} - {to} of {total}
         </span>
         <div className="flex items-center gap-1">
-          <button disabled className={cn(pageBtn, "text-muted-foreground")} aria-label="Previous page">
+          <button
+            disabled={page === 0}
+            onClick={() => onPage?.(page - 1)}
+            className={cn(pageBtn, "text-muted-foreground")}
+            aria-label="Previous page"
+          >
             <ChevronLeft className="size-4" />
           </button>
-          <button className={cn(pageBtn, "bg-accent text-accent-foreground")}>1</button>
-          <button disabled className={cn(pageBtn, "text-muted-foreground")} aria-label="Next page">
+          {Array.from({ length: pages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => onPage?.(i)}
+              className={cn(pageBtn, "cursor-pointer", i === page ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-accent/60")}
+            >
+              {i + 1}
+            </button>
+          ))}
+          <button
+            disabled={page >= pages - 1}
+            onClick={() => onPage?.(page + 1)}
+            className={cn(pageBtn, "text-muted-foreground")}
+            aria-label="Next page"
+          >
             <ChevronRight className="size-4" />
           </button>
         </div>

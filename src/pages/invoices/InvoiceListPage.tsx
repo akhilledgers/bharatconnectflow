@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Archive,
   ArrowDownToLine,
   CalendarDays,
   Copy,
@@ -21,7 +22,10 @@ import { Button } from "../../components/ui/button";
 import { Checkbox, Input } from "../../components/ui/input";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, thCls, tdCls, trCls, TablePagination } from "../../components/ui/table";
-import { editRule } from "../../lib/editRules";
+import { CANCEL_PICKS, deleteRule, editRule } from "../../lib/editRules";
+import { Dialog } from "../../components/ui/dialog";
+import { CancelDialog } from "./BcDialogs";
+import { PHASE2 } from "../../lib/phase";
 import { useStore } from "../../store/useStore";
 import { statusLabel, statusVariant, confirmationMeta, latestBcComment } from "../../lib/invoiceStatus";
 import { Badge } from "../../components/ui/badge";
@@ -68,8 +72,9 @@ const PURCHASE_BC_FILTERS: { value: BcFilter; label: string }[] = [
   { value: "all", label: "All Bharat Connect statuses" },
   { value: "pending", label: "Awaiting Response" },
   { value: "accepted", label: "Accepted" },
-  { value: "returned", label: "Returned" },
+  ...(PHASE2.buyerReturn ? [{ value: "returned" as const, label: "Returned" }] : []),
   { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 function matchesBcFilter(invoice: Invoice, filter: BcFilter): boolean {
@@ -82,14 +87,20 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const config = configFor(kind);
   const navigate = useNavigate();
   const business = useStore((s) => s.currentBusiness());
+  const deleteInvoice = useStore((s) => s.deleteInvoice);
+  const cancelAndDeleteInvoice = useStore((s) => s.cancelAndDeleteInvoice);
+  const [toDelete, setToDelete] = useState<{ inv: Invoice; mode: "delete" | "cancel-delete" } | null>(null);
   const allInvoices = useStore((s) => s.invoices);
   const sendInvoiceViaBharatConnect = useStore((s) => s.sendInvoiceViaBharatConnect);
   const connected = business.connectionState === "connected";
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [bcFilter, setBcFilter] = useState<BcFilter>("all");
+  // Deleted documents are kept (soft delete) and listed under "Deleted"; totals only count active ones.
+  const [showDeleted, setShowDeleted] = useState(false);
 
-  const rows = allInvoices.filter((i) => i.kind === kind);
-  const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, bcFilter)) : rows;
+  const rows = allInvoices.filter((i) => i.kind === kind && !i.deletedAt);
+  const listed = showDeleted ? allInvoices.filter((i) => i.kind === kind && i.deletedAt) : rows;
+  const filteredRows = connected && !showDeleted ? listed.filter((i) => matchesBcFilter(i, bcFilter)) : listed;
   const total = sumAmount(rows);
   const outstanding = sumUnpaid(rows);
 
@@ -150,6 +161,10 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 <Funnel />
               </button>
             )}
+            <button className={toolbarIconBtn} onClick={() => setShowDeleted((d) => !d)} title="Show active or deleted">
+              <Archive />
+              {showDeleted ? "Deleted" : "Active"}
+            </button>
             <button className={toolbarIconBtn} title="Group by">
               <Split />
             </button>
@@ -189,14 +204,17 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 onCloseMenu={() => setOpenMenuId(null)}
                 onView={() => navigate(`${config.basePath}/${inv.id}`)}
                 onSend={() => sendInvoiceViaBharatConnect(inv.id)}
+                onDelete={(mode) => setToDelete({ inv, mode })}
               />
             ))}
             {filteredRows.length === 0 && (
               <tr>
                 <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-xs text-muted-foreground">
-                  {rows.length === 0
+                  {showDeleted
+                    ? `No deleted ${config.pageTitle.toLowerCase()}.`
+                    : rows.length === 0
                     ? `No ${config.pageTitle.toLowerCase()} yet.`
-                    : `No ${config.pageTitle.toLowerCase()} match this Bharat Connect filter.`}
+                    : `No ${config.pageTitle.toLowerCase()} found.`}
                 </td>
               </tr>
             )}
@@ -207,6 +225,46 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
           <TablePagination from={1} to={filteredRows.length} total={filteredRows.length} />
         </div>
       </div>
+
+      <CancelDialog
+        key={toDelete?.inv.id}
+        open={toDelete?.mode === "cancel-delete"}
+        onClose={() => setToDelete(null)}
+        title="Cancel and delete invoice?"
+        description="It's cancelled on Bharat Connect and deleted from LEDGERS. This can't be revoked."
+        confirmLabel="Cancel & Delete"
+        picks={CANCEL_PICKS}
+        onSubmit={async (reason) => {
+          if (toDelete) await cancelAndDeleteInvoice(toDelete.inv.id, reason);
+        }}
+      />
+      <Dialog
+        open={toDelete?.mode === "delete"}
+        onClose={() => setToDelete(null)}
+        title={`Delete ${config.singular.toLowerCase()}?`}
+        description="This can't be revoked."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setToDelete(null)}>
+              Keep {config.singular}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                const target = toDelete;
+                setToDelete(null);
+                if (target) await deleteInvoice(target.inv.id);
+              }}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-xs text-muted-foreground">
+          {config.singular} {toDelete?.inv.id} for {toDelete?.inv.counterpartyName} will be removed.
+        </p>
+      </Dialog>
     </div>
   );
 }
@@ -239,6 +297,7 @@ function InvoiceRow({
   onCloseMenu,
   onView,
   onSend,
+  onDelete,
 }: {
   invoice: Invoice;
   config: ReturnType<typeof configFor>;
@@ -248,6 +307,7 @@ function InvoiceRow({
   onCloseMenu: () => void;
   onView: () => void;
   onSend: () => void;
+  onDelete: (mode: "delete" | "cancel-delete") => void;
 }) {
   const navigate = useNavigate();
   const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
@@ -277,9 +337,13 @@ function InvoiceRow({
       </td>
       <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
       <td className={tdCls}>
-        <Badge variant={statusVariant(invoice.status)}>
-          {statusLabel(invoice.status)}
-        </Badge>
+        {invoice.deletedAt ? (
+          <Badge variant="secondary" title={`Deleted on ${invoice.deletedAt}`}>
+            Deleted
+          </Badge>
+        ) : (
+          <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+        )}
       </td>
       {connected && (
         <td className={tdCls}>
@@ -369,6 +433,8 @@ function InvoiceRow({
                     onView();
                   }}
                 />
+                {/* Deleted: view only. */}
+                {!invoice.deletedAt && <>
                 {/* Bharat Connect action sits with the LEDGERS ones, only when it applies. */}
                 {(showSend && counterpartyOnBc) || showRetry ? (
                   <MenuItem
@@ -403,7 +469,28 @@ function InvoiceRow({
                 <MenuItem icon={Copy} label={`Copy ${config.singular}`} onClick={onCloseMenu} />
                 <MenuItem icon={Printer} label="Print" onClick={onCloseMenu} />
                 <MenuItem icon={ArrowDownToLine} label="Download" onClick={onCloseMenu} />
-                <MenuItem icon={Trash2} label="Delete" danger onClick={onCloseMenu} />
+                {(() => {
+                  const rule = config.kind === "sales" ? deleteRule(invoice, connected) : null;
+                  return rule?.mode === "blocked" ? (
+                    <span title={rule.reason} className="block">
+                      <button disabled className={`${menuItemCls} cursor-not-allowed opacity-50`}>
+                        <Trash2 />
+                        Delete
+                      </button>
+                    </span>
+                  ) : (
+                    <MenuItem
+                      icon={Trash2}
+                      label={rule?.mode === "cancel-delete" ? "Cancel & Delete" : "Delete"}
+                      danger
+                      onClick={() => {
+                        onCloseMenu();
+                        onDelete(rule?.mode === "cancel-delete" ? "cancel-delete" : "delete");
+                      }}
+                    />
+                  );
+                })()}
+                </>}
               </div>
             </>
           )}

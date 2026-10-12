@@ -162,14 +162,12 @@ export function InvoiceCreatePage({ kind, editId }: { kind: "sales" | "purchase"
           tone="primary"
           className="mb-4"
           icon={<BharatConnectMark size={18} />}
-          title={`This invoice is with ${existing.counterpartyName} on Bharat Connect`}
-        >
-          Saving sends them a revised version (v{rule.nextVersion}).
-        </Callout>
+          title={`${existing.counterpartyName} will get the updated invoice (v${rule.nextVersion}).`}
+        />
       )}
       {rule.mode === "local-only" && (
-        <Callout tone="neutral" className="mb-4" icon={<Lock className="size-4 text-muted-foreground" />} title="Amounts and items are locked">
-          {rule.reason} You can still change the expense category for your books.
+        <Callout tone="neutral" className="mb-4" icon={<Lock className="size-4 text-muted-foreground" />} title="Only the category can be changed.">
+          {rule.reason}
         </Callout>
       )}
 
@@ -310,7 +308,7 @@ export function InvoiceCreatePage({ kind, editId }: { kind: "sales" | "purchase"
         {!existing && connected && kind === "sales" && counterparty?.bcId && (
           <div className="flex items-center gap-2 border-b border-border px-6 py-4 text-xs text-muted-foreground">
             <BharatConnectMark size={13} />
-            After you create it, you can review this invoice and send it to {counterparty.name} via Bharat Connect.
+            Once created, review and send via Bharat Connect.
           </div>
         )}
 

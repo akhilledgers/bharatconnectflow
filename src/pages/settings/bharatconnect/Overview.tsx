@@ -33,7 +33,7 @@ function CopyId({ id }: { id: string }) {
 
 export function Overview({ business }: { business: Business }) {
   const navigate = useNavigate();
-  const invoices = useStore((s) => s.invoices);
+  const invoices = useStore((s) => s.invoices).filter((i) => !i.deletedAt);
   const hasOpenInvoices = invoices.some((i) => i.status !== "paid");
   const defaultId = business.bharatConnectIds.find((i) => i.status === "active");
   const settlement = business.bankAccounts[0];

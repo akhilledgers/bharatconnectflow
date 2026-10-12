@@ -14,7 +14,7 @@ export function ContactViewPage() {
   const navigate = useNavigate();
   const business = useStore((s) => s.currentBusiness());
   const contact = useStore((s) => s.contacts.find((c) => c.id === id));
-  const invoices = useStore((s) => s.invoices);
+  const invoices = useStore((s) => s.invoices).filter((i) => !i.deletedAt);
   const inviteToBharatConnect = useStore((s) => s.inviteToBharatConnect);
   const requestContactDetails = useStore((s) => s.requestContactDetails);
   const connected = business.connectionState === "connected";
@@ -165,7 +165,7 @@ export function ContactViewPage() {
                     onClick={() => inviteToBharatConnect(contact.name)}
                     className="w-full rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
                   >
-                    Invite to Bharat Connect
+                    Invite
                   </button>
                 </>
               ) : (

@@ -28,7 +28,7 @@ function CardHeader({ title }: { title: string }) {
 }
 
 export function Dashboard() {
-  const invoices = useStore((s) => s.invoices);
+  const invoices = useStore((s) => s.invoices).filter((i) => !i.deletedAt);
 
   return (
     <div>

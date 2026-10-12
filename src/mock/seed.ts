@@ -88,7 +88,7 @@ export function makeSeedBusinesses(): Record<string, Business> {
       bankAccounts: [],
       identifierPath: "gstin",
       connectionState: "needs_attention",
-      ownershipVerified: true,
+      ownershipVerified: false,
       gstConnected: false, // new to LEDGERS: GST not connected yet
       bharatConnectIds: [
         {
@@ -255,6 +255,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "LP-40",
+      gstr1Filed: true,
       kind: "sales",
       counterpartyName: "Bharat Retail Pvt Ltd",
       counterpartyEmail: "accounts@bharatretail.in",

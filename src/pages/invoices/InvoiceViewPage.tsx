@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowDownToLine, ChevronDown, Copy, Link, Printer, SquarePen, Trash2 } from "lucide-react";
 import { useStore } from "../../store/useStore";
@@ -17,13 +17,23 @@ import { LedgersLogo } from "../../components/layout/LedgersLogo";
 import { ReviewAndSendCallout } from "./ReviewAndSendCallout";
 import { NotesSection } from "./NotesCard";
 import { CancelDialog, InlineResponse } from "./BcDialogs";
-import { editRule } from "../../lib/editRules";
+import { CANCEL_PICKS, deleteRule, editRule } from "../../lib/editRules";
+import { Dialog } from "../../components/ui/dialog";
+import { BcStrip } from "./BcStrip";
+import { PHASE2 } from "../../lib/phase";
+import type { LineResolution } from "../../lib/itemMatch";
+import type { InvoiceLineItem } from "../../types";
+import { ItemsReview, ItemsTable, LinkedCell, LinkedItems, MappingCell } from "./BillItems";
+import { summary, useBillItems, type BillItems } from "./useBillItems";
+import { Tabs } from "../../components/ui/tabs";
 import { amountInWords, bankFromIfsc, longDate, stateFromGstin } from "./invoiceDoc";
 
 // Copied from LEDGERS' live View Invoice (in.ledgers.cloud/v4/invoice/view-invoice): a text-sm header with
-// Create ▾ and icon actions; a [1fr_420px] grid (LEDGERS uses 350px; widened for the Bharat Connect section) with the printed invoice (LEDGERS' "Formal" template) on
-// the left and ONE card on the right — amount due, reconciliation, e-way bill, notes. Bharat Connect adds
-// one section to that card, right under the amount due.
+// Create ▾ and icon actions; the printed invoice (LEDGERS' "Formal" template) on the left and LEDGERS' card
+// on the right — amount due, reconciliation, e-way bill, notes.
+// Sales invoices leave that layout untouched: Bharat Connect is a strip above the invoice (BcStrip), activity
+// sits behind 🕘 next to Edit, and Delete becomes Cancel & Delete while the invoice is on Bharat Connect.
+// Bills still use a Bharat Connect card on the right (420px column) until their design is settled.
 
 export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   const config = configFor(kind);
@@ -33,8 +43,18 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   const invoice = useStore((s) => s.invoices.find((i) => i.id === id));
   const connected = business.connectionState === "connected";
   // Set by InvoiceCreatePage when it navigates here after Create.
-  const justCreated = (useLocation().state as { justCreated?: boolean } | null)?.justCreated === true;
+  const navState = useLocation().state as { justCreated?: boolean; cancel?: boolean } | null;
+  const justCreated = navState?.justCreated === true;
   const [calloutDismissed, setCalloutDismissed] = useState(false);
+  // Received bills: each line's catalog item (see BillItems). Shown in one of three layouts (dev panel).
+  const items = useBillItems(invoice);
+  const layout = useStore((s) => s.devItemsLayout);
+  const [leftTab, setLeftTab] = useState<"bill" | "items">("bill");
+  // The list's row menu can arrive here with Cancel & Delete already open.
+  const [deleteOpen, setDeleteOpen] = useState<"delete" | "cancel-delete" | null>(navState?.cancel ? "cancel-delete" : null);
+  // Cancel & Delete is confirmed inside the strip; the list's row menu can open it on arrival.
+  const deleteInvoice = useStore((s) => s.deleteInvoice);
+  const cancelAndDeleteInvoice = useStore((s) => s.cancelAndDeleteInvoice);
 
   if (!invoice) {
     return (
@@ -51,6 +71,23 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
   }
 
   const showCallout = justCreated && kind === "sales" && !calloutDismissed;
+  const sales = kind === "sales";
+  const del = sales ? deleteRule(invoice, connected) : null;
+  const mapping = connected && kind === "purchase" && invoice.bcSendStatus === "sent" && invoice.bcConfirmationStatus === "pending";
+  const linked = connected && kind === "purchase" && invoice.bcConfirmationStatus === "accepted" && invoice.lineItems.some((l) => l.catalogId);
+  const showItems = mapping || linked;
+  // (A) inside the bill: a not-printed row under each line.
+  const annotate =
+    layout === "inline" && showItems
+      ? (line: InvoiceLineItem) => {
+          const row = items.rows.find((r) => r.line.id === line.id);
+          return mapping && row ? <MappingCell row={row} onChange={(p) => items.set(line.id, p)} align="start" /> : <LinkedCell bill={invoice} line={line} align="start" />;
+        }
+      : undefined;
+  const reviewItems = () => {
+    if (layout === "tabs") setLeftTab("items");
+    else document.getElementById("bill-items")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   return (
     <div className="space-y-6">
@@ -83,7 +120,33 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
             [
               [Link, "Copy link"],
               [Copy, `Copy ${config.singular}`],
-              [Trash2, "Delete"],
+            ] as const
+          ).map(([Icon, label]) => (
+            <Button key={label} variant="outline" size="icon" title={label} aria-label={label}>
+              <Icon />
+            </Button>
+          ))}
+          {/* On Bharat Connect, Delete = Cancel & Delete; blocked (with the reason) when GST or Annexure H says no. */}
+          {(() => {
+            const label = !del ? "Delete" : del.mode === "blocked" ? del.reason : del.mode === "cancel-delete" ? "Cancel & Delete" : "Delete";
+            return (
+              <span title={label}>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={label}
+                  disabled={del?.mode === "blocked"}
+                  onClick={() => {
+                    if (del && del.mode !== "blocked") setDeleteOpen(del.mode);
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              </span>
+            );
+          })()}
+          {(
+            [
               [Printer, "Print"],
               [ArrowDownToLine, "Download"],
             ] as const
@@ -98,17 +161,46 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
         </div>
       </div>
 
-      {showCallout && <ReviewAndSendCallout invoice={invoice} onDismiss={() => setCalloutDismissed(true)} />}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_420px]">
+      <div className={`grid grid-cols-1 items-start gap-6 ${sales ? "lg:grid-cols-[1fr_350px]" : "lg:grid-cols-[1fr_420px]"}`}>
         {/* LEDGERS renders the template in an iframe whose body is #f6f6f6 around a white card. */}
-        <div className="relative overflow-hidden rounded-lg border border-border bg-white shadow-xs shadow-black/5">
-          <PrintedInvoice invoice={invoice} business={business} kind={kind} />
+        <div className="space-y-3">
+          {/* Sales: Bharat Connect strip (or, right after Create, the review-and-send strip), as wide as the invoice. */}
+          {showCallout && <ReviewAndSendCallout invoice={invoice} onDismiss={() => setCalloutDismissed(true)} />}
+          {sales && !showCallout && <BcStrip invoice={invoice} connected={connected} onCancelDelete={del?.mode === "cancel-delete" ? () => setDeleteOpen("cancel-delete") : undefined} />}
+          {/* (B) Bill | Items switch: the supplier's document stays untouched; Items is a full-width table. */}
+          {layout === "tabs" && showItems && (
+            <Tabs
+              value={leftTab}
+              onChange={setLeftTab}
+              items={[
+                { value: "bill", label: "Bill" },
+                {
+                  value: "items",
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      Items
+                      {mapping && items.newCount > 0 && (
+                        <span className="rounded-full bg-primary/10 px-1.5 text-[11px] font-medium text-primary">{items.newCount} new</span>
+                      )}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+          <div className="relative overflow-hidden rounded-lg border border-border bg-white shadow-xs shadow-black/5">
+            {layout === "tabs" && showItems && leftTab === "items" ? (
+              <ItemsTable bill={invoice} items={mapping ? items : undefined} />
+            ) : (
+              <PrintedInvoice invoice={invoice} business={business} kind={kind} annotate={annotate} />
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
-          {/* Bharat Connect on top: status, actions and the conversation with the other side. */}
-          {connected ? (
+          {/* Bills: Bharat Connect card on top (status, actions, activity). Sales use the strip instead. */}
+          {sales ? null : connected ? (
             <Card key={`bc-${invoice.id}`}>
               <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
@@ -118,7 +210,14 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
                 <BcSummary invoice={invoice} />
               </div>
               <div className="space-y-4 p-5">
-                <BharatConnectSection invoice={invoice} kind={kind} showCallout={showCallout} />
+                <BharatConnectSection
+                  invoice={invoice}
+                  kind={kind}
+                  showCallout={showCallout}
+                  itemLines={items.lines}
+                  itemsValid={items.valid}
+                  itemsCue={layout !== "card" && mapping ? <ItemsCue items={items} onReview={reviewItems} /> : null}
+                />
                 <NotesSection invoice={invoice} connected={connected} mode="bc" />
               </div>
             </Card>
@@ -130,19 +229,73 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
           <Card>
             <DueHeader invoice={invoice} />
             <div className="space-y-5 p-4">
+              {/* Bills received over Bharat Connect: how each line goes into the books (catalog items). */}
+              {layout === "card" && mapping && (
+                <>
+                  <ItemsReview items={items} />
+                  <hr className="border-dashed" />
+                </>
+              )}
+              {layout === "card" && linked && (
+                <>
+                  <LinkedItems bill={invoice} />
+                  <hr className="border-dashed" />
+                </>
+              )}
               <ReconciliationSection invoice={invoice} kind={kind} />
-              <hr className="border-dashed" />
-              <div className="flex items-center justify-between">
-                <span className="text-xs">GST eway bill:</span>
-                <Button variant="secondary" size="sm">
-                  Generate
-                </Button>
-              </div>
+              {!invoice.deletedAt && (
+                <>
+                  <hr className="border-dashed" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs">GST eway bill:</span>
+                    <Button variant="secondary" size="sm">
+                      Generate
+                    </Button>
+                  </div>
+                </>
+              )}
               <NotesSection invoice={invoice} connected={connected} mode="internal" />
             </div>
           </Card>
         </div>
       </div>
+
+      <CancelDialog
+        key={`cancel-${invoice.id}`}
+        open={deleteOpen === "cancel-delete"}
+        onClose={() => setDeleteOpen(null)}
+        title="Cancel and delete invoice?"
+        description="It's cancelled on Bharat Connect and deleted from LEDGERS. This can't be revoked."
+        confirmLabel="Cancel & Delete"
+        picks={CANCEL_PICKS}
+        onSubmit={(reason) => cancelAndDeleteInvoice(invoice.id, reason)}
+      />
+      <Dialog
+        open={deleteOpen === "delete"}
+        onClose={() => setDeleteOpen(null)}
+        title={`Delete ${config.singular.toLowerCase()}?`}
+        description="This can't be revoked."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeleteOpen(null)}>
+              Keep {config.singular}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setDeleteOpen(null);
+                await deleteInvoice(invoice.id);
+              }}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-xs text-muted-foreground">
+          {config.singular} {invoice.id} for {invoice.counterpartyName} will be removed.
+        </p>
+      </Dialog>
     </div>
   );
 }
@@ -179,7 +332,18 @@ const LINE = "border-[#b6b4b4]";
 const TH = "bg-[lightgray] px-[5px] py-[3px] font-normal";
 const TD = `border-b ${LINE} px-[5px] py-[3px]`;
 
-function PrintedInvoice({ invoice, business, kind }: { invoice: Invoice; business: Business; kind: "sales" | "purchase" }) {
+function PrintedInvoice({
+  invoice,
+  business,
+  kind,
+  annotate,
+}: {
+  invoice: Invoice;
+  business: Business;
+  kind: "sales" | "purchase";
+  /** (A) Renders a row under each line (catalog mapping); hidden when printed. */
+  annotate?: (line: InvoiceLineItem) => ReactNode;
+}) {
   const config = configFor(kind);
   const contact = useStore((s) => s.contacts.find((c) => c.name === invoice.counterpartyName));
   const taxable = invoice.lineItems.reduce((s, li) => s + li.price * li.qty, 0);
@@ -207,8 +371,9 @@ function PrintedInvoice({ invoice, business, kind }: { invoice: Invoice; busines
   const party = kind === "sales" ? theirs : ours;
   const sameState = !party.state || !issuer.state || party.state.toUpperCase() === issuer.state.toUpperCase();
   const account = kind === "sales" ? business.bankAccounts[0] : undefined;
-  const stamp =
-    invoice.status === "paid"
+  const stamp = invoice.deletedAt
+    ? "border-gray-400 text-gray-500"
+    : invoice.status === "paid"
       ? "border-green-600 text-green-700"
       : invoice.status === "partly_paid"
         ? "border-amber-500 text-amber-700"
@@ -243,7 +408,7 @@ function PrintedInvoice({ invoice, business, kind }: { invoice: Invoice; busines
         {invoice.dueDate && <p>Due Date: {invoice.dueDate}</p>}
         {/* LEDGERS prints this as an image stamp. */}
         <span className={`my-[5px] w-[100px] border-2 py-0.5 text-center text-[9pt] font-bold tracking-wide ${stamp}`}>
-          {statusLabel(invoice.status).toUpperCase()}
+          {invoice.deletedAt ? "DELETED" : statusLabel(invoice.status).toUpperCase()}
         </span>
       </div>
 
@@ -265,7 +430,7 @@ function PrintedInvoice({ invoice, business, kind }: { invoice: Invoice; busines
         <p>INDIA</p>
       </div>
 
-      <table className={`w-full border-collapse border-y ${LINE}`}>
+      <table id="bill-items" className={`w-full border-collapse border-y ${LINE}`}>
         <thead>
           <tr>
             <th className={`${TH} w-5 text-left`}><small className="text-[10pt]">Sno.</small></th>
@@ -281,21 +446,35 @@ function PrintedInvoice({ invoice, business, kind }: { invoice: Invoice; busines
           {invoice.lineItems.map((li, i) => {
             const lineTaxable = li.price * li.qty;
             const lineGst = (lineTaxable * li.gstPercent) / 100;
+            // With an annotation the line's bottom rule moves below the annotation row.
+            const td = annotate ? "px-[5px] py-[3px]" : TD;
             return (
-              <tr key={li.id}>
-                <td className={`${TD} text-left`}>{i + 1}</td>
-                <td className={`${TD} text-left`}>
-                  <div>{li.name}</div>
-                  <small className="text-[10px] italic leading-[1.1]">
-                    GST: {li.gstPercent}%{li.hsnSac && <> | HSN: {li.hsnSac}</>}
-                  </small>
-                </td>
-                <td className={`${TD} text-center`}>{li.price.toFixed(2)}</td>
-                <td className={`${TD} text-center`}>{li.qty} UNT</td>
-                <td className={`${TD} text-center`}>{lineTaxable.toFixed(2)}</td>
-                <td className={`${TD} text-center`}>{lineGst.toFixed(2)}</td>
-                <td className={`${TD} text-right`}>{money2(lineTaxable + lineGst)}</td>
-              </tr>
+              <Fragment key={li.id}>
+                <tr>
+                  <td className={`${td} text-left`}>{i + 1}</td>
+                  <td className={`${td} text-left`}>
+                    <div>{li.name}</div>
+                    <small className="text-[10px] italic leading-[1.1]">
+                      GST: {li.gstPercent}%{li.hsnSac && <> | HSN: {li.hsnSac}</>}
+                    </small>
+                  </td>
+                  <td className={`${td} text-center`}>{li.price.toFixed(2)}</td>
+                  <td className={`${td} text-center`}>
+                    {li.qty} {li.unit ?? "UNT"}
+                  </td>
+                  <td className={`${td} text-center`}>{lineTaxable.toFixed(2)}</td>
+                  <td className={`${td} text-center`}>{lineGst.toFixed(2)}</td>
+                  <td className={`${td} text-right`}>{money2(lineTaxable + lineGst)}</td>
+                </tr>
+                {annotate && (
+                  <tr className="print:hidden">
+                    <td className={TD} />
+                    <td colSpan={6} className={`${TD} pb-2`}>
+                      <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 px-2.5 py-1.5 font-sans">{annotate(li)}</div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
@@ -388,6 +567,14 @@ function DueHeader({ invoice }: { invoice: Invoice }) {
   const received = (invoice.receipts ?? []).reduce((s, r) => s + r.amount + (r.tds ?? 0), 0);
   const due = Math.max(0, invoice.amount - received);
   const paid = invoice.status === "paid";
+  if (invoice.deletedAt) {
+    return (
+      <div className="flex items-center justify-between rounded-t-xl bg-muted px-4 py-4">
+        <h2 className="text-base font-semibold text-gray-500">INR {money2(invoice.amount)}</h2>
+        <span className="rounded-md bg-gray-400 px-3 py-1 text-xs text-white">Deleted</span>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center justify-between rounded-t-xl px-4 py-4" style={{ backgroundColor: paid ? "#EBFAF2" : "rgb(255, 238, 243)" }}>
       <h2 className="text-base font-semibold text-gray-800">
@@ -460,7 +647,22 @@ function ReconciliationSection({ invoice, kind }: { invoice: Invoice; kind: "sal
  * Bharat Connect state and actions for this document. Statuses and the actions allowed from each one
  * follow handbook Annexure H; the buyer's comment is required on every response (buyerRemarks).
  */
-function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice; kind: "sales" | "purchase"; showCallout: boolean }) {
+function BharatConnectSection({
+  invoice,
+  kind,
+  showCallout,
+  itemLines,
+  itemsValid,
+  itemsCue,
+}: {
+  invoice: Invoice;
+  kind: "sales" | "purchase";
+  showCallout: boolean;
+  itemLines: LineResolution[];
+  itemsValid: boolean;
+  /** Layouts A / B: one line pointing at the items, which live with the bill. */
+  itemsCue?: ReactNode;
+}) {
   const sendInvoiceViaBharatConnect = useStore((s) => s.sendInvoiceViaBharatConnect);
   const respondToBill = useStore((s) => s.respondToBill);
   const navigate = useNavigate();
@@ -476,7 +678,7 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
   const who = invoice.counterpartyName;
 
   // The status badge itself sits in the section header (BcSummary); only the revision tag shows here.
-  const statusLine = confirmation && (invoice.version ?? 1) > 1 && (
+  const statusLine = PHASE2.editAndResend && confirmation && (invoice.version ?? 1) > 1 && (
     <span className="text-xs text-muted-foreground">Revised · v{invoice.version}</span>
   );
   const quote = (label: string) =>
@@ -487,7 +689,7 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
       </p>
     );
 
-  let body: ReactNode;
+  let body: ReactNode = null;
   if (kind === "sales") {
     if (invoice.bcSendStatus === "not_sent") {
       body = invoice.counterpartyB2bId ? (
@@ -515,7 +717,7 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
           {/* Hidden while the review-and-send callout shows its own Invite button. */}
           {!showCallout && (
             <Button variant="outline" className="mt-2 w-full" onClick={() => inviteToBharatConnect(who)}>
-              Invite to Bharat Connect
+              Invite
             </Button>
           )}
         </div>
@@ -530,7 +732,7 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
       body = (
         <div className="space-y-2.5">
           {statusLine}
-          <p className="text-xs text-muted-foreground">Waiting for {who} to accept, return or reject it.</p>
+          <p className="text-xs text-muted-foreground">Waiting for {who} to respond.</p>
           <Button variant="link" className="text-xs !text-destructive" onClick={() => setCancelOpen(true)}>
             Cancel Invoice
           </Button>
@@ -541,7 +743,6 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
         <div className="space-y-2.5">
           {statusLine}
           {quote(who)}
-          <p className="text-xs text-muted-foreground">Waiting for payment.</p>
         </div>
       );
     } else if (status === "returned") {
@@ -549,8 +750,10 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
         <div className="space-y-2.5">
           {statusLine}
           {quote(`${who} says`)}
-          {invoice.isEInvoice ? (
-            <p className="text-xs text-muted-foreground">E-invoices can't be edited. Cancel it and raise a new one.</p>
+          {!PHASE2.editAndResend ? (
+            <p className="text-xs text-muted-foreground">Cancel this invoice and create a corrected one.</p>
+          ) : invoice.isEInvoice ? (
+            <p className="text-xs text-muted-foreground">E-invoices can't be edited.</p>
           ) : (
             <Button variant="primary" className="w-full" onClick={() => navigate(`/sales/invoices/${invoice.id}/edit`)}>
               Edit &amp; Resend
@@ -565,8 +768,9 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
       body = (
         <div className="space-y-2.5">
           {statusLine}
-          {quote(`${who} says`)}
-          <p className="text-xs text-muted-foreground">Rejected invoices can't be edited or re-sent. Cancel it and create a new one if needed.</p>
+          <p className="text-xs text-foreground">{who} rejected this invoice.</p>
+          {quote("Reason")}
+          <p className="text-xs text-muted-foreground">Cancel this invoice and create a new one if needed.</p>
           <Button variant="outline" className="w-full" onClick={() => setCancelOpen(true)}>
             Cancel Invoice
           </Button>
@@ -576,9 +780,9 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
       body = (
         <div className="space-y-2.5">
           {statusLine}
-          <p className="text-xs text-destructive">It didn't reach {who}. Try sending it again.</p>
+          <p className="text-xs text-destructive">Couldn't send. Please try again.</p>
           <Button variant="primary" className="w-full" onClick={send}>
-            Send Again
+            Resend
           </Button>
         </div>
       );
@@ -590,6 +794,7 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
       <div className="space-y-2.5">
         {statusLine}
         <p className="text-xs text-muted-foreground">{who} is waiting for your response.</p>
+        {itemsCue}
         {/* The comment form opens right here in the card, not in a popup. */}
         {response ? (
           <InlineResponse
@@ -597,19 +802,26 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
             decision={response}
             supplier={who}
             onCancel={() => setResponse(null)}
+            canSubmit={response !== "accept" || itemsValid}
             onSubmit={async (d, c) => {
-              await respondToBill(invoice.id, d, c);
+              await respondToBill(invoice.id, d, c, d === "accept" ? itemLines : undefined);
               setResponse(null);
             }}
-          />
+          >
+            {response === "accept" && !itemsValid && (
+              <p className="text-xs text-destructive">Fill the missing details in Items.</p>
+            )}
+          </InlineResponse>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${PHASE2.buyerReturn ? "grid-cols-3" : "grid-cols-2"}`}>
             <Button variant="success" onClick={() => setResponse("accept")}>
               Accept
             </Button>
-            <Button variant="outline" onClick={() => setResponse("return")}>
-              Return
-            </Button>
+            {PHASE2.buyerReturn && (
+              <Button variant="outline" onClick={() => setResponse("return")}>
+                Return
+              </Button>
+            )}
             <Button variant="outline" className="!text-destructive" onClick={() => setResponse("reject")}>
               Reject
             </Button>
@@ -617,22 +829,37 @@ function BharatConnectSection({ invoice, kind, showCallout }: { invoice: Invoice
         )}
       </div>
     );
-  } else if (confirmation) {
+  } else if (confirmation && (statusLine || status === "returned")) {
     body = (
       <div className="space-y-2.5">
         {statusLine}
         {status === "returned" && <p className="text-xs text-muted-foreground">Waiting for {who} to correct and resend it.</p>}
-        {status === "accepted" && <p className="text-xs text-muted-foreground">You can now pay this bill.</p>}
       </div>
     );
-  } else {
+  } else if (!confirmation) {
     body = <span className="text-xs text-muted-foreground">Not received over Bharat Connect.</span>;
   }
 
+  // Nothing to say (e.g. a bill you've accepted), or a deleted document: the Activity list carries it.
+  if (!body || invoice.deletedAt) return null;
   return (
     <div className="space-y-3">
       {body}
       <CancelDialog open={cancelOpen} onClose={() => setCancelOpen(false)} onSubmit={(reason) => cancelInvoice(invoice.id, reason)} />
     </div>
+  );
+}
+
+/** Layouts A / B: "Items: 2 matched · 2 new · Review" in the Bharat Connect card. */
+function ItemsCue({ items, onReview }: { items: BillItems; onReview: () => void }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Items: {summary(items)}
+      {" · "}
+      <button onClick={onReview} className="cursor-pointer font-medium text-primary hover:text-primary/80">
+        Review
+      </button>
+      {!items.valid && <span className="text-destructive"> · details missing</span>}
+    </p>
   );
 }

@@ -1,3 +1,4 @@
+import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, X } from "lucide-react";
 import { useStore } from "../../store/useStore";
@@ -24,11 +25,11 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
       <X />
     </Button>
   );
-  const mark = <BharatConnectMark size={22} />;
+  const mark = <BharatConnectMark size={14} />;
 
   if (!connected) {
     return (
-      <Callout
+      <Strip
         tone="primary"
         icon={mark}
         title={`Invoice ${invoice.id} created. Review it below.`}
@@ -47,62 +48,61 @@ export function ReviewAndSendCallout({ invoice, onDismiss }: { invoice: Invoice;
 
   if (!invoice.counterpartyB2bId) {
     return (
-      <Callout
+      <Strip
         tone="primary"
-        icon={<BharatConnectMark size={22} className="grayscale opacity-60" />}
+        icon={<BharatConnectMark size={14} className="grayscale opacity-60" />}
         title={`Invoice ${invoice.id} created. ${invoice.counterpartyName} isn't on Bharat Connect yet.`}
         actions={
           <>
             <Button variant="primary" size="sm" onClick={() => inviteToBharatConnect(invoice.counterpartyName)}>
-              Invite to Bharat Connect
+              Invite
             </Button>
             {dismiss}
           </>
         }
       >
         Invite them so you can send this and future invoices to them directly.
-      </Callout>
+      </Strip>
     );
   }
 
   if (invoice.bcSendStatus === "sending") {
     return (
-      <Callout tone="primary" icon={mark} title={`Sending ${invoice.id} to ${invoice.counterpartyName}…`}>
-        <span className="inline-flex items-center gap-1.5">
-          <CircularSpinner size={12} /> Delivering to <span className="tabular-nums">{invoice.counterpartyB2bId}</span>
-        </span>
-      </Callout>
+      <Strip tone="primary" icon={<CircularSpinner size={14} />} title={`Sending to ${invoice.counterpartyName}…`} />
     );
   }
 
   if (invoice.bcSendStatus === "sent") {
-    return (
-      <Callout
-        tone="success"
-        icon={<CheckCircle2 className="size-5 text-green-600" />}
-        title={`Sent via Bharat Connect to ${invoice.counterpartyName}.`}
-        actions={dismiss}
-      >
-        Waiting for them to confirm. You'll see the confirmation status in the Bharat Connect card on the right.
-      </Callout>
-    );
+    return <SentCallout name={invoice.counterpartyName} onDismiss={onDismiss} dismiss={dismiss} />;
   }
 
   return (
-    <Callout
+    <Strip
       tone="primary"
       icon={mark}
-      title={`Invoice ${invoice.id} created. Review it below, then send it to ${invoice.counterpartyName}.`}
+      title={`Invoice ${invoice.id} created. Send via Bharat Connect?`}
       actions={
         <>
           <Button variant="primary" size="sm" onClick={() => sendInvoiceViaBharatConnect(invoice.id)}>
-            Send via Bharat Connect
+            Send Now
           </Button>
           {dismiss}
         </>
       }
-    >
-      It will be delivered to their Bharat Connect B2B ID <span className="tabular-nums">{invoice.counterpartyB2bId}</span>.
-    </Callout>
+    />
   );
+}
+
+/** "Sent" confirmation; the Bharat Connect card already shows the status, so it clears itself. */
+function SentCallout({ name, onDismiss, dismiss }: { name: string; onDismiss: () => void; dismiss: ReactNode }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  return <Strip tone="success" icon={<CheckCircle2 className="size-4 text-green-600" />} title={`Sent to ${name}.`} actions={dismiss} />;
+}
+
+/** Same compact strip as the Bharat Connect strip (BcStrip): sits right above the invoice. */
+function Strip(props: Parameters<typeof Callout>[0]) {
+  return <Callout {...props} className="gap-2.5 !rounded-lg !px-3 !py-1.5" />;
 }

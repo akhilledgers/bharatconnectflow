@@ -26,7 +26,7 @@ type Child = string | { label: string; to: string };
 
 const NAV_ITEMS: { label: string; icon: typeof House; to?: string; children?: Child[]; chevron?: boolean }[] = [
   { label: "Contacts", icon: ContactRound, to: "/contacts" },
-  { label: "Catalog", icon: GalleryVerticalEnd },
+  { label: "Catalog", icon: GalleryVerticalEnd, to: "/catalog" },
   { label: "Inventory", icon: Package },
   {
     label: "Sales",

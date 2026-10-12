@@ -10,6 +10,8 @@ import { InvoiceCreatePage, InvoiceEditPage } from "./pages/invoices/InvoiceCrea
 import { ContactsListPage } from "./pages/contacts/ContactsListPage";
 import { ContactViewPage } from "./pages/contacts/ContactViewPage";
 import { BankingPage } from "./pages/banking/BankingPage";
+import { CatalogListPage } from "./pages/catalog/CatalogListPage";
+import { CatalogItemPage } from "./pages/catalog/CatalogItemPage";
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<ContactsListPage />} />
           <Route path="/contacts/:id" element={<ContactViewPage />} />
+          <Route path="/catalog" element={<CatalogListPage />} />
+          <Route path="/catalog/:id" element={<CatalogItemPage />} />
           <Route path="/settings/bharatconnect" element={<BharatConnectPage />} />
           <Route path="/settings/bharatconnect/profile/*" element={<ProfilePage />} />
           <Route path="/settings/bharatconnect/ids" element={<IdsPage />} />

@@ -357,6 +357,55 @@ re-renders from that state. Nothing here is a real request.
   autofill, Create Contact mocks that real two-step shape (search → optional request →
   pending approval).
 
+## Phase 1 scope: invoices and bills (decided 10-10-2026)
+
+Phase 1 ships **Accept / Reject** only. Return, Edit & Resend and version history move to Phase 2,
+because they need backend work (versioning, new tables). In the prototype they're built but switched
+off in [`src/lib/phase.ts`](src/lib/phase.ts) (`PHASE2.buyerReturn`, `PHASE2.editAndResend`).
+
+**Handbook check (R3.8).** §5.2 and §5.4 describe Return and Edit as things a business "can" do,
+under "Suggested Steps"; there is no minimum feature list for a platform. What the handbook *does*
+require is that the receiving platform stores and displays every incoming status change or edit
+(#4.2 respConfirmInvoice, #4.3 reqEditInvoice, #4.4 reqStatusChangeInvoice). Annexure H: "Version
+will change only if there was an edit", so invoices we never edit stay at version 1. To confirm
+with NBBL during certification: that Return and Edit aren't expected for go-live.
+
+| | Phase 1 (our users can do) | Must still handle (sent by other platforms) | Phase 2 |
+|---|---|---|---|
+| **Invoices** (we're the supplier) | Send; Cancel (from Sent To Buyer, Returned or Rejected) | Buyer accepts, rejects or **returns** our invoice: show the status and comment. After a return, the action is Cancel (and create a corrected one); the buyer may still accept or reject it | Edit & Resend (`reqEditInvoice`), "Revised · vN" label |
+| **Bills** (we're the buyer) | Accept / Reject, comment required | Supplier **edits** the bill: replace it in place, store the current version, back to Awaiting Response. Supplier **cancels** it: show Cancelled with the reason | Return (`buyerResponse = RETURN`), version history |
+
+Backend for Phase 1: status + remarks on each invoice/bill and **one current-version field** for
+incoming edits. No version-history table.
+
+In the prototype: a sent invoice's Edit is disabled with "Sent on Bharat Connect. Cancel it and
+create a new one."; the bill card shows Accept / Reject; the bills filter drops Returned and adds
+Cancelled. Dev panel → General → "Simulate buyer response" still includes Return (an incoming case),
+and Dev panel → Purchase → "Simulate supplier (incoming)" plays a supplier editing or cancelling a bill.
+
+## Role-based access (decided, in development)
+
+**Decision (10-10-2026): Bharat Connect reuses LEDGERS' existing role permissions (Users & Roles →
+Role Permissions). No separate Bharat Connect permission group.** Developers are building this in
+LEDGERS now; the prototype doesn't enforce roles yet (everyone acts as Admin).
+
+LEDGERS today: a user is **Admin** (everything) or **Custom** (a named role, e.g. "TECH", with
+All / View / Create / Update / Delete ticked per module, grouped as Business, Sales, Purchase,
+Banking, Accounting, Taxation, Settings, HR, Docs, Workspace, June). The partner handbook has no
+rules for user roles inside a business, so this is LEDGERS' call.
+
+| Bharat Connect action | Covered by existing permission |
+|---|---|
+| Send an invoice via Bharat Connect, Edit & Resend, Cancel | Sales → Invoice → **Update** |
+| Accept / Return / Reject a bill received over Bharat Connect | Purchase → Bill → **Update** |
+| Onboard, edit the Bharat Connect profile, create / deactivate B2B IDs, disconnect | **Settings → Bharat Connect** (one new row in the existing Settings group, next to Sales, Purchases, Taxation, Payments, June) |
+| See Bharat Connect statuses, badges and activity on invoices / bills | View on the same module (Sales → Invoice, Purchase → Bill) |
+
+Trade-off accepted with this option: anyone who can update a bill can also accept, return or reject
+it on Bharat Connect, which the supplier sees. A dedicated "Bharat Connect" group with its own
+actions (like Banking's Credit / Debit / Fund Transfer / Max Limit columns) was considered and not
+taken for now; it remains the path if finer control (or a payments limit in Phase 2) is needed.
+
 ## Not built yet
 
 - The profile page's contact fields don't yet require OTP verification before a new

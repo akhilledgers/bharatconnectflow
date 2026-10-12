@@ -10,7 +10,9 @@ import type {
 } from "../types";
 import { makeSeedBusinesses, makeSeedInvoices, makeSeedContacts, STOCK_HOLDING_ID } from "../mock/seed";
 import { baseId, existingIdFor } from "../lib/id-standard";
-import type { BuyerResponse, Invoice, InvoiceNote, Receipt } from "../types";
+import type { BuyerResponse, CatalogItem, Invoice, InvoiceNote, Receipt } from "../types";
+import { makeSeedCatalog, makeSeedItemLinks, makePurchaseScenarios } from "../mock/catalog";
+import { linkKey, type LineResolution } from "../lib/itemMatch";
 
 /** "07-10-2026, 11:20" — the stamp shown on Notes entries. */
 function noteStamp(): string {
@@ -59,9 +61,20 @@ interface StoreState {
   currentBusinessId: string;
   invoices: Invoice[];
   contacts: LedgerContact[];
+  /** LEDGERS catalog (Catalog page; every purchase line is booked against one of these). */
+  catalog: CatalogItem[];
+  /** Bill line → catalog item links remembered per supplier (see lib/itemMatch). */
+  itemLinks: Record<string, string>;
   devPanelOpen: boolean;
   /** Dev panel: arms how the profile page's next save resolves (null = succeeds normally). */
   devProfileSaveOutcome: "reject" | "conflict" | null;
+  /**
+   * Dev panel: how Bharat Connect answers the onboarding request. "instant" confirms in a few seconds;
+   * "delayed" leaves it awaiting (Setting up) until Confirm / Reject in the dev panel; "fail" rejects it.
+   */
+  devOnboardingOutcome: "instant" | "delayed" | "fail";
+  /** Dev panel: where a received bill's item mapping is shown (LEDGERS card, inside the bill, or a Bill | Items switch). */
+  devItemsLayout: "card" | "inline" | "tabs";
   connectFlow: Record<string, ConnectFlowState>;
   toasts: { id: string; message: string; tone: "success" | "error" }[];
 
@@ -69,6 +82,8 @@ interface StoreState {
   switchBusiness: (id: string) => void;
   toggleDevPanel: (open?: boolean) => void;
   setDevProfileSaveOutcome: (outcome: "reject" | "conflict" | null) => void;
+  setDevOnboardingOutcome: (outcome: "instant" | "delayed" | "fail") => void;
+  setDevItemsLayout: (layout: "card" | "inline" | "tabs") => void;
   pushToast: (message: string, tone?: "success" | "error") => void;
   dismissToast: (id: string) => void;
 
@@ -131,14 +146,20 @@ interface StoreState {
 
   // Invoices / Bills
   sendInvoiceViaBharatConnect: (invoiceId: string, noteToBuyer?: string) => Promise<void>;
-  respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string) => Promise<void>;
+  /** On Accept, `lines` links each line to a catalog item, adding new ones to the catalog. */
+  respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string, lines?: LineResolution[]) => Promise<void>;
   addInvoiceNote: (invoiceId: string, text: string, shareOnSend: boolean) => void;
   recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id">) => Promise<void>;
   updateInvoice: (invoiceId: string, patch: Partial<Invoice>) => Promise<void>;
   resendInvoice: (invoiceId: string, changeNote: string) => Promise<void>;
   cancelInvoice: (invoiceId: string, reason: string) => Promise<void>;
+  /** LEDGERS delete (not on Bharat Connect). */
+  deleteInvoice: (invoiceId: string) => Promise<void>;
+  /** Cancels on Bharat Connect (reqStatusChangeInvoice, reason = supplierRemarks), then deletes from LEDGERS. */
+  cancelAndDeleteInvoice: (invoiceId: string, reason: string) => Promise<void>;
   simulateBuyerResponse: (invoiceId: string, decision: BuyerResponse, comment: string) => void;
   simulateSupplierResend: (invoiceId: string, changeNote: string) => void;
+  simulateSupplierCancel: (invoiceId: string, reason: string) => void;
   createInvoice: (invoice: Invoice) => Promise<void>;
 
   // Dev-panel: simulate the buyer's webhook confirming/rejecting a sent sales invoice
@@ -150,15 +171,68 @@ interface StoreState {
 
   // Contacts
   createContact: (contact: LedgerContact, inviteIfUnconnected: boolean) => Promise<void>;
+
+  // Catalog
+  addCatalogItem: (item: Omit<CatalogItem, "id" | "status" | "createdBy" | "createdAt">) => string;
+
+  // Dev panel: purchase scenarios
+  /** Puts a fresh copy of the scenario's bill in Bills (Awaiting Response) and returns its id. */
+  devLoadPurchaseScenario: (key: string) => string;
+  /** Restores the seed catalog and saved links, and removes scenario bills. */
+  devResetPurchase: () => void;
 }
 
-export const useStore = create<StoreState>((set, get) => ({
+const nextCatalogId = (catalog: CatalogItem[]) => String(Math.max(...catalog.map((c) => Number(c.id))) + 1);
+
+export const useStore = create<StoreState>((set, get) => {
+  /** Bharat Connect confirmed: create the B2B ID (if there isn't one yet) and mark the business connected. */
+  const completeOnboarding = (businessId: string, basedOn: "PAN" | "GSTIN") => {
+    const business = get().businesses[businessId];
+    const hasId = business.bharatConnectIds.some((i) => i.status === "active");
+    const level = business.gstConnected && business.bankAccounts.some((a) => a.verified) ? 2 : 1;
+    const newId: BharatConnectId = {
+      id: baseId(business, basedOn),
+      label: "Default",
+      basedOn,
+      linkedIdentifierValue: basedOn === "GSTIN" ? business.gstin ?? business.pan : business.pan,
+      visibility: "public",
+      status: "active",
+      settlementAccountId: null,
+    };
+    set((s) => ({
+      connectFlow: { ...s.connectFlow, [businessId]: { ...get().getConnectFlow(businessId), submitPhase: "success" } },
+      businesses: {
+        ...s.businesses,
+        [businessId]: {
+          ...s.businesses[businessId],
+          connectionState: "connected",
+          bharatConnectIds: hasId ? s.businesses[businessId].bharatConnectIds : [newId, ...s.businesses[businessId].bharatConnectIds],
+          verification: { level, invoicing: true, payments: false },
+          lastSyncedAt: new Date().toISOString().slice(0, 10),
+          welcomeSeen: false,
+        },
+      },
+    }));
+  };
+
+  /** Bharat Connect rejected the registration: back to the form, with the error under the button. */
+  const failOnboarding = (businessId: string) =>
+    set((s) => ({
+      connectFlow: { ...s.connectFlow, [businessId]: { ...get().getConnectFlow(businessId), submitPhase: "error" } },
+      businesses: { ...s.businesses, [businessId]: { ...s.businesses[businessId], connectionState: "not_connected" } },
+    }));
+
+  return {
   businesses: makeSeedBusinesses(),
   currentBusinessId: STOCK_HOLDING_ID,
   invoices: makeSeedInvoices(),
   contacts: makeSeedContacts(),
+  catalog: makeSeedCatalog(),
+  itemLinks: makeSeedItemLinks(),
   devPanelOpen: false,
   devProfileSaveOutcome: null,
+  devOnboardingOutcome: "instant",
+  devItemsLayout: "card",
   connectFlow: {},
   toasts: [],
 
@@ -170,6 +244,8 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ devPanelOpen: open ?? !s.devPanelOpen })),
 
   setDevProfileSaveOutcome: (outcome) => set({ devProfileSaveOutcome: outcome }),
+  setDevOnboardingOutcome: (outcome) => set({ devOnboardingOutcome: outcome }),
+  setDevItemsLayout: (layout) => set({ devItemsLayout: layout }),
 
   pushToast: (message, tone = "success") => {
     const id = crypto.randomUUID();
@@ -313,7 +389,6 @@ export const useStore = create<StoreState>((set, get) => ({
     })),
 
   submitConnect: async (businessId) => {
-    const business = get().businesses[businessId];
     const flow = get().getConnectFlow(businessId);
     const setPhase = (submitPhase: ConnectSubmitPhase) =>
       set((s) => ({
@@ -326,32 +401,18 @@ export const useStore = create<StoreState>((set, get) => ({
     setPhase("creating_id");
     await delay(undefined, 900, 1100);
     setPhase("waiting_confirmation");
+    const outcome = get().devOnboardingOutcome;
+    if (outcome === "delayed") {
+      // Bharat Connect has the request but hasn't answered yet: the page stays on "Awaiting response".
+      set((s) => ({ businesses: { ...s.businesses, [businessId]: { ...s.businesses[businessId], connectionState: "setting_up" } } }));
+      return;
+    }
     await delay(undefined, 1000, 1200);
-
-    const newId: BharatConnectId = {
-      id: baseId(business, flow.basedOn),
-      label: "Default",
-      basedOn: flow.basedOn,
-      linkedIdentifierValue: flow.basedOn === "GSTIN" ? business.gstin ?? business.pan : business.pan,
-      visibility: "public",
-      status: "active",
-      settlementAccountId: null,
-    };
-
-    setPhase("success");
-    set((s) => ({
-      businesses: {
-        ...s.businesses,
-        [businessId]: {
-          ...s.businesses[businessId],
-          connectionState: "connected",
-          bharatConnectIds: [newId, ...s.businesses[businessId].bharatConnectIds],
-          verification: { level: 1, invoicing: true, payments: false },
-          lastSyncedAt: new Date().toISOString().slice(0, 10),
-          welcomeSeen: false,
-        },
-      },
-    }));
+    if (outcome === "fail") {
+      failOnboarding(businessId);
+      return;
+    }
+    completeOnboarding(businessId, flow.basedOn);
   },
 
   resetConnectFlow: (businessId) =>
@@ -424,7 +485,12 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
   },
 
-  simulateWebhookConfirm: (businessId) =>
+  simulateWebhookConfirm: (businessId) => {
+    // Confirmation that ends the onboarding wait: tick on the onboarding page, then the overview.
+    if (get().businesses[businessId].connectionState === "setting_up") {
+      completeOnboarding(businessId, get().getConnectFlow(businessId).basedOn);
+      return;
+    }
     set((s) => ({
       businesses: {
         ...s.businesses,
@@ -435,9 +501,14 @@ export const useStore = create<StoreState>((set, get) => ({
           lastSyncedAt: new Date().toISOString().slice(0, 10),
         },
       },
-    })),
+    }));
+  },
 
-  simulateWebhookReject: (businessId) =>
+  simulateWebhookReject: (businessId) => {
+    if (get().businesses[businessId].connectionState === "setting_up") {
+      failOnboarding(businessId);
+      return;
+    }
     set((s) => ({
       businesses: {
         ...s.businesses,
@@ -451,7 +522,8 @@ export const useStore = create<StoreState>((set, get) => ({
           },
         },
       },
-    })),
+    }));
+  },
 
   uploadKycDocument: async (businessId, docId, fileName) => {
     const { delay } = await import("../mock/api");
@@ -568,7 +640,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setGstConnected: (businessId, connected) =>
     set((s) => ({
-      businesses: { ...s.businesses, [businessId]: { ...s.businesses[businessId], gstConnected: connected } },
+      businesses: { ...s.businesses, [businessId]: { ...s.businesses[businessId], gstConnected: connected, ownershipVerified: connected } },
     })),
 
   devSetBankState: (businessId, state) =>
@@ -627,26 +699,104 @@ export const useStore = create<StoreState>((set, get) => ({
     get().pushToast("Sent via Bharat Connect. Waiting for the buyer to respond.");
   },
 
-  respondToBill: async (invoiceId, decision, comment) => {
+  respondToBill: async (invoiceId, decision, comment, lines) => {
     const { delay } = await import("../mock/api");
     await delay(undefined, 600, 1000);
-    const bill = get().invoices.find((i) => i.id === invoiceId);
-    set((s) => ({
-      invoices: s.invoices.map((i) =>
-        i.id === invoiceId
-          ? {
-              ...i,
-              bcConfirmationStatus: RESPONSE_STATUS[decision],
-              notes: [...(i.notes ?? []), bcNote(`${RESPONSE_PAST[decision]} by you`, comment, "You")],
-            }
-          : i,
-      ),
-    }));
-    const who = bill?.counterpartyName ?? "the supplier";
+    let added = 0;
+    set((s) => {
+      const bill = s.invoices.find((i) => i.id === invoiceId);
+      let catalog = s.catalog;
+      const itemLinks = { ...s.itemLinks };
+      let lineItems = bill?.lineItems ?? [];
+
+      // Only Accept books the bill, so only Accept touches the catalog. Return / Reject add nothing.
+      if (bill && decision === "accept" && lines?.length) {
+        const supplier = bill.counterpartyB2bId ?? bill.counterpartyName;
+        lineItems = lineItems.map((line) => {
+          const r = lines.find((x) => x.lineId === line.id);
+          if (!r) return line;
+          let catalogId = r.catalogId;
+          if (r.create) {
+            catalogId = nextCatalogId(catalog);
+            added++;
+            catalog = [
+              {
+                id: catalogId,
+                type: line.isService ? "services" : "goods",
+                name: line.name,
+                unit: r.create.unit,
+                gstRate: r.create.gstRate,
+                hsn: r.create.hsn,
+                purchase: { price: line.price, taxInclusive: false, description: line.name, expenseType: "Purchases", sku: line.itemCode },
+                status: "active",
+                createdBy: "Bharat Connect",
+                createdAt: noteStamp().slice(0, 10),
+                addedFromBill: bill.id,
+              },
+              ...catalog,
+            ];
+          } else if (catalogId) {
+            // A Sales-only item bought for the first time: turn its Purchase side on.
+            catalog = catalog.map((c) =>
+              c.id === catalogId && !c.purchase ? { ...c, purchase: { price: line.price, taxInclusive: false, expenseType: "Purchases", sku: line.itemCode } } : c,
+            );
+          }
+          if (!catalogId) return line;
+          itemLinks[linkKey(supplier, line)] = catalogId;
+          return { ...line, catalogId };
+        });
+      }
+
+      return {
+        catalog,
+        itemLinks,
+        invoices: s.invoices.map((i) =>
+          i.id === invoiceId
+            ? {
+                ...i,
+                lineItems,
+                bcConfirmationStatus: RESPONSE_STATUS[decision],
+                notes: [...(i.notes ?? []), bcNote(`${RESPONSE_PAST[decision]} by you`, comment, "You")],
+              }
+            : i,
+        ),
+      };
+    });
     get().pushToast(
-      decision === "accept" ? `Bill accepted. ${who} has been told.` : decision === "return" ? `Bill returned to ${who}.` : `Bill rejected. ${who} has been told.`,
+      decision === "accept"
+        ? `Bill accepted.${added ? ` ${added} new item${added > 1 ? "s" : ""} added to Catalog.` : ""}`
+        : decision === "return"
+          ? "Bill returned."
+          : "Bill rejected.",
       decision === "reject" ? "error" : "success",
     );
+  },
+
+  addCatalogItem: (draft) => {
+    const id = nextCatalogId(get().catalog);
+    set((s) => ({
+      catalog: [{ ...draft, id, status: "active", createdBy: "Akhil Manoj", createdAt: noteStamp().slice(0, 10) }, ...s.catalog],
+    }));
+    get().pushToast("Catalog added.");
+    return id;
+  },
+
+  devLoadPurchaseScenario: (key) => {
+    const scenario = makePurchaseScenarios().find((x) => x.key === key);
+    if (!scenario) return "";
+    const fresh = scenario.bill;
+    set((s) => ({ invoices: [fresh, ...s.invoices.filter((i) => i.id !== fresh.id)] }));
+    return fresh.id;
+  },
+
+  devResetPurchase: () => {
+    const ids = new Set(makePurchaseScenarios().map((x) => x.bill.id));
+    set((s) => ({
+      catalog: makeSeedCatalog(),
+      itemLinks: makeSeedItemLinks(),
+      invoices: s.invoices.filter((i) => !ids.has(i.id)),
+    }));
+    get().pushToast("Catalog and purchase scenarios reset.");
   },
 
   addInvoiceNote: (invoiceId, text, shareOnSend) => {
@@ -720,6 +870,33 @@ export const useStore = create<StoreState>((set, get) => ({
     get().pushToast("Revised invoice sent. Waiting for the buyer to respond.");
   },
 
+  deleteInvoice: async (invoiceId) => {
+    const { delay } = await import("../mock/api");
+    await delay(undefined, 400, 700);
+    const inv = get().invoices.find((i) => i.id === invoiceId);
+    set((s) => ({ invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, deletedAt: noteStamp() } : i)) }));
+    get().pushToast(`${inv?.kind === "purchase" ? "Bill" : "Invoice"} ${invoiceId} deleted.`);
+  },
+
+  cancelAndDeleteInvoice: async (invoiceId, reason) => {
+    const { delay } = await import("../mock/api");
+    // Bharat Connect first; LEDGERS only deletes once the cancellation has gone through.
+    await delay(undefined, 900, 1300);
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? {
+              ...i,
+              bcConfirmationStatus: "cancelled" as const,
+              deletedAt: noteStamp(),
+              notes: [...(i.notes ?? []), bcNote("Cancelled and deleted by you", reason, "You")],
+            }
+          : i,
+      ),
+    }));
+    get().pushToast(`Invoice ${invoiceId} cancelled and deleted.`);
+  },
+
   cancelInvoice: async (invoiceId, reason) => {
     const { delay } = await import("../mock/api");
     await delay(undefined, 500, 900);
@@ -730,7 +907,7 @@ export const useStore = create<StoreState>((set, get) => ({
           : i,
       ),
     }));
-    get().pushToast(`Invoice ${invoiceId} cancelled. The buyer has been told.`);
+    get().pushToast(`Invoice ${invoiceId} cancelled.`);
   },
 
   simulateBuyerResponse: (invoiceId, decision, comment) => {
@@ -760,12 +937,25 @@ export const useStore = create<StoreState>((set, get) => ({
               ...i,
               bcConfirmationStatus: "pending" as const,
               version: (i.version ?? 1) + 1,
-              notes: [...(i.notes ?? []), bcNote(`Revised and re-sent by ${who}`, changeNote, who)],
+              notes: [...(i.notes ?? []), bcNote(`Edited by ${who}`, changeNote, who)],
             }
           : i,
       ),
     }));
-    get().pushToast(`${who} sent a revised ${invoiceId}.`);
+    get().pushToast(`${who} edited ${invoiceId}.`);
+  },
+
+  simulateSupplierCancel: (invoiceId, reason) => {
+    const bill = get().invoices.find((i) => i.id === invoiceId);
+    const who = bill?.counterpartyName ?? "Supplier";
+    set((s) => ({
+      invoices: s.invoices.map((i) =>
+        i.id === invoiceId
+          ? { ...i, bcConfirmationStatus: "cancelled" as const, notes: [...(i.notes ?? []), bcNote(`Cancelled by ${who}`, reason, who)] }
+          : i,
+      ),
+    }));
+    get().pushToast(`${who} cancelled ${invoiceId}.`, "error");
   },
 
   createInvoice: async (invoice) => {
@@ -811,7 +1001,8 @@ export const useStore = create<StoreState>((set, get) => ({
       get().pushToast(`${contact.name} added to Contacts.`);
     }
   },
-}));
+};
+});
 
 export function isVisibilityPublic(v: IdVisibility) {
   return v === "public";
