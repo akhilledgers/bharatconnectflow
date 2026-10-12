@@ -210,7 +210,7 @@ export function SingleTransferDrawer({
 
   if (step === "success" && snapshot) {
     return (
-      <TransferDrawer title="Fund Transfer" width={520} step="success" onClose={onClose}>
+      <TransferDrawer title="New payment" width={520} step="success" onClose={onClose}>
         <SuccessView
           title={makerChecker ? "Submitted for approval" : "Transfer initiated"}
           body={
@@ -330,7 +330,7 @@ export function SingleTransferDrawer({
   const billSum = bills.filter((b) => billIds.includes(b.id)).reduce((acc, b) => acc + b.amount, 0);
 
   return (
-    <TransferDrawer title="Fund Transfer" width={520} step={step} onClose={onClose}>
+    <TransferDrawer title="New payment" width={520} step={step} onClose={onClose}>
       <div className="flex flex-1 flex-col gap-[22px] overflow-y-auto overflow-x-hidden px-6 pb-6 pt-5">
         {step === 1 && (
           <>

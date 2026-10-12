@@ -241,6 +241,7 @@ export function initialContacts(): PayeeContact[] {
       bills: [{ id: "b4", number: "INV-2207", date: "05-09-2026", amount: 14750, dueDate: "19-09-2026" }],
       accounts: [{ id: "a8", bank: "IndusInd Bank", ifsc: "INDB0000412", masked: "••••6603", verified: true }],
     },
+    { id: "c8", name: "Deepak Trading", category: "vendor", accounts: [] },
   ];
 }
 

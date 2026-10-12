@@ -110,7 +110,7 @@ export function BankingPage() {
             </div>
             <Button variant="primary" onClick={single}>
               <Send />
-              Pay someone
+              New payment
             </Button>
           </div>
         )}

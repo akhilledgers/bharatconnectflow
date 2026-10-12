@@ -1,5 +1,5 @@
 import { useState, type ClipboardEvent, type ReactNode } from "react";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Plus, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -183,33 +183,7 @@ export function AmountInput({ value, onChange }: { value: string; onChange: (v: 
 
 export type BeneType = "contact" | "employee" | "other";
 
-export function BeneTypeTabs({ value, onChange }: { value: BeneType; onChange: (v: BeneType) => void }) {
-  return (
-    <div role="tablist" className="flex gap-1 rounded-lg border border-border/80 bg-muted/80 p-1">
-      {(["contact", "employee", "other"] as const).map((t) => (
-        <button
-          key={t}
-          type="button"
-          role="tab"
-          aria-selected={value === t}
-          onClick={() => onChange(t)}
-          className={cn(
-            "h-8 flex-1 cursor-pointer rounded-md px-3 text-2sm capitalize text-foreground",
-            value === t && "bg-background shadow-lg shadow-black/5",
-          )}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-}
 
-/**
- * Account number + confirm + IFSC + "Verify Account". Used for a new contact, another account on a
- * contact/employee, and a one-off ("Other") payee. `labelled` is the single-transfer look (labels
- * above fields); the bulk picker uses placeholder-only fields.
- */
 export function AccountForm({
   title,
   labelled = true,
@@ -330,192 +304,6 @@ function CheckRow({ checked, onChange, children }: { checked: boolean; onChange:
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-4.5 cursor-pointer accent-primary" />
       {children}
     </label>
-  );
-}
-
-/** "Search contacts…" with an expandable contact → account list and an "add as new contact" card. */
-export function ContactPicker({
-  onSelect,
-  onAddNew,
-  onAddAccount,
-}: {
-  onSelect: (contact: PayeeContact, account: BankAccount) => void;
-  onAddNew: (name: string) => void;
-  onAddAccount: (contact: PayeeContact) => void;
-}) {
-  const contacts = useBankingStore((s) => s.contacts);
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const trimmed = search.trim();
-  const filtered = trimmed === "" ? contacts : contacts.filter((c) => c.name.toLowerCase().includes(trimmed.toLowerCase()));
-  const showAddNew = trimmed !== "" && filtered.length === 0;
-  const dropdownOpen = open || !!expandedId;
-  const close = () => {
-    setOpen(false);
-    setExpandedId(null);
-  };
-
-  return (
-    <div className="relative flex flex-col gap-1.5">
-      {dropdownOpen && <ClickAway onClose={close} />}
-      <Input
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setOpen(true);
-        }}
-        onClick={() => setOpen(true)}
-        placeholder="Search contacts..."
-        className="relative z-20"
-      />
-      {dropdownOpen && (
-        <div className={cn(LIST_PANEL, "flex max-h-[360px] flex-col gap-2 overflow-y-auto p-2")}>
-          {showAddNew ? (
-            <div
-              onClick={() => {
-                close();
-                onAddNew(trimmed);
-              }}
-              className="cursor-pointer rounded-md border border-dashed border-input p-3 text-center text-2sm text-foreground hover:bg-accent/60"
-            >
-              + Add "{trimmed}" as a new contact
-            </div>
-          ) : (
-            <div className="rounded-md border border-border">
-              {filtered.map((c) => {
-                const expanded = expandedId === c.id;
-                return (
-                  <div key={c.id} className="border-b border-border last:border-b-0">
-                    <div
-                      onClick={() => setExpandedId(expanded ? null : c.id)}
-                      className="flex cursor-pointer items-center justify-between gap-2 px-3 py-[11px] hover:bg-accent/60"
-                    >
-                      <div className="text-2sm font-semibold">
-                        {c.name}
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {" "}
-                          · {c.accounts.length === 1 ? "1 account" : `${c.accounts.length} accounts`}
-                        </span>
-                      </div>
-                      <ChevronDown className={cn("size-4 shrink-0 opacity-60 transition-transform duration-200", expanded && "rotate-180")} />
-                    </div>
-                    {expanded && (
-                      <>
-                        {c.accounts.map((a) => (
-                          <div
-                            key={a.id}
-                            onClick={() => {
-                              close();
-                              setSearch("");
-                              onSelect(c, a);
-                            }}
-                            className="flex cursor-pointer items-center justify-between gap-2 border-t border-border bg-muted py-2.5 pe-3 ps-[22px] hover:bg-accent"
-                          >
-                            <div className="text-2sm font-medium">
-                              {a.bank} · {maskIfsc(a.ifsc)}
-                            </div>
-                            {a.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>}
-                          </div>
-                        ))}
-                        <div
-                          onClick={() => {
-                            close();
-                            onAddAccount(c);
-                          }}
-                          className="cursor-pointer border-t border-border bg-muted py-2.5 pe-3 ps-[22px] text-xs font-semibold text-primary hover:bg-accent"
-                        >
-                          Add Another Bank Account
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** "Search employees…" with an inline list; missing employees route to HRMS (placeholder). */
-export function EmployeePicker({
-  onSelect,
-  onNeedsAccount,
-}: {
-  onSelect: (employee: Employee) => void;
-  onNeedsAccount: (employee: Employee) => void;
-}) {
-  const employees = useBankingStore((s) => s.employees);
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
-
-  const trimmed = search.trim();
-  const filtered = trimmed === "" ? employees : employees.filter((e) => e.name.toLowerCase().includes(trimmed.toLowerCase()));
-  const notFound = trimmed !== "" && filtered.length === 0;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Input
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setOpen(true);
-        }}
-        onClick={() => setOpen(true)}
-        placeholder="Search employees..."
-      />
-      {redirecting ? (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-border p-3.5 text-center">
-          <div className="size-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <div className="text-2sm text-muted-foreground">Redirecting to HRMS to add "{trimmed}"… (Placeholder in this prototype.)</div>
-          <button type="button" onClick={() => setRedirecting(false)} className="cursor-pointer text-xs font-semibold text-primary hover:underline">
-            Back
-          </button>
-        </div>
-      ) : (
-        open && (
-          <div className="max-h-[280px] overflow-y-auto rounded-md border border-border">
-            {notFound ? (
-              <div className="flex flex-col gap-2 p-3.5">
-                <div className="text-2sm text-foreground">Can't find "{trimmed}" in the employee list.</div>
-                <Button size="sm" className="self-start" onClick={() => setRedirecting(true)}>
-                  Add in HRMS
-                </Button>
-              </div>
-            ) : (
-              filtered.map((e) => (
-                <div
-                  key={e.id}
-                  onClick={() => {
-                    setOpen(false);
-                    setSearch("");
-                    if (e.account) onSelect(e);
-                    else onNeedsAccount(e);
-                  }}
-                  className={cn(ROW, "flex items-center justify-between gap-2")}
-                >
-                  <div className="min-w-0">
-                    <div className="text-2sm font-semibold">
-                      {e.name}
-                      <span className="text-xs font-normal text-muted-foreground"> · {e.role}</span>
-                    </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      {e.account ? `${e.account.bank} · ${maskIfsc(e.account.ifsc)}` : "No bank account on file"}
-                    </div>
-                  </div>
-                  {e.account && (e.account.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>)}
-                </div>
-              ))
-            )}
-          </div>
-        )
-      )}
-    </div>
   );
 }
 
@@ -680,58 +468,67 @@ export function PayeePicker({
         <div className={cn(LIST_PANEL, "max-h-[360px] overflow-y-auto")}>
           {cs.map((c) => {
             const expanded = expandedId === c.id;
+            const one = c.accounts.length === 1;
+            const none = c.accounts.length === 0;
+            const choose = () => {
+              if (none) {
+                close();
+                onAddContactAccount(c);
+              } else if (one) {
+                close();
+                setSearch("");
+                onSelectContact(c, c.accounts[0]);
+              } else setExpandedId(expanded ? null : c.id);
+            };
             return (
               <div key={c.id} className="border-b border-border">
-                <div
-                  onClick={() => (c.accounts.length === 1 ? (close(), setSearch(""), onSelectContact(c, c.accounts[0])) : setExpandedId(expanded ? null : c.id))}
-                  className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2.5 hover:bg-accent/60"
-                >
+                <div onClick={choose} className="group flex cursor-pointer items-center justify-between gap-2 px-3 py-2.5 hover:bg-accent/60">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-2sm font-semibold">
                       <span className="truncate">{c.name}</span>
                       {tag("Contact")}
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {c.accounts.length === 1 ? `${c.accounts[0].bank} · ${maskIfsc(c.accounts[0].ifsc)}` : `${c.accounts.length} bank accounts`}
+                    <div className={cn("mt-0.5 truncate text-xs", none ? "text-primary" : "text-muted-foreground")}>
+                      {none ? "No bank account yet · add details" : one ? `${c.accounts[0].bank} · ${maskIfsc(c.accounts[0].ifsc)}` : `${c.accounts.length} bank accounts`}
                     </div>
                   </div>
-                  {c.accounts.length > 1 ? (
-                    <ChevronDown className={cn("size-4 shrink-0 opacity-60 transition-transform", expanded && "rotate-180")} />
-                  ) : c.accounts[0]?.verified ? (
-                    <VerifiedDot />
-                  ) : (
-                    <Badge variant="warning">Unverified</Badge>
-                  )}
-                </div>
-                {expanded && (
-                  <>
-                    {c.accounts.map((a) => (
-                      <div
-                        key={a.id}
-                        onClick={() => {
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {one && (c.accounts[0].verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>)}
+                    {c.accounts.length > 1 && <ChevronDown className={cn("size-4 opacity-60 transition-transform", expanded && "rotate-180")} />}
+                    {!none && (
+                      <button
+                        type="button"
+                        title="Add bank account"
+                        aria-label={`Add bank account for ${c.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
                           close();
-                          setSearch("");
-                          onSelectContact(c, a);
+                          onAddContactAccount(c);
                         }}
-                        className="flex cursor-pointer items-center justify-between gap-2 border-t border-border bg-muted py-2.5 pe-3 ps-6 hover:bg-accent"
+                        className="flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-primary group-hover:opacity-100 focus-visible:opacity-100"
                       >
-                        <span className="text-2sm">
-                          {a.bank} · {maskIfsc(a.ifsc)}
-                        </span>
-                        {a.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>}
-                      </div>
-                    ))}
+                        <Plus className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {expanded &&
+                  c.accounts.map((a) => (
                     <div
+                      key={a.id}
                       onClick={() => {
                         close();
-                        onAddContactAccount(c);
+                        setSearch("");
+                        onSelectContact(c, a);
                       }}
-                      className="cursor-pointer border-t border-border bg-muted py-2.5 pe-3 ps-6 text-xs font-semibold text-primary hover:bg-accent"
+                      className="flex cursor-pointer items-center justify-between gap-2 border-t border-border bg-muted py-2.5 pe-3 ps-6 hover:bg-accent"
                     >
-                      + Another bank account
+                      <span className="text-2sm">
+                        {a.bank} · {maskIfsc(a.ifsc)}
+                      </span>
+                      {a.verified ? <VerifiedDot /> : <Badge variant="warning">Unverified</Badge>}
                     </div>
-                  </>
-                )}
+                  ))}
               </div>
             );
           })}
@@ -776,7 +573,7 @@ export function PayeePicker({
             }}
             className="cursor-pointer px-3 py-2.5 text-2sm font-medium text-primary hover:bg-accent/60"
           >
-            + Pay someone new (one-off)
+            + Someone new (one-off)
           </div>
         </div>
       )}

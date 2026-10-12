@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 import { Badge, type BadgeVariant } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -10,10 +10,8 @@ import { useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
-  BeneTypeTabs,
-  ContactPicker,
   DrawerFooter,
-  EmployeePicker,
+  PayeePicker,
   LG,
   Note,
   OtpStep,
@@ -22,7 +20,6 @@ import {
   ReviewRow,
   SuccessView,
   TransferDrawer,
-  type BeneType,
 } from "./shared";
 import {
   BULK_BANKS_LABEL,
@@ -319,22 +316,21 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
   );
 }
 
-type AddPanel = { type: "new-contact"; name: string } | { type: "contact-account"; contactId: string } | { type: "employee-account"; employeeId: string };
+type AddPanel =
+  | { type: "new-contact"; name: string }
+  | { type: "contact-account"; contactId: string }
+  | { type: "employee-account"; employeeId: string }
+  | { type: "one-off" };
 
 /** "Add Payment" card: pick a contact / employee / one-off payee, then an amount. */
 function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: PickedPayee, amount: string) => void }) {
   const contacts = useBankingStore((s) => s.contacts);
   const employees = useBankingStore((s) => s.employees);
   const store = useBankingStore.getState;
-  const [beneType, setBeneTypeRaw] = useState<BeneType>("contact");
   const [selected, setSelected] = useState<PickedPayee | null>(null);
   const [panel, setPanel] = useState<AddPanel | null>(null);
   const [amount, setAmount] = useState("");
 
-  const setBeneType = (t: BeneType) => {
-    setBeneTypeRaw(t);
-    setPanel(null);
-  };
   const pick = (payee: PickedPayee) => {
     setSelected(payee);
     setPanel(null);
@@ -369,7 +365,7 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
     const compactForm = (title: string, onSubmit: Parameters<typeof AccountForm>[0]["onSubmit"]) => (
       <AccountForm title={title} labelled={false} onCancel={() => setPanel(null)} onSubmit={onSubmit} />
     );
-    let sub = null;
+    let sub: ReactNode = null;
     if (panel?.type === "new-contact")
       sub = compactForm(`New contact: ${panel.name}`, (input) => {
         const { contact, account } = store().addContact(panel.name, input);
@@ -391,37 +387,31 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
       });
     }
 
+    else if (panel?.type === "one-off")
+      sub = (
+        <AccountForm
+          withPayeeName
+          labelled={false}
+          onCancel={() => setPanel(null)}
+          onSubmit={({ name, accountNumber, ifsc, verified, saveAsContact }) => {
+            if (saveAsContact) store().addContact(name, { accountNumber, ifsc, verified });
+            pick({ key: `other:${Date.now()}`, name, bank: bankFromIfsc(ifsc), maskedIfsc: maskIfsc(ifsc), verified });
+          }}
+        />
+      );
+    if (sub) return sub;
+
     return (
-      <>
-        <BeneTypeTabs value={beneType} onChange={setBeneType} />
-        {beneType === "contact" && (
-          <ContactPicker
-            onSelect={(c, a) => pick({ key: `contact:${c.id}:${a.id}`, name: c.name, bank: a.bank, maskedIfsc: maskIfsc(a.ifsc), verified: a.verified })}
-            onAddNew={(name) => setPanel({ type: "new-contact", name })}
-            onAddAccount={(c) => setPanel({ type: "contact-account", contactId: c.id })}
-          />
-        )}
-        {beneType === "employee" && (
-          <EmployeePicker
-            onSelect={(e) =>
-              e.account &&
-              pick({ key: `employee:${e.id}`, name: e.name, bank: e.account.bank, maskedIfsc: maskIfsc(e.account.ifsc), verified: e.account.verified })
-            }
-            onNeedsAccount={(e) => setPanel({ type: "employee-account", employeeId: e.id })}
-          />
-        )}
-        {beneType === "other" && (
-          <AccountForm
-            withPayeeName
-            labelled={false}
-            onSubmit={({ name, accountNumber, ifsc, verified, saveAsContact }) => {
-              if (saveAsContact) store().addContact(name, { accountNumber, ifsc, verified });
-              pick({ key: `other:${Date.now()}`, name, bank: bankFromIfsc(ifsc), maskedIfsc: maskIfsc(ifsc), verified });
-            }}
-          />
-        )}
-        {sub}
-      </>
+      <PayeePicker
+        onSelectContact={(c, a) => pick({ key: `contact:${c.id}:${a.id}`, name: c.name, bank: a.bank, maskedIfsc: maskIfsc(a.ifsc), verified: a.verified })}
+        onAddContact={(name) => setPanel({ type: "new-contact", name })}
+        onAddContactAccount={(c) => setPanel({ type: "contact-account", contactId: c.id })}
+        onSelectEmployee={(e) =>
+          e.account && pick({ key: `employee:${e.id}`, name: e.name, bank: e.account.bank, maskedIfsc: maskIfsc(e.account.ifsc), verified: e.account.verified })
+        }
+        onEmployeeNeedsAccount={(e) => setPanel({ type: "employee-account", employeeId: e.id })}
+        onOneOff={() => setPanel({ type: "one-off" })}
+      />
     );
   })();
 

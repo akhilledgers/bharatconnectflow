@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Check, Clock, Download, RefreshCw, RotateCcw, Search, Send, Undo2, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Clock, Download, RefreshCw, Search, Send, Undo2, X, XCircle } from "lucide-react";
 import { Badge, type BadgeVariant } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -111,14 +111,12 @@ export function PayoutsTab({ onSingle }: { onSingle: () => void }) {
                 <th className={cn(thCls, "w-36 text-right")}>Amount</th>
                 <th className={cn(thCls, "w-36")}>From</th>
                 <th className={cn(thCls, "w-72")}>Status</th>
-                <th className={cn(thCls, "w-28")} />
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => {
                 const a = account(p.fromAccountId);
                 const st = PAYOUT_STATUS[p.status];
-                const canRetry = NEEDS_ACTION.includes(p.status) && !retried.has(p.id);
                 return (
                   <tr key={p.id} className={cn(trCls, "cursor-pointer")} onClick={() => setOpenId(p.id)}>
                     <td className={cn(tdCls, "text-muted-foreground")}>
@@ -163,32 +161,18 @@ export function PayoutsTab({ onSingle }: { onSingle: () => void }) {
                                   : ""}
                       </div>
                     </td>
-                    <td className={cn(tdCls, "text-right")} onClick={(e) => e.stopPropagation()}>
-                      {canRetry && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            useBankingStore.getState().retryPayout(p.id);
-                            toast(`Retrying ${p.name} · ${fmtINR(p.amount)}`);
-                          }}
-                        >
-                          <RotateCcw />
-                          Retry
-                        </Button>
-                      )}
-                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
+                  <td colSpan={5} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
                     {payouts.length === 0 ? (
                       <span className="flex flex-col items-center gap-3">
                         No payouts yet. Payments you make from LEDGERS are tracked here until they're settled.
                         <Button variant="primary" onClick={onSingle}>
                           <Send />
-                          Pay someone
+                          New payment
                         </Button>
                       </span>
                     ) : view === "action" ? (
@@ -204,12 +188,12 @@ export function PayoutsTab({ onSingle }: { onSingle: () => void }) {
         </div>
       </Card>
 
-      {open && <PayoutDrawer payout={open} retried={retried.has(open.id)} onClose={() => setOpenId(null)} />}
+      {open && <PayoutDrawer payout={open} onClose={() => setOpenId(null)} />}
     </div>
   );
 }
 
-function PayoutDrawer({ payout: p, retried, onClose }: { payout: Payout; retried: boolean; onClose: () => void }) {
+function PayoutDrawer({ payout: p, onClose }: { payout: Payout; onClose: () => void }) {
   useEscape(onClose);
   const account = useBankingStore((s) => s.accounts.find((a) => a.id === p.fromAccountId));
   const store = useBankingStore.getState;
@@ -328,20 +312,7 @@ function PayoutDrawer({ payout: p, retried, onClose }: { payout: Payout; retried
               Cancel payout
             </Button>
           )}
-          {NEEDS_ACTION.includes(p.status) && !retried && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                store().retryPayout(p.id);
-                toast(`Retrying ${p.name} · ${fmtINR(p.amount)}`);
-                onClose();
-              }}
-            >
-              <RotateCcw />
-              Retry payout
-            </Button>
-          )}
-          {(p.status === "processing" || p.status === "cancelled" || retried) && <Button onClick={onClose}>Close</Button>}
+          {p.status !== "awaiting" && <Button onClick={onClose}>Close</Button>}
         </div>
       </div>
     </>
