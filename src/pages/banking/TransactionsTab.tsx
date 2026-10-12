@@ -16,7 +16,7 @@ import { RECONCILED_TO, bankBalanceOf, shortDate } from "./overviewData";
 import { OVERLAY } from "./shared";
 import { FilterChips } from "./FilterChips";
 import { StatCard } from "./StatCard";
-import { pickStatementFile } from "./statementUpload";
+import { UploadStatementDialog } from "./UploadStatementDialog";
 import { useEscape } from "./useEscape";
 
 /** Which side of the reconciliation is listed. */
@@ -206,12 +206,10 @@ export function TransactionsTab({
     setSyncing(false);
     toast(found ? `${found} new transaction${found > 1 ? "s" : ""} · suggested by AI, ready to accept` : "Up to date · no new transactions");
   };
+  const [uploading, setUploading] = useState<CompanyAccount | null>(null);
   const upload = (a: CompanyAccount) => {
     setUploadOpen(false);
-    pickStatementFile((name) => {
-      store().uploadStatement(a.id, name);
-      toast(`Importing ${name} for ${accountName(a)}. New transactions show up here once it's read.`);
-    });
+    setUploading(a);
   };
   const connected = scope.filter((a) => a.bankKey && a.connection === "connected");
 
@@ -695,6 +693,7 @@ export function TransactionsTab({
           }}
         />
       )}
+      {uploading && <UploadStatementDialog account={uploading} onClose={() => setUploading(null)} />}
     </div>
   );
 }

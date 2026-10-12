@@ -392,6 +392,18 @@ function BankingOptions() {
           />
         </div>
         <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Next uploaded statement</div>
+          <Choice
+            value={scenario.statementFile}
+            options={[
+              ["readable", "Reads fine"],
+              ["locked", "Password"],
+              ["other-account", "Other account"],
+            ]}
+            onChange={(statementFile) => setScenario({ statementFile })}
+          />
+        </div>
+        <div className="space-y-1.5">
           <div className="text-[11px] text-muted-foreground">Connect / Reconnect banking</div>
           <Choice
             value={scenario.register}

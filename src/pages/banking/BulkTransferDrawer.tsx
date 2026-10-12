@@ -161,6 +161,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                     <div>
                       <div className="text-2sm font-semibold">{row.name}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
+                        {row.docs?.length ? `${row.docs.join(", ")} · ` : ""}
                         {row.bank} · {row.maskedIfsc}
                         {payFrom.needsBeneficiary &&
                           (beneList?.[row.key]?.status === "active" ? (
@@ -250,6 +251,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                       <div>
                         <div className="text-2sm font-semibold">{r.name}</div>
                         <div className="text-xs text-muted-foreground">
+                          {r.docs?.length ? `${r.docs.join(", ")} · ` : ""}
                           {r.bank} · {r.maskedIfsc}
                         </div>
                       </div>
@@ -302,6 +304,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                   mode: "NEFT",
                   status: makerChecker ? "awaiting" : "processing",
                   batch: { count: rows.length, paid: 0, failed: 0 },
+                  docs: rows.some((r) => r.docs?.length) ? rows.flatMap((r) => r.docs ?? []) : undefined,
                 });
                 setSnapshot({ count: rows.length, total: fmtINR(total) });
                 setStep("success");

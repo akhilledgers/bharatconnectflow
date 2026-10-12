@@ -283,6 +283,8 @@ export interface Payout {
   reason?: string;
   voucher?: string;
   batch?: { count: number; paid: number; failed: number };
+  /** Numbers of the bills / expense vouchers this pays. */
+  docs?: string[];
   /** For a retry, the payout it replaces. */
   retryOf?: string;
 }

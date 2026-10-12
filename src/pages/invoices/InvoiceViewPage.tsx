@@ -18,6 +18,9 @@ import { ReviewAndSendCallout } from "./ReviewAndSendCallout";
 import { NotesSection } from "./NotesCard";
 import { CancelDialog, InlineResponse } from "./BcDialogs";
 import { editRule } from "../../lib/editRules";
+import { useDocPayment } from "../banking/PayDocs";
+import { PayDocSection } from "../banking/PayDocSection";
+import { billDoc, isPayableBill } from "./payBill";
 import { amountInWords, bankFromIfsc, longDate, stateFromGstin } from "./invoiceDoc";
 
 // Copied from LEDGERS' live View Invoice (in.ledgers.cloud/v4/invoice/view-invoice): a text-sm header with
@@ -130,6 +133,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
           <Card>
             <DueHeader invoice={invoice} />
             <div className="space-y-5 p-4">
+              {kind === "purchase" && <PayDocSection doc={billDoc(invoice)} payable={isPayableBill(invoice)} />}
               <ReconciliationSection invoice={invoice} kind={kind} />
               <hr className="border-dashed" />
               <div className="flex items-center justify-between">
@@ -387,14 +391,15 @@ function TotalRow({ label, value }: { label: string; value: number }) {
 function DueHeader({ invoice }: { invoice: Invoice }) {
   const received = (invoice.receipts ?? []).reduce((s, r) => s + r.amount + (r.tds ?? 0), 0);
   const due = Math.max(0, invoice.amount - received);
-  const paid = invoice.status === "paid";
+  const payment = useDocPayment(invoice.id);
+  const paid = invoice.status === "paid" || payment?.status === "paid";
   return (
     <div className="flex items-center justify-between rounded-t-xl px-4 py-4" style={{ backgroundColor: paid ? "#EBFAF2" : "rgb(255, 238, 243)" }}>
       <h2 className="text-base font-semibold text-gray-800">
         INR {money2(paid ? invoice.amount : due)} {paid ? "Paid" : "Due"}
       </h2>
       <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : invoice.status === "partly_paid" ? "bg-amber-500" : "bg-red-500"}`}>
-        {statusLabel(invoice.status)}
+        {statusLabel(paid ? "paid" : invoice.status)}
       </span>
     </div>
   );

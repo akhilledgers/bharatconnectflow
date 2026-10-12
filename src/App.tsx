@@ -1,4 +1,6 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
+import { ExpenseVoucherListPage } from "./pages/expenses/ExpenseVoucherListPage";
+import { ExpenseVoucherViewPage } from "./pages/expenses/ExpenseVoucherViewPage";
 import { AppShell } from "./components/layout/AppShell";
 import { Dashboard } from "./pages/Dashboard";
 import { BharatConnectPage } from "./pages/settings/bharatconnect/BharatConnectPage";
@@ -32,6 +34,8 @@ export default function App() {
           <Route path="/expenses/bills/create" element={<InvoiceCreatePage kind="purchase" />} />
           <Route path="/expenses/bills/:id/edit" element={<InvoiceEditPage kind="purchase" />} />
           <Route path="/expenses/bills/:id" element={<InvoiceViewPage kind="purchase" />} />
+          <Route path="/expenses/vouchers" element={<ExpenseVoucherListPage />} />
+          <Route path="/expenses/vouchers/:id" element={<ExpenseVoucherViewPage />} />
 
           <Route path="/banking" element={<BankingPage />} />
         </Route>

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronDown, FileUp, Plus, Receipt, Send, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { menuItemCls, popoverCls } from "../../components/ui/popover";
@@ -37,7 +38,12 @@ export function BankingPage() {
   const connected = payFrom.length > 0;
   const bulkAvailable = payFrom.some((a) => a.bulkSupported);
 
-  const [tab, setTab] = useState<BankingTab>("overview");
+  // Other pages can deep-link to a tab (a bill's payment links to Payouts).
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<BankingTab>(() => {
+    const t = params.get("tab");
+    return t === "transactions" || t === "payouts" || t === "accounts" ? t : "overview";
+  });
   const [txnAccountPicked, setTxnAccount] = useState<string>(ALL_ACCOUNTS);
   const [flow, setFlow] = useState<Flow>({ kind: "none" });
   const [moreOpen, setMoreOpen] = useState(false);

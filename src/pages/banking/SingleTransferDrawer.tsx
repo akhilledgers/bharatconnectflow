@@ -59,6 +59,8 @@ export interface SingleTransferPreset {
   beneficiary?: Beneficiary;
   billIds?: string[];
   amount?: string;
+  /** Paying a supplier with no bank account yet (from a bill): open straight on adding one. */
+  addAccountFor?: string;
 }
 
 const DEFAULT_PURPOSE: Record<BeneType, Purpose> = { contact: "vendor", employee: "salary", other: "other" };
@@ -81,7 +83,7 @@ export function SingleTransferDrawer({
   const payFrom = accounts.find((a) => a.id === payFromId) ?? accounts[0];
 
   const [beneficiary, setBeneficiary] = useState<Beneficiary | null>(preset?.beneficiary ?? null);
-  const [panel, setPanel] = useState<AddPanel | null>(null);
+  const [panel, setPanel] = useState<AddPanel | null>(preset?.addAccountFor ? { type: "contact-account", contactId: preset.addAccountFor } : null);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
@@ -93,7 +95,7 @@ export function SingleTransferDrawer({
 
   const [modeExpanded, setModeExpanded] = useState(false);
   const [modeOverride, setModeOverride] = useState<TransferMode | null>(null);
-  const [purpose, setPurpose] = useState<Purpose | "">(preset?.beneficiary ? "vendor" : "");
+  const [purpose, setPurpose] = useState<Purpose | "">(preset?.beneficiary || preset?.billIds?.length ? "vendor" : "");
   const [purposeOpen, setPurposeOpen] = useState(false);
   const [purposeOther, setPurposeOther] = useState("");
 
@@ -136,9 +138,10 @@ export function SingleTransferDrawer({
     setPanel(null);
     setVerifyError(null);
     if (!purpose) setPurpose(DEFAULT_PURPOSE[kind]);
-    // Vendors with unpaid bills: pre-select the oldest bill and fill its amount.
+    // Vendors with unpaid bills: pre-select the oldest bill and fill its amount (unless we came from a bill).
     const c = extra?.contact;
-    if (c?.category === "vendor" && c.bills?.length) {
+    const fromBill = preset?.addAccountFor && b.kind === "contact" && b.contactId === preset.addAccountFor;
+    if (c?.category === "vendor" && c.bills?.length && !fromBill) {
       const oldest = oldestBill(c.bills);
       setBillIds([oldest.id]);
       setAmount(String(oldest.amount));
@@ -203,6 +206,7 @@ export function SingleTransferDrawer({
       fromAccountId: payFrom.id,
       mode,
       status: makerChecker ? "awaiting" : "processing",
+      docs: billRefs.length ? billRefs : undefined,
     });
     setSnapshot({ amount: fmtINR(amountNum), name: bene.name, mode });
     setStep("success");

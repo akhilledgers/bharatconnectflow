@@ -6,6 +6,7 @@ import {
   Copy,
   Eye,
   Funnel,
+  IndianRupee,
   MoreHorizontal,
   Plus,
   Printer,
@@ -16,6 +17,7 @@ import {
   SquareMenu,
   SquarePen,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Checkbox, Input } from "../../components/ui/input";
@@ -23,6 +25,7 @@ import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { tableCls, thCls, tdCls, trCls, TablePagination } from "../../components/ui/table";
 import { editRule } from "../../lib/editRules";
 import { useStore } from "../../store/useStore";
+import { useBankingStore } from "../../store/useBankingStore";
 import { statusLabel, statusVariant, confirmationMeta, latestBcComment } from "../../lib/invoiceStatus";
 import { Badge } from "../../components/ui/badge";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
@@ -33,6 +36,8 @@ import { InviteBcTooltip } from "../../components/InviteBcTooltip";
 import { FilterMenu } from "../../components/FilterMenu";
 import { configFor, sumAmount, sumUnpaid, inr } from "./kindConfig";
 import type { Invoice } from "../../types";
+import { paymentLabel, useDocPayment, usePayDocs } from "../banking/PayDocs";
+import { billDoc, isPayableBill } from "./payBill";
 
 // Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, FY range.
 function StatCard({ label, value, className }: { label: string; value: string; className: string }) {
@@ -87,11 +92,26 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const connected = business.connectionState === "connected";
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [bcFilter, setBcFilter] = useState<BcFilter>("all");
+  const [selected, setSelected] = useState<string[]>([]);
+  const payDocs = usePayDocs();
+  const payouts = useBankingStore((s) => s.payouts);
 
   const rows = allInvoices.filter((i) => i.kind === kind);
   const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, bcFilter)) : rows;
   const total = sumAmount(rows);
   const outstanding = sumUnpaid(rows);
+
+  // Bills: pay straight from the list. Only bills still owed and not already being paid from the bank.
+  const purchase = kind === "purchase";
+  const inPayment = (i: Invoice) => payouts.some((p) => p.docs?.includes(i.id) && ["awaiting", "processing", "paid"].includes(p.status));
+  const selectedRows = filteredRows.filter((i) => selected.includes(i.id));
+  const toPay = selectedRows.filter((i) => isPayableBill(i) && !inPayment(i));
+  const allSelected = filteredRows.length > 0 && filteredRows.every((i) => selected.includes(i.id));
+  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const paySelected = () => {
+    payDocs.pay(toPay.map(billDoc));
+    setSelected([]);
+  };
 
   const stats = [
     { label: config.statCardLabels[0], value: inr(total), className: "text-emerald-600" },
@@ -128,6 +148,39 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs shadow-black/5">
+        {selectedRows.length > 0 ? (
+          <div className="flex h-14 items-center justify-between gap-3 bg-muted/40 px-5">
+            <div className="flex items-center gap-2 text-2sm">
+              <button onClick={() => setSelected([])} aria-label="Clear selection" className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
+                <X className="size-4" />
+              </button>
+              <span className="font-medium">{selectedRows.length} selected</span>
+              {purchase && toPay.length !== selectedRows.length && toPay.length > 0 && (
+                <span className="text-muted-foreground">· {toPay.length} to pay</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm">
+                <ArrowDownToLine />
+                Download
+              </Button>
+              <Button variant="outline" size="sm">
+                <Printer />
+                Print
+              </Button>
+              <Button variant="outline" size="sm">
+                <Trash2 />
+                Delete
+              </Button>
+              {purchase && payDocs.canPay && (
+                <Button size="sm" variant="primary" disabled={!toPay.length} onClick={paySelected} title={toPay.length ? undefined : "Nothing left to pay on these bills"}>
+                  <IndianRupee />
+                  {toPay.length ? `Pay ${inr(toPay.reduce((s, i) => s + billDoc(i).due, 0))}` : "Pay"}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="flex items-center justify-between gap-3 px-5 py-3">
           <div className="relative w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -161,12 +214,13 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
             </button>
           </div>
         </div>
+        )}
 
         <table className={`${tableCls} table-fixed`}>
           <thead className="bg-muted/40">
             <tr>
               <th className={`${thCls} w-12`}>
-                <Checkbox aria-label="Select all" />
+                <Checkbox aria-label="Select all" checked={allSelected} onChange={() => setSelected(allSelected ? [] : filteredRows.map((i) => i.id))} />
               </th>
               <th className={thCls}>{config.singular} Number</th>
               <th className={thCls}>{config.singular} Date</th>
@@ -174,7 +228,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
               <th className={thCls}>Amount</th>
               <th className={thCls}>{config.singular} Status</th>
               {connected && <th className={`${thCls} w-44`}>Bharat Connect</th>}
-              <th className={`${thCls} w-20`}>Action</th>
+              <th className={`${thCls} ${kind === "purchase" ? "w-28" : "w-20"}`}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -189,6 +243,9 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 onCloseMenu={() => setOpenMenuId(null)}
                 onView={() => navigate(`${config.basePath}/${inv.id}`)}
                 onSend={() => sendInvoiceViaBharatConnect(inv.id)}
+                selected={selected.includes(inv.id)}
+                onSelect={() => toggle(inv.id)}
+                onPay={purchase && payDocs.canPay && isPayableBill(inv) ? () => payDocs.pay([billDoc(inv)]) : undefined}
               />
             ))}
             {filteredRows.length === 0 && (
@@ -207,6 +264,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
           <TablePagination from={1} to={filteredRows.length} total={filteredRows.length} />
         </div>
       </div>
+      {payDocs.drawers}
     </div>
   );
 }
@@ -239,6 +297,9 @@ function InvoiceRow({
   onCloseMenu,
   onView,
   onSend,
+  selected,
+  onSelect,
+  onPay,
 }: {
   invoice: Invoice;
   config: ReturnType<typeof configFor>;
@@ -248,8 +309,14 @@ function InvoiceRow({
   onCloseMenu: () => void;
   onView: () => void;
   onSend: () => void;
+  selected: boolean;
+  onSelect: () => void;
+  /** Bills still owed: pay from a connected bank. */
+  onPay?: () => void;
 }) {
   const navigate = useNavigate();
+  const payment = useDocPayment(invoice.id);
+  const canPay = onPay && !payment;
   const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
   const bcComment = latestBcComment(invoice);
   const showRespond = connected && config.kind === "purchase" && invoice.bcConfirmationStatus === "pending";
@@ -261,7 +328,7 @@ function InvoiceRow({
   return (
     <tr className={`relative ${trCls}`}>
       <td className={tdCls}>
-        <Checkbox aria-label={`Select ${invoice.id}`} />
+        <Checkbox aria-label={`Select ${invoice.id}`} checked={selected} onChange={onSelect} />
       </td>
       <td className={`${tdCls} text-xs`}>
         <button onClick={onView} className="text-primary hover:underline">
@@ -277,9 +344,14 @@ function InvoiceRow({
       </td>
       <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
       <td className={tdCls}>
-        <Badge variant={statusVariant(invoice.status)}>
-          {statusLabel(invoice.status)}
-        </Badge>
+        {payment?.status === "paid" ? (
+          <Badge variant={statusVariant("paid")}>{statusLabel("paid")}</Badge>
+        ) : (
+          <Badge variant={statusVariant(invoice.status)}>
+            {statusLabel(invoice.status)}
+          </Badge>
+        )}
+        {payment && payment.status !== "paid" && <div className="mt-1 text-xs text-muted-foreground">{paymentLabel(payment)}</div>}
       </td>
       {connected && (
         <td className={tdCls}>
@@ -348,7 +420,12 @@ function InvoiceRow({
         </td>
       )}
       <td className={tdCls}>
-        <div className="relative inline-block">
+        <div className="relative flex items-center gap-1">
+          {canPay && (
+            <Button variant="outline" size="sm" onClick={onPay}>
+              Pay
+            </Button>
+          )}
           <button
             onClick={onToggleMenu}
             aria-label="Actions"
@@ -360,7 +437,7 @@ function InvoiceRow({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
-              <div className={`absolute right-0 z-20 mt-1 w-48 space-y-0.5 p-1 ${popoverCls}`}>
+              <div className={`absolute right-0 top-full z-20 mt-1 w-48 space-y-0.5 p-1 ${popoverCls}`}>
                 <MenuItem
                   icon={Eye}
                   label="View Details"
@@ -369,6 +446,16 @@ function InvoiceRow({
                     onView();
                   }}
                 />
+                {canPay && (
+                  <MenuItem
+                    icon={IndianRupee}
+                    label="Pay from bank"
+                    onClick={() => {
+                      onCloseMenu();
+                      onPay();
+                    }}
+                  />
+                )}
                 {/* Bharat Connect action sits with the LEDGERS ones, only when it applies. */}
                 {(showSend && counterpartyOnBc) || showRetry ? (
                   <MenuItem

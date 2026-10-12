@@ -11,6 +11,7 @@ import {
   payFromAccounts,
   type ApprovalMode,
   type BankAccount,
+  type Bill,
   type BankingScenario,
   type CompanyAccount,
   type Employee,
@@ -83,6 +84,11 @@ interface BankingState {
   markEmployeeAccountVerified: (employeeId: string) => void;
   addContact: (name: string, input: NewAccountInput) => { contact: PayeeContact; account: BankAccount };
   addContactAccount: (contactId: string, input: NewAccountInput) => BankAccount;
+  /**
+   * Paying bills / expense vouchers from where they live: the supplier as a payee (found by name, added as a
+   * vendor without a bank account if new), with those documents among its open bills. Returns the contact's id.
+   */
+  vendorForDocs: (name: string, docs: Bill[]) => string;
   setEmployeeAccount: (employeeId: string, input: NewAccountInput) => BankAccount;
   /**
    * Register Connected Banking: the bank verifies the IDs over its API and answers straight away.
@@ -104,7 +110,9 @@ interface BankingState {
   setPrimary: (accountId: string) => void;
   /** Pull the latest balance and statement from the bank; resolves with the number of new transactions. */
   syncAccount: (accountId: string) => Promise<number>;
-  uploadStatement: (accountId: string, fileName?: string) => void;
+  uploadStatement: (accountId: string, fileName?: string, period?: string) => void;
+  /** Statement uploads left in the plan; past these each upload is charged. */
+  uploadCredits: number;
 
   // ---- reconciliation (Transactions) ----
   acceptMatches: (lineIds: string[]) => void;
@@ -191,6 +199,19 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     const account = toAccount(input);
     set((s) => ({ contacts: s.contacts.map((c) => (c.id !== contactId ? c : { ...c, accounts: [...c.accounts, account] })) }));
     return account;
+  },
+
+  vendorForDocs: (name, docs) => {
+    const key = name.trim().toLowerCase();
+    const found = get().contacts.find((c) => c.name.toLowerCase() === key);
+    const id = found?.id ?? `c${Date.now()}`;
+    const merge = (bills: Bill[] = []) => [...bills.filter((b) => !docs.some((d) => d.id === b.id)), ...docs];
+    set((s) => ({
+      contacts: found
+        ? s.contacts.map((c) => (c.id === id ? { ...c, category: "vendor", bills: merge(c.bills) } : c))
+        : [...s.contacts, { id, name, category: "vendor", accounts: [], bills: docs }],
+    }));
+    return id;
   },
 
   registerBank: (accountId, approval) =>
@@ -296,9 +317,13 @@ export const useBankingStore = create<BankingState>((set, get) => ({
       }, 900);
     }),
 
-  uploadStatement: (accountId, fileName = "statement.pdf") => {
+  uploadCredits: 11,
+  uploadStatement: (accountId, fileName = "statement.pdf", period = "Up to today") => {
     const id = `i${Date.now()}`;
-    set((s) => ({ imports: [{ id, accountId, source: "upload", file: fileName, period: "Up to today", status: "processing", at: nowLabel() }, ...s.imports] }));
+    set((s) => ({
+      uploadCredits: Math.max(0, s.uploadCredits - 1),
+      imports: [{ id, accountId, source: "upload", file: fileName, period, status: "processing", at: nowLabel() }, ...s.imports],
+    }));
     setTimeout(() => {
       const date = todayDMY();
       const prev = get().accounts.find((a) => a.id === accountId)?.statement?.balance ?? 75000;

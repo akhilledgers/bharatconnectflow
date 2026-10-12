@@ -16,7 +16,7 @@ import type { StatementImport } from "./ledgerData";
 import { bankBalanceOf, daysSince } from "./overviewData";
 import { FilterChips } from "./FilterChips";
 import { OVERLAY } from "./shared";
-import { pickStatementFile } from "./statementUpload";
+import { UploadStatementDialog } from "./UploadStatementDialog";
 import { SyncBadge } from "./SyncBadge";
 import { useEscape } from "./useEscape";
 
@@ -59,11 +59,8 @@ export function AccountsTab({
     else toast(`The bank couldn't confirm ${shortName(a)}. Check the account number and IFSC.`, "error");
   };
 
-  const upload = (a: CompanyAccount) =>
-    pickStatementFile((name) => {
-      useBankingStore.getState().uploadStatement(a.id, name);
-      toast(`Importing ${name} for ${shortName(a)}`);
-    });
+  const [uploading, setUploading] = useState<CompanyAccount | null>(null);
+  const upload = (a: CompanyAccount) => setUploading(a);
 
   const row = (a: CompanyAccount) => {
     const bank = bankBalanceOf(a, mode);
@@ -286,6 +283,7 @@ export function AccountsTab({
       )}
 
       {history && <ImportHistory accountId={history} onClose={() => setHistory(null)} onUpload={upload} />}
+      {uploading && <UploadStatementDialog account={uploading} onClose={() => setUploading(null)} />}
     </div>
   );
 }

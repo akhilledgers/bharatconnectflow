@@ -64,6 +64,8 @@ export interface BulkRow extends PickedPayee {
   id: string;
   amount: string;
   ifscValid: boolean;
+  /** Bills / expense vouchers this row pays, when it came from them. */
+  docs?: string[];
 }
 
 export type TransferMode = "IMPS" | "NEFT" | "RTGS";
@@ -81,11 +83,13 @@ export interface BankingScenario {
   bankApproval: "approved" | "pending";
   /** Whether the checker has approved newly added beneficiaries in net banking when the app checks. */
   beneficiaryApproval: "approved" | "pending";
+  /** What the next uploaded statement turns out to be when LEDGERS reads it. */
+  statementFile: "readable" | "locked" | "other-account";
   /** Overview: Needs attention and Accounts side by side, or stacked (the earlier layout). */
   overviewLayout: "split" | "stacked";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", beneficiaryApproval: "approved", overviewLayout: "split" };
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", beneficiaryApproval: "approved", statementFile: "readable", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
 export const CONNECTED_BANKING = Object.fromEntries(
@@ -242,6 +246,13 @@ export function initialContacts(): PayeeContact[] {
       accounts: [{ id: "a8", bank: "IndusInd Bank", ifsc: "INDB0000412", masked: "••••6603", verified: true }],
     },
     { id: "c8", name: "Deepak Trading", category: "vendor", accounts: [] },
+    // Suppliers on the seeded bills and expense vouchers (Om Traders has no bank account yet).
+    { id: "c9", name: "Verve Financial Services Private Limited", category: "vendor", accounts: [{ id: "a9", bank: "HDFC Bank", ifsc: "HDFC0000240", masked: "••••3984", verified: true }] },
+    { id: "c10", name: "Manoj Kumar Yadav", category: "vendor", accounts: [{ id: "a10", bank: "State Bank of India", ifsc: "SBIN0001707", masked: "••••7710", verified: true }] },
+    { id: "c11", name: "Pugal - Einvoice Sandbox GSTIN", category: "vendor", accounts: [{ id: "a11", bank: "ICICI Bank", ifsc: "ICIC0000552", masked: "••••5520", verified: false }] },
+    { id: "c12", name: "Sri Lakshmi Enterprises", category: "vendor", accounts: [{ id: "a12", bank: "Canara Bank", ifsc: "CNRB0000412", masked: "••••0412", verified: true }] },
+    { id: "c13", name: "Swift Cabs", category: "vendor", accounts: [{ id: "a13", bank: "Axis Bank", ifsc: "UTIB0000881", masked: "••••6620", verified: true }] },
+    { id: "c14", name: "Hotel Residency", category: "vendor", accounts: [{ id: "a14", bank: "HDFC Bank", ifsc: "HDFC0000615", masked: "••••1405", verified: true }] },
   ];
 }
 
