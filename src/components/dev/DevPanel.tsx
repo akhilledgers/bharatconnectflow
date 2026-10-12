@@ -381,6 +381,17 @@ function BankingOptions() {
           />
         </div>
         <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Checker approved new beneficiaries (IndusInd), when checked</div>
+          <Choice
+            value={scenario.beneficiaryApproval}
+            options={[
+              ["approved", "Approved"],
+              ["pending", "Not yet"],
+            ]}
+            onChange={(beneficiaryApproval) => setScenario({ beneficiaryApproval })}
+          />
+        </div>
+        <div className="space-y-1.5">
           <div className="text-[11px] text-muted-foreground">Connect / Reconnect banking</div>
           <Choice
             value={scenario.register}

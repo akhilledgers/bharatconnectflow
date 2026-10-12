@@ -46,6 +46,9 @@ export interface PayFromAccount {
   balance: number;
   approvalMode: ApprovalMode;
   bulkSupported: boolean;
+  /** Payees must be on this account's beneficiary list in net banking (IndusInd). */
+  needsBeneficiary: boolean;
+  short: string;
 }
 
 /** A beneficiary picked for a bulk batch row (or the single-transfer carry-over). */
@@ -76,11 +79,13 @@ export interface BankingScenario {
   register: "success" | "fail";
   /** Whether the customer has approved LEDGERS in their net banking when the app checks (banks that ask for it). */
   bankApproval: "approved" | "pending";
+  /** Whether the checker has approved newly added beneficiaries in net banking when the app checks. */
+  beneficiaryApproval: "approved" | "pending";
   /** Overview: Needs attention and Accounts side by side, or stacked (the earlier layout). */
   overviewLayout: "split" | "stacked";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", overviewLayout: "split" };
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", beneficiaryApproval: "approved", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
 export const CONNECTED_BANKING = Object.fromEntries(
@@ -273,6 +278,8 @@ export function payFromAccounts(accounts: CompanyAccount[], s: BankingScenario):
       balance: a.liveBalance?.[s.balance === "low" ? 1 : 0] ?? 0,
       approvalMode: a.bankKey === "icici" ? "single" : a.approval,
       bulkSupported: CONNECTED_BANKING[a.bankKey!].bulk,
+      needsBeneficiary: !!BANK_CONNECTORS[a.bankKey!].beneficiaryList,
+      short: CONNECTED_BANKING[a.bankKey!].short,
     }));
 }
 

@@ -36,6 +36,12 @@ export interface BankConnector {
    * Without this, a connection is live as soon as the bank verifies the details.
    */
   netBankingApproval?: { url: string; steps: string[] };
+  /**
+   * The bank only pays people on the customer's beneficiary list (per customer ID). LEDGERS fetches the list on
+   * connect and adds payees through the API: a single user confirms with an OTP; under maker & checker the
+   * checker approves in net banking.
+   */
+  beneficiaryList?: boolean;
 }
 
 export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
@@ -63,6 +69,7 @@ export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
       url: "https://www.indusind.bank.in/",
       steps: ["Log in to IndusInd net banking", "Open Connected Banking requests", "Approve the request from LEDGERS"],
     },
+    beneficiaryList: true,
   },
   icici: {
     key: "icici",

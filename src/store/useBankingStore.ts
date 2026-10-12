@@ -63,6 +63,11 @@ interface BankingState {
   bookEntries: BookEntry[];
   payouts: Payout[];
   imports: StatementImport[];
+  /**
+   * Beneficiary lists for banks that need one (IndusInd), per connected account (= customer ID): payee key →
+   * status. Payee keys: contact:<contactId>:<accountId>, employee:<employeeId>, other:<ifsc>:<name>.
+   */
+  beneficiaries: Record<string, Record<string, BeneficiaryStatus>>;
   /** Contacts with their open invoices and bills, for matching bank lines by hand. */
   parties: Party[];
   moneyFlow: MoneyFlow;
@@ -86,6 +91,12 @@ interface BankingState {
   registerBank: (accountId: string, approval?: ApprovalMode) => Promise<boolean>;
   /** For a connection waiting on net-banking approval: ask the bank whether it's been approved (goes live if so). */
   checkConnection: (accountId: string) => Promise<boolean>;
+  /** Single user: the OTP for adding these payees is confirmed and they're active straight away. */
+  addBeneficiariesWithOtp: (accountId: string, keys: string[]) => Promise<void>;
+  /** Maker & checker: the payees are added and wait for the checker to approve in net banking. */
+  requestBeneficiaries: (accountId: string, keys: string[]) => void;
+  /** Ask the bank whether the checker has approved them; resolves with how many are now active. */
+  checkBeneficiaries: (accountId: string, keys: string[]) => Promise<number>;
   /** Penny-less verification of one of the company's own accounts. */
   verifyOwnAccount: (accountId: string) => Promise<boolean>;
   addCompanyAccount: (input: NewCompanyAccountInput) => CompanyAccount;
@@ -136,16 +147,17 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   employees: initialEmployees(),
   ...setupData("mixed"),
   parties: initialParties(),
+  beneficiaries: { p3: syncedBeneficiaries() },
   setup: "mixed",
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   resetData: () => {
     synced.clear();
-    set({ contacts: initialContacts(), employees: initialEmployees(), parties: initialParties(), ...setupData(get().setup) });
+    set({ contacts: initialContacts(), employees: initialEmployees(), parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, ...setupData(get().setup) });
   },
   applySetup: (setup) => {
     synced.clear();
-    set({ setup, parties: initialParties(), ...setupData(setup) });
+    set({ setup, parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, ...setupData(setup) });
   },
 
   verifyAccount: () =>
@@ -194,6 +206,26 @@ export const useBankingStore = create<BankingState>((set, get) => ({
         resolve(true);
       }, 1500);
     }),
+
+  addBeneficiariesWithOtp: (accountId, keys) =>
+    new Promise((resolve) =>
+      setTimeout(() => {
+        setBeneficiaries(accountId, keys, "active");
+        resolve();
+      }, 900),
+    ),
+
+  requestBeneficiaries: (accountId, keys) => setBeneficiaries(accountId, keys, "pending"),
+
+  checkBeneficiaries: (accountId, keys) =>
+    new Promise((resolve) =>
+      setTimeout(() => {
+        if (get().scenario.beneficiaryApproval !== "approved") return resolve(0);
+        const pending = keys.filter((k) => get().beneficiaries[accountId]?.[k] === "pending");
+        setBeneficiaries(accountId, pending, "active");
+        resolve(pending.length);
+      }, 1100),
+    ),
 
   checkConnection: (accountId) =>
     new Promise((resolve) => {
@@ -372,12 +404,30 @@ export function usePayFromAccounts() {
   return payFromAccounts(accounts, scenario);
 }
 
-/** The connection is live: balance and statements start syncing. */
+/** The connection is live: balance and statements start syncing, and the beneficiary list is fetched if the bank keeps one. */
 function goLive(accountId: string) {
+  useBankingStore.setState((s) => {
+    const key = s.accounts.find((a) => a.id === accountId)?.bankKey;
+    const needsList = !!(key && BANK_CONNECTORS[key].beneficiaryList);
+    return {
+      accounts: s.accounts.map((a) =>
+        a.id === accountId ? { ...a, connection: "connected", syncedMinutesAgo: 0, liveBalance: a.liveBalance ?? [215400, 2000] } : a,
+      ),
+      beneficiaries: needsList && !s.beneficiaries[accountId] ? { ...s.beneficiaries, [accountId]: syncedBeneficiaries() } : s.beneficiaries,
+    };
+  });
+}
+
+export type BeneficiaryStatus = "active" | "pending";
+
+/** What the bank's beneficiary list returns on connect, matched to contacts by account number + IFSC. */
+function syncedBeneficiaries(): Record<string, BeneficiaryStatus> {
+  return { "contact:c1:a1": "active", "contact:c7:a8": "active", "employee:e1": "active", "employee:e5": "active" };
+}
+
+function setBeneficiaries(accountId: string, keys: string[], status: BeneficiaryStatus) {
   useBankingStore.setState((s) => ({
-    accounts: s.accounts.map((a) =>
-      a.id === accountId ? { ...a, connection: "connected", syncedMinutesAgo: 0, liveBalance: a.liveBalance ?? [215400, 2000] } : a,
-    ),
+    beneficiaries: { ...s.beneficiaries, [accountId]: { ...s.beneficiaries[accountId], ...Object.fromEntries(keys.map((k) => [k, status])) } },
   }));
 }
 

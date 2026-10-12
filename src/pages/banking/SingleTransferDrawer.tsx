@@ -4,6 +4,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
+import { BeneficiaryGate } from "./BeneficiaryGate";
+import { payeeKey, useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
@@ -126,7 +128,9 @@ export function SingleTransferDrawer({
   const mode: TransferMode = modeOverride && !(modeOverride === "RTGS" && rtgsDisabled) ? modeOverride : autoMode(amountNum);
   const purposeOpt = PURPOSES.find((p) => p.value === purpose);
   const purposeValid = purpose !== "" && (purpose !== "other" || purposeOther.trim() !== "");
-  const reviewDisabled = !bene || amountNum <= 0 || !!amountError || !purposeValid;
+  const beneKeys = beneficiary ? [payeeKey(beneficiary)] : [];
+  const beneReady = useBeneficiariesReady(payFrom, beneKeys);
+  const reviewDisabled = !bene || amountNum <= 0 || !!amountError || !purposeValid || !beneReady;
   const makerChecker = payFrom.approvalMode === "maker-checker";
 
   const pick = (b: Beneficiary, kind: BeneType, extra?: { contact?: PayeeContact }) => {
@@ -353,6 +357,7 @@ export function SingleTransferDrawer({
                 </Button>
               </div>
               {picker}
+              {bene && <BeneficiaryGate payFrom={payFrom} keys={beneKeys} label={bene.name} />}
             </div>
 
             <div className="flex flex-col gap-1.5">

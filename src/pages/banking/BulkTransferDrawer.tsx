@@ -5,6 +5,8 @@ import { Button } from "../../components/ui/button";
 import { buttonVariants } from "../../components/ui/button-variants";
 import { cn } from "../../lib/cn";
 import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
+import { BeneficiaryGate } from "./BeneficiaryGate";
+import { useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
@@ -71,6 +73,8 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
   const errorCount = computed.filter((c) => c.status.blocking).length;
   const unverifiedCount = computed.filter((c) => c.status.label === "Unverified").length;
   const makerChecker = payFrom.approvalMode === "maker-checker";
+  const beneList = useBankingStore((s) => s.beneficiaries[payFrom.id]);
+  const beneReady = useBeneficiariesReady(payFrom, rows.map((r) => r.key));
 
   const onUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,6 +166,11 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                       <div className="text-2sm font-semibold">{row.name}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {row.bank} · {row.maskedIfsc}
+                        {payFrom.needsBeneficiary && beneList?.[row.key] !== "active" && (
+                          <span className="ms-1.5 text-[var(--color-warning-accent)]">
+                            · {beneList?.[row.key] === "pending" ? "Waiting for checker" : `Not in ${payFrom.short} beneficiaries`}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-2sm tabular-nums">{row.amount ? fmtINR(parseFloat(row.amount) || 0) : "—"}</div>
@@ -176,6 +185,11 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+            {rows.length > 0 && (
+              <div className="max-w-[600px] shrink-0">
+                <BeneficiaryGate payFrom={payFrom} keys={rows.map((r) => r.key)} />
               </div>
             )}
           </div>
@@ -193,7 +207,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
               </div>
               {errorCount > 0 && <div className="font-semibold text-destructive">{errorCount} need attention</div>}
             </div>
-            <Button variant="primary" className={LG} disabled={rows.length === 0 || errorCount > 0} onClick={() => setStep(2)}>
+            <Button variant="primary" className={LG} disabled={rows.length === 0 || errorCount > 0 || !beneReady} onClick={() => setStep(2)}>
               Review Batch
             </Button>
           </DrawerFooter>
