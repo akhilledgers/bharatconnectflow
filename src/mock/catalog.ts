@@ -178,3 +178,59 @@ export function makePurchaseScenarios(): PurchaseScenario[] {
     },
   ];
 }
+
+// ---------- Dev panel: "Receive a bill" (a supplier sends one from their platform) ----------
+
+export const BC_SUPPLIERS = [
+  { name: "Om Traders", b2bId: OM_TRADERS, gstin: "24AAOPT5566K1Z9" },
+  { name: "Metro Building Supplies", b2bId: "METR.BUIL.9090.001@BCB", gstin: "33AAGCM9090P1Z5" },
+  { name: "Kaveri Hardware Stores", b2bId: "KAVE.HARD.4410.001@BCB", gstin: "33AAHFK4410R1Z2" },
+  { name: "Shree Packaging", b2bId: "SHRE.PACK.5521.001@BCB", gstin: "27ABJFS5521C1Z8" },
+  { name: "Swift Logistics", b2bId: "SWIF.LOGI.6655.001@BCB", gstin: "27AAPCS6655L1Z1" },
+  { name: "Verve Financial Services Private Limited", b2bId: "VERV.FIN.3984.001@BCB", gstin: "33AABCL3984G2ZH" },
+];
+
+export type IncomingItems = "catalog" | "new" | "mixed" | "missing";
+
+export const INCOMING_ITEM_OPTIONS: [IncomingItems, string][] = [
+  ["catalog", "In catalog"],
+  ["new", "New items"],
+  ["mixed", "Mixed"],
+  ["missing", "Missing HSN"],
+];
+
+const NEW_LINES: Line[] = [
+  { name: "GI Wire Mesh 4ft", hsnSac: "7314", unit: "MTR", qty: 50, price: 210, gstPercent: 18 },
+  { name: "Wooden Pallet 1200x1000", hsnSac: "4415", unit: "NOS", qty: 20, price: 950, gstPercent: 12 },
+  { name: "Bubble Wrap Roll 1m", hsnSac: "3920", unit: "NOS", qty: 15, price: 640, gstPercent: 18 },
+];
+
+/** A fresh bill from a supplier on Bharat Connect, Awaiting Response. Quantities and rates vary a little each time. */
+export function makeIncomingBill(id: string, supplier: (typeof BC_SUPPLIERS)[number], items: IncomingItems, note: string, catalog: CatalogItem[]): Invoice {
+  const jitter = (n: number) => Math.max(1, Math.round(n * (0.8 + Math.random() * 0.4)));
+  const fromCatalog: Line[] = catalog
+    .filter((c) => c.purchase && c.status === "active")
+    .slice(0, 2)
+    .map((c) => ({ name: c.name, hsnSac: c.hsn, unit: c.unit.split("-")[0], qty: jitter(20), price: c.purchase!.price, gstPercent: c.gstRate }));
+  const fresh = NEW_LINES.map((l) => ({ ...l, qty: jitter(l.qty) }));
+  const lines: Line[] =
+    items === "catalog"
+      ? fromCatalog
+      : items === "new"
+        ? fresh.slice(0, 2)
+        : items === "mixed"
+          ? [...fromCatalog.slice(0, 1), ...fresh.slice(0, 2)]
+          : [{ ...fresh[0], hsnSac: undefined }, { ...fresh[2], gstMissing: true }];
+  const b = bill(id, supplier.name, supplier.b2bId, supplier.gstin, lines, note.trim() || "Please find the bill attached.");
+  // Received just now: today's date, due in 30 days.
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ddmmyyyy = (d: Date) => `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
+  const due = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  return {
+    ...b,
+    date: ddmmyyyy(now),
+    dueDate: ddmmyyyy(due),
+    notes: (b.notes ?? []).map((n) => ({ ...n, at: `${ddmmyyyy(now)}, ${p(now.getHours())}:${p(now.getMinutes())}` })),
+  };
+}

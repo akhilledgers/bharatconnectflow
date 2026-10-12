@@ -27,7 +27,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { CancelDialog } from "./BcDialogs";
 import { PHASE2 } from "../../lib/phase";
 import { useStore } from "../../store/useStore";
-import { statusLabel, statusVariant, confirmationMeta, latestBcComment } from "../../lib/invoiceStatus";
+import { statusLabel, statusVariant, confirmationMeta, latestBcComment, isIncoming } from "../../lib/invoiceStatus";
 import { Badge } from "../../components/ui/badge";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
@@ -99,10 +99,12 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const [showDeleted, setShowDeleted] = useState(false);
 
   const rows = allInvoices.filter((i) => i.kind === kind && !i.deletedAt);
+  // Raw Bharat Connect invoices are listed but aren't in the books yet, so they're left out of the totals.
+  const booked = rows.filter((i) => !isIncoming(i));
   const listed = showDeleted ? allInvoices.filter((i) => i.kind === kind && i.deletedAt) : rows;
   const filteredRows = connected && !showDeleted ? listed.filter((i) => matchesBcFilter(i, bcFilter)) : listed;
-  const total = sumAmount(rows);
-  const outstanding = sumUnpaid(rows);
+  const total = sumAmount(booked);
+  const outstanding = sumUnpaid(booked);
 
   const stats = [
     { label: config.statCardLabels[0], value: inr(total), className: "text-emerald-600" },
@@ -202,7 +204,9 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 menuOpen={openMenuId === inv.id}
                 onToggleMenu={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
                 onCloseMenu={() => setOpenMenuId(null)}
-                onView={() => navigate(`${config.basePath}/${inv.id}`)}
+                onView={() =>
+                  navigate(isIncoming(inv) && inv.bcConfirmationStatus === "pending" ? `/expenses/bills/${inv.id}/create` : `${config.basePath}/${inv.id}`)
+                }
                 onSend={() => sendInvoiceViaBharatConnect(inv.id)}
                 onDelete={(mode) => setToDelete({ inv, mode })}
               />
@@ -342,7 +346,13 @@ function InvoiceRow({
             Deleted
           </Badge>
         ) : (
-          <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+          isIncoming(invoice) ? (
+            <Badge variant="secondary" title="Received on Bharat Connect. Not created in LEDGERS yet.">
+              Not created
+            </Badge>
+          ) : (
+            <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+          )
         )}
       </td>
       {connected && (
@@ -369,7 +379,7 @@ function InvoiceRow({
           ) : showRespond ? (
             // Accept / Return / Reject need a comment, so they live on the bill; this opens it.
             <Button variant="outline" size="sm" onClick={onView}>
-              Respond
+              Create
             </Button>
           ) : showRetry ? (
             <div className="flex items-center gap-2">
@@ -433,8 +443,8 @@ function InvoiceRow({
                     onView();
                   }}
                 />
-                {/* Deleted: view only. */}
-                {!invoice.deletedAt && <>
+                {/* Deleted, or raw Bharat Connect data: view only. */}
+                {!invoice.deletedAt && !isIncoming(invoice) && <>
                 {/* Bharat Connect action sits with the LEDGERS ones, only when it applies. */}
                 {(showSend && counterpartyOnBc) || showRetry ? (
                   <MenuItem
@@ -470,7 +480,7 @@ function InvoiceRow({
                 <MenuItem icon={Printer} label="Print" onClick={onCloseMenu} />
                 <MenuItem icon={ArrowDownToLine} label="Download" onClick={onCloseMenu} />
                 {(() => {
-                  const rule = config.kind === "sales" ? deleteRule(invoice, connected) : null;
+                  const rule = deleteRule(invoice, connected);
                   return rule?.mode === "blocked" ? (
                     <span title={rule.reason} className="block">
                       <button disabled className={`${menuItemCls} cursor-not-allowed opacity-50`}>

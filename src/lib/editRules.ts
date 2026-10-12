@@ -20,6 +20,9 @@ export function editRule(invoice: Invoice, connected: boolean): EditRule {
   const s = invoice.bcConfirmationStatus;
   const viaBc = invoice.bcSendStatus === "sent" || invoice.bcSendStatus === "sending";
 
+  if (invoice.kind === "purchase" && viaBc && !invoice.booked && s !== "accepted") {
+    return { mode: "blocked", reason: "Not created yet. Create the purchase invoice first." };
+  }
   if (invoice.kind === "purchase") {
     return viaBc
       ? {
@@ -60,6 +63,12 @@ export function deleteRule(invoice: Invoice, connected: boolean): DeleteRule {
   if (invoice.gstr1Filed) return { mode: "blocked", reason: "Filed in GSTR-1. Raise a credit note instead." };
   if (invoice.isEInvoice) return { mode: "blocked", reason: "Has an IRN. Cancel the e-invoice first." };
   if (invoice.receipts?.length || invoice.status !== "unpaid") return { mode: "blocked", reason: "Has receipts recorded. Remove them first." };
+  // Bills received over Bharat Connect: the buyer can't cancel on Bharat Connect, only tidy up LEDGERS.
+  if (invoice.kind === "purchase" && invoice.bcSendStatus === "sent") {
+    // Raw Bharat Connect data isn't stored as a LEDGERS bill, so there's nothing to delete.
+    if (invoice.bcConfirmationStatus !== "accepted" && !invoice.booked) return { mode: "blocked", reason: "Not created in LEDGERS, so there's nothing to delete." };
+    return { mode: "blocked", reason: "Accepted on Bharat Connect. Raise a debit note instead." };
+  }
   const s = invoice.bcConfirmationStatus;
   const onBc = connected && invoice.kind === "sales" && invoice.bcSendStatus === "sent" && s !== "failure" && s !== null;
   if (!onBc) return { mode: "delete" };

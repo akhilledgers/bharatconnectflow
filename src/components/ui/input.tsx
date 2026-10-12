@@ -37,7 +37,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
           data-slot="select-trigger"
           className={cn(
             FIELD,
-            "cursor-pointer appearance-none pe-8",
+            // A <select> matches :read-only in Chromium; keep it white like LEDGERS, not the read-only grey.
+            "cursor-pointer appearance-none pe-8 read-only:!cursor-pointer read-only:!bg-background",
             selectSize === "sm" ? "h-7 ps-2.5 text-xs" : "h-8.5 ps-3 text-2sm",
             className,
           )}

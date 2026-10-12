@@ -44,5 +44,7 @@ export interface LineResolution {
   /** Book against this existing item… */
   catalogId?: string;
   /** …or add a new one with these details (HSN / GST / unit filled in where the bill left them out). */
-  create?: { hsn: string; gstRate: number; unit: string };
+  create?: { name?: string; hsn: string; gstRate: number; unit: string };
+  /** Train the matching: remember this line → item for the supplier's future bills (default true). */
+  remember?: boolean;
 }

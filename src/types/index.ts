@@ -228,6 +228,10 @@ export interface Invoice {
   isEInvoice?: boolean;
   /** Receipts (sales) / payments (bills) recorded against this document. */
   receipts?: Receipt[];
+  /** Bills received over Bharat Connect: created as a LEDGERS purchase invoice (until then it's raw incoming data). */
+  booked?: boolean;
+  /** Our own bill number, given when the purchase invoice is created. */
+  billNo?: string;
   /** Deleted in LEDGERS (soft delete: kept for the record, shown under the Deleted filter, read-only). */
   deletedAt?: string;
   /** Reported in a filed GSTR-1: can't be deleted any more (a credit note corrects it). */

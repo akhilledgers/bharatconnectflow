@@ -11,7 +11,7 @@ import type {
 import { makeSeedBusinesses, makeSeedInvoices, makeSeedContacts, STOCK_HOLDING_ID } from "../mock/seed";
 import { baseId, existingIdFor } from "../lib/id-standard";
 import type { BuyerResponse, CatalogItem, Invoice, InvoiceNote, Receipt } from "../types";
-import { makeSeedCatalog, makeSeedItemLinks, makePurchaseScenarios } from "../mock/catalog";
+import { BC_SUPPLIERS, makeIncomingBill, makeSeedCatalog, makeSeedItemLinks, makePurchaseScenarios, type IncomingItems } from "../mock/catalog";
 import { linkKey, type LineResolution } from "../lib/itemMatch";
 
 /** "07-10-2026, 11:20" — the stamp shown on Notes entries. */
@@ -73,8 +73,6 @@ interface StoreState {
    * "delayed" leaves it awaiting (Setting up) until Confirm / Reject in the dev panel; "fail" rejects it.
    */
   devOnboardingOutcome: "instant" | "delayed" | "fail";
-  /** Dev panel: where a received bill's item mapping is shown (LEDGERS card, inside the bill, or a Bill | Items switch). */
-  devItemsLayout: "card" | "inline" | "tabs";
   connectFlow: Record<string, ConnectFlowState>;
   toasts: { id: string; message: string; tone: "success" | "error" }[];
 
@@ -83,7 +81,6 @@ interface StoreState {
   toggleDevPanel: (open?: boolean) => void;
   setDevProfileSaveOutcome: (outcome: "reject" | "conflict" | null) => void;
   setDevOnboardingOutcome: (outcome: "instant" | "delayed" | "fail") => void;
-  setDevItemsLayout: (layout: "card" | "inline" | "tabs") => void;
   pushToast: (message: string, tone?: "success" | "error") => void;
   dismissToast: (id: string) => void;
 
@@ -147,7 +144,9 @@ interface StoreState {
   // Invoices / Bills
   sendInvoiceViaBharatConnect: (invoiceId: string, noteToBuyer?: string) => Promise<void>;
   /** On Accept, `lines` links each line to a catalog item, adding new ones to the catalog. */
-  respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string, lines?: LineResolution[]) => Promise<void>;
+  respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string, lines?: LineResolution[], opts?: { silent?: boolean }) => Promise<void>;
+  /** Create a LEDGERS purchase invoice from a bill received over Bharat Connect — which accepts it there. */
+  createPurchaseFromBc: (invoiceId: string, remark: string, lines: LineResolution[]) => Promise<void>;
   addInvoiceNote: (invoiceId: string, text: string, shareOnSend: boolean) => void;
   recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id">) => Promise<void>;
   updateInvoice: (invoiceId: string, patch: Partial<Invoice>) => Promise<void>;
@@ -178,6 +177,8 @@ interface StoreState {
   // Dev panel: purchase scenarios
   /** Puts a fresh copy of the scenario's bill in Bills (Awaiting Response) and returns its id. */
   devLoadPurchaseScenario: (key: string) => string;
+  /** A supplier on Bharat Connect sends a new bill (Awaiting Response). Returns its id. */
+  devReceiveBill: (supplierB2bId: string, items: IncomingItems, note: string) => string;
   /** Restores the seed catalog and saved links, and removes scenario bills. */
   devResetPurchase: () => void;
 }
@@ -232,7 +233,6 @@ export const useStore = create<StoreState>((set, get) => {
   devPanelOpen: false,
   devProfileSaveOutcome: null,
   devOnboardingOutcome: "instant",
-  devItemsLayout: "card",
   connectFlow: {},
   toasts: [],
 
@@ -245,7 +245,6 @@ export const useStore = create<StoreState>((set, get) => {
 
   setDevProfileSaveOutcome: (outcome) => set({ devProfileSaveOutcome: outcome }),
   setDevOnboardingOutcome: (outcome) => set({ devOnboardingOutcome: outcome }),
-  setDevItemsLayout: (layout) => set({ devItemsLayout: layout }),
 
   pushToast: (message, tone = "success") => {
     const id = crypto.randomUUID();
@@ -699,7 +698,7 @@ export const useStore = create<StoreState>((set, get) => {
     get().pushToast("Sent via Bharat Connect. Waiting for the buyer to respond.");
   },
 
-  respondToBill: async (invoiceId, decision, comment, lines) => {
+  respondToBill: async (invoiceId, decision, comment, lines, opts) => {
     const { delay } = await import("../mock/api");
     await delay(undefined, 600, 1000);
     let added = 0;
@@ -723,7 +722,7 @@ export const useStore = create<StoreState>((set, get) => {
               {
                 id: catalogId,
                 type: line.isService ? "services" : "goods",
-                name: line.name,
+                name: r.create.name || line.name,
                 unit: r.create.unit,
                 gstRate: r.create.gstRate,
                 hsn: r.create.hsn,
@@ -742,7 +741,7 @@ export const useStore = create<StoreState>((set, get) => {
             );
           }
           if (!catalogId) return line;
-          itemLinks[linkKey(supplier, line)] = catalogId;
+          if (r.remember !== false) itemLinks[linkKey(supplier, line)] = catalogId;
           return { ...line, catalogId };
         });
       }
@@ -762,6 +761,7 @@ export const useStore = create<StoreState>((set, get) => {
         ),
       };
     });
+    if (opts?.silent) return;
     get().pushToast(
       decision === "accept"
         ? `Bill accepted.${added ? ` ${added} new item${added > 1 ? "s" : ""} added to Catalog.` : ""}`
@@ -772,6 +772,17 @@ export const useStore = create<StoreState>((set, get) => {
     );
   },
 
+  createPurchaseFromBc: async (invoiceId, remark, lines) => {
+    const before = get().catalog.length;
+    await get().respondToBill(invoiceId, "accept", remark, lines, { silent: true });
+    const added = get().catalog.length - before;
+    const billNo = `2026-${33 + get().invoices.filter((i) => i.billNo).length}`;
+    set((s) => ({ invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, booked: true, billNo } : i)) }));
+    get().pushToast(
+      `Purchase invoice ${billNo} created and accepted on Bharat Connect.${added ? ` ${added} new item${added > 1 ? "s" : ""} added to Catalog.` : ""}`,
+    );
+  },
+
   addCatalogItem: (draft) => {
     const id = nextCatalogId(get().catalog);
     set((s) => ({
@@ -779,6 +790,15 @@ export const useStore = create<StoreState>((set, get) => {
     }));
     get().pushToast("Catalog added.");
     return id;
+  },
+
+  devReceiveBill: (supplierB2bId, items, note) => {
+    const supplier = BC_SUPPLIERS.find((x) => x.b2bId === supplierB2bId) ?? BC_SUPPLIERS[0];
+    const taken = get().invoices.filter((i) => /^BILL-4\d{3}$/.test(i.id)).length;
+    const bill = makeIncomingBill(`BILL-${4001 + taken}`, supplier, items, note, get().catalog);
+    set((s) => ({ invoices: [bill, ...s.invoices] }));
+    get().pushToast(`${supplier.name} sent you a bill on Bharat Connect.`);
+    return bill.id;
   },
 
   devLoadPurchaseScenario: (key) => {
@@ -794,7 +814,7 @@ export const useStore = create<StoreState>((set, get) => {
     set((s) => ({
       catalog: makeSeedCatalog(),
       itemLinks: makeSeedItemLinks(),
-      invoices: s.invoices.filter((i) => !ids.has(i.id)),
+      invoices: s.invoices.filter((i) => !ids.has(i.id) && !/^BILL-4\d{3}$/.test(i.id)),
     }));
     get().pushToast("Catalog and purchase scenarios reset.");
   },

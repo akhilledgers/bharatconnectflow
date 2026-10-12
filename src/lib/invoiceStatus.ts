@@ -36,3 +36,11 @@ export function latestBcComment(invoice: Invoice): string | undefined {
   const bc = (invoice.notes ?? []).filter((n) => n.kind === "bc" && n.text);
   return bc[bc.length - 1]?.text;
 }
+
+/**
+ * An invoice received over Bharat Connect that hasn't been created as a LEDGERS purchase invoice yet: raw data,
+ * not in the books (no totals, no edit, no delete). Accepted ones are always created — creating is the Accept.
+ */
+export function isIncoming(invoice: Invoice): boolean {
+  return invoice.kind === "purchase" && invoice.bcSendStatus === "sent" && !invoice.booked && invoice.bcConfirmationStatus !== "accepted";
+}

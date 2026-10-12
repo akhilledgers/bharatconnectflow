@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Landmark, ShoppingBag } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
-import { makePurchaseScenarios } from "../../mock/catalog";
+import { BC_SUPPLIERS, INCOMING_ITEM_OPTIONS, makePurchaseScenarios, type IncomingItems } from "../../mock/catalog";
 import { STATUS_META } from "../../lib/status";
 import { STOCK_HOLDING_ID, SHARMA_TRADERS_ID } from "../../mock/seed";
 import { BharatConnectMark } from "../layout/BharatConnectMark";
@@ -499,11 +499,58 @@ function PurchaseOptions() {
     (i) => i.kind === "purchase" && i.bcSendStatus === "sent" && (i.bcConfirmationStatus === "pending" || i.bcConfirmationStatus === "returned"),
   );
   return (
+    <>
+    <ReceiveBill />
+    <div className="mb-4 border-t border-border" />
     <PurchaseTab
       openBills={openBills}
       onEdit={(id) => simulateSupplierResend(id, "Corrected the rate")}
       onCancel={(id) => simulateSupplierCancel(id, "Raised by mistake")}
     />
+    </>
+  );
+}
+
+/** A supplier sends a bill from their own platform: pick who and what kind of items, then it lands in Bills. */
+function ReceiveBill() {
+  const navigate = useNavigate();
+  const business = useStore((s) => s.currentBusiness());
+  const forceConnectionState = useStore((s) => s.forceConnectionState);
+  const devReceiveBill = useStore((s) => s.devReceiveBill);
+  const [supplier, setSupplier] = useState(BC_SUPPLIERS[0].b2bId);
+  const [items, setItems] = useState<IncomingItems>("mixed");
+  const [note, setNote] = useState("");
+  return (
+    <Group label="Receive a bill" hint="Sent by the supplier on their platform. Lands in Bills as Awaiting Response.">
+      <div className="space-y-2">
+        <select value={supplier} onChange={(e) => setSupplier(e.target.value)} className={SELECT} aria-label="Supplier">
+          {BC_SUPPLIERS.map((x) => (
+            <option key={x.b2bId} value={x.b2bId}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+        <Choice value={items} options={INCOMING_ITEM_OPTIONS} onChange={setItems} />
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={256}
+          placeholder="Supplier's note (optional)"
+          className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground"
+        />
+        <button
+          onClick={() => {
+            if (business.connectionState !== "connected") forceConnectionState(business.id, "connected");
+            const id = devReceiveBill(supplier, items, note);
+            setNote("");
+            navigate(`/expenses/bills/${id}/create`);
+          }}
+          className={`w-full ${OPTION} ${ON}`}
+        >
+          Receive bill
+        </button>
+      </div>
+    </Group>
   );
 }
 
@@ -526,47 +573,19 @@ function PurchaseTab({
   const linkCount = useStore((s) => Object.keys(s.itemLinks).length);
   const invoices = useStore((s) => s.invoices);
   const added = catalog.filter((c) => c.addedFromBill);
-  const devItemsLayout = useStore((s) => s.devItemsLayout);
-  const setDevItemsLayout = useStore((s) => s.setDevItemsLayout);
 
   const load = (key: string) => {
     if (business.connectionState !== "connected") forceConnectionState(business.id, "connected");
     const id = devLoadPurchaseScenario(key);
-    if (id) navigate(`/expenses/bills/${id}`);
+    if (id) navigate(`/expenses/bills/${id}/create`);
   };
 
   return (
     <div className="space-y-4">
       <div>
-        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Items layout</div>
-        <div className="flex gap-1.5">
-          {([
-            ["card", "Card"],
-            ["inline", "A · In bill"],
-            ["tabs", "B · Bill | Items"],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setDevItemsLayout(value)}
-              className={`flex-1 rounded-md border px-1.5 py-1.5 text-[11px] font-medium ${
-                devItemsLayout === value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-accent"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {devItemsLayout === "card" && "Items section in the LEDGERS card on the right."}
-          {devItemsLayout === "inline" && "A: a row under each line of the bill itself (not printed)."}
-          {devItemsLayout === "tabs" && "B: Bill | Items switch above the bill; Items is a full-width table."}
-        </p>
-      </div>
-
-      <div className="border-t border-border pt-4">
         <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Bill item scenarios</div>
         <p className="mb-2 text-[11px] text-muted-foreground">
-          Load opens a fresh bill (Awaiting Response). Click Accept to see the items step. Return or Reject adds nothing to the catalog.
+          Load opens a fresh bill (Awaiting Response). Lines that need a decision show Review next to the item name. Reject adds nothing to the catalog.
         </p>
         <div className="space-y-1.5">
           {SCENARIOS.map((sc) => {

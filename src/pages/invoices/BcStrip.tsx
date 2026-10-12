@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { History, MessageSquareText } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import type { Invoice, InvoiceNote } from "../../types";
+import { PHASE2 } from "../../lib/phase";
 import { Button } from "../../components/ui/button";
 import { buttonVariants } from "../../components/ui/button-variants";
 import { Callout, popoverCls } from "../../components/ui/popover";
@@ -268,6 +269,116 @@ export function BcStrip({
       );
     case "cancelled":
       return <Strip icon={mark} title={<>Cancelled on Bharat Connect{when}</>} actions={<ActivityButton invoice={invoice} />} />;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Bills: the same strip as invoices. Waiting bills carry Accept / Reject (each opens a popup for the required
+ * comment, buyerRemarks); Return only when PHASE2.buyerReturn is on.
+ */
+export function BillStrip({
+  invoice,
+  connected,
+  onRespond,
+  itemsCue,
+  creating,
+}: {
+  invoice: Invoice;
+  connected: boolean;
+  onRespond: (decision: "accept" | "return" | "reject") => void;
+  /** On the Create Purchase Invoice page: the form has the Create button, so the strip only offers Reject. */
+  creating?: boolean;
+  /** Catalog matching summary while the bill is waiting ("Items: 2 matched · 2 new · Review"). */
+  itemsCue?: ReactNode;
+}) {
+  const invite = useStore((s) => s.inviteToBharatConnect);
+  const who = invoice.counterpartyName;
+  const status = invoice.bcConfirmationStatus;
+  const viaBc = invoice.bcSendStatus === "sent";
+  const lastAt = bcNotes(invoice).slice(-1)[0]?.at;
+  const when = (
+    <span className="inline-flex items-center gap-1 align-middle font-normal text-muted-foreground">
+      {lastAt && <span className="ms-1">· {lastAt}</span>}
+      <RemarksButton invoice={invoice} />
+    </span>
+  );
+  const mark = <BharatConnectMark size={14} />;
+  const grey = <BharatConnectMark size={14} className="grayscale opacity-60" />;
+
+  if (invoice.deletedAt) {
+    return <Strip icon={grey} title={<>Deleted<span className="font-normal text-muted-foreground"> · {invoice.deletedAt}</span></>} actions={<ActivityButton invoice={invoice} />} />;
+  }
+  if (!connected) {
+    return (
+      <Strip
+        icon={grey}
+        title="Receive bills directly with Bharat Connect"
+        actions={
+          <Link to="/settings/bharatconnect" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Onboard to Bharat Connect
+          </Link>
+        }
+      />
+    );
+  }
+  if (!viaBc) {
+    // Entered by hand: only worth a strip when the supplier could be invited.
+    return invoice.counterpartyB2bId ? null : (
+      <Strip
+        icon={grey}
+        title={`${who} isn't on Bharat Connect yet`}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => invite(who)}>
+            Invite
+          </Button>
+        }
+      />
+    );
+  }
+
+  switch (status) {
+    case "pending":
+      return (
+        <Strip
+          tone="primary"
+          icon={mark}
+          title={<>{who} sent an invoice{when}</>}
+          actions={
+            <>
+              <ActivityButton invoice={invoice} />
+              {!creating && (
+                <Button variant="primary" size="sm" onClick={() => onRespond("accept")}>
+                  Create Purchase Invoice
+                </Button>
+              )}
+              {PHASE2.buyerReturn && (
+                <Button variant="outline" size="sm" onClick={() => onRespond("return")}>
+                  Return
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="!text-destructive" onClick={() => onRespond("reject")}>
+                Reject
+              </Button>
+            </>
+          }
+        >
+          {itemsCue}
+        </Strip>
+      );
+    case "accepted":
+      return <Strip tone="success" icon={mark} title={<>Accepted by you{when}</>} actions={<ActivityButton invoice={invoice} />} />;
+    case "returned":
+      return (
+        <Strip tone="warning" icon={mark} title={<>Returned to {who}{when}</>} actions={<ActivityButton invoice={invoice} />}>
+          Waiting for {who} to correct and resend it.
+        </Strip>
+      );
+    case "rejected":
+      return <Strip tone="destructive" icon={mark} title={<>Rejected by you{when}</>} actions={<ActivityButton invoice={invoice} />} />;
+    case "cancelled":
+      return <Strip icon={mark} title={<>Cancelled by {who}{when}</>} actions={<ActivityButton invoice={invoice} />} />;
     default:
       return null;
   }

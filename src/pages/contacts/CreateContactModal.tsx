@@ -1,11 +1,34 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Upload, X } from "lucide-react";
+import { CheckCircle2, Plus, Upload } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { lookupBcByGstin, lookupGstRegistry } from "../../mock/seed";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import type { Address, LedgerContact } from "../../types";
+import { Button } from "../../components/ui/button";
+import { Sheet } from "../../components/ui/dialog";
+import { Checkbox, Input, Label, Select } from "../../components/ui/input";
+import { Tabs } from "../../components/ui/tabs";
+
+// LEDGERS' Create Contact: a right-side sheet with Information / Billing Address / Tax Information tabs centred
+// at the top, the green "Autofill from GSTIN" box, a visiting-card drop zone, a two-column form, and a footer with
+// Cancel + green "Add Contact". Bharat Connect adds its status check under the GSTIN box (only when connected).
+
+const ENTITIES = [
+  "Individual",
+  "Proprietorship",
+  "Partnership",
+  "Hindu Undivided Family",
+  "Private Limited Company",
+  "Public Limited Company",
+  "One Person Company",
+  "Society/Club/Trust/Association of Persons",
+  "Government Department",
+  "Public Sector Undertaking",
+  "Limited Liability Partnership",
+  "Others",
+];
 
 type BcCheck = { state: "idle" } | { state: "checking" } | { state: "found"; bcId: string } | { state: "not_found" };
 
@@ -91,221 +114,156 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between px-8 pb-4 pt-6">
-          <div className="flex gap-1.5">
-            {TABS.map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`rounded-lg px-3.5 py-2 text-sm font-medium ${
-                  tab === t ? "border border-border bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
+    <Sheet
+      open
+      onClose={onClose}
+      title="Create Contact"
+      header={
+        <div className="flex justify-center">
+          <Tabs value={tab} onChange={setTab} items={TABS.map((t) => ({ value: t, label: t }))} />
         </div>
-
-        <div className="flex-1 overflow-y-auto px-8 pb-6">
-          {tab !== "Information" ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              You can add this after creating the contact.
-            </div>
-          ) : (
-            <>
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-emerald-700">
-                  AUTOFILL FROM GSTIN
-                  <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white">
-                    RECOMMENDED
-                  </span>
-                </div>
-                <input
-                  value={gstin}
-                  onChange={(e) => handleGstinChange(e.target.value.toUpperCase())}
-                  maxLength={15}
-                  placeholder="Enter GSTIN to auto-fill name, PAN, address & more"
-                  className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-
-                {connected && (
-                  <div className="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-700">
-                    <BharatConnectMark size={11} />
-                    We'll also check if they're on Bharat Connect
-                  </div>
-                )}
-
-                {bcCheck.state === "checking" && (
-                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                    <CircularSpinner size={12} /> Checking Bharat Connect…
-                  </div>
-                )}
-                {bcCheck.state === "found" && (
-                  <div className="mt-2 rounded-md border border-emerald-200 bg-card p-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      On Bharat Connect
-                      <span className="tabular-nums text-emerald-800">{bcCheck.bcId}</span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Email and mobile aren't shared by default — you can request them once saved.
-                    </p>
-                    <button
-                      onClick={() => requestContactDetails(contactName || businessName || "them")}
-                      className="mt-1.5 text-[11px] font-medium text-primary hover:text-primary/80"
-                    >
-                      Request contact details
-                    </button>
-                  </div>
-                )}
-                {bcCheck.state === "not_found" && (
-                  <div className="mt-2 rounded-md border border-border bg-card p-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <BharatConnectMark size={12} className="grayscale opacity-60" />
-                      Not on Bharat Connect yet
-                    </div>
-                    <label className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={invite}
-                        onChange={(e) => setInvite(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
-                      />
-                      Invite them to Bharat Connect once saved
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-input py-3.5 text-sm text-muted-foreground">
-                <Upload className="h-4 w-4" />
-                Or upload a visiting card to create a contact (.jpeg, .jpg, .png)
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-x-4 gap-y-5">
-                <div className="col-span-1">
-                  <label className="mb-1 block text-xs font-medium text-foreground">
-                    Contact Name <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-1.5">
-                    <select
-                      value={salutation}
-                      onChange={(e) => setSalutation(e.target.value)}
-                      className="rounded-md border border-input px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      {["Mr", "Ms", "Mrs", "M/s"].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                    <input
-                      value={contactName}
-                      onChange={(e) => setContactName(e.target.value)}
-                      placeholder="Enter Contact Name"
-                      className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Display Name</label>
-                  <input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Enter Display Name"
-                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Entity</label>
-                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-                    <option>Individual</option>
-                    <option>Company</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Business Name</label>
-                  <input
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="Enter Business Name"
-                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Business Country</label>
-                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-                    <option>INDIA</option>
-                  </select>
-                </div>
-                <div />
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Email</label>
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter Email"
-                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Mobile</label>
-                  <div className="flex gap-1.5">
-                    <span className="flex items-center rounded-md border border-input px-2 text-sm text-foreground">
-                      +91
-                    </span>
-                    <input
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                      placeholder="Enter Mobile Number"
-                      className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                </div>
-                <div />
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">PAN</label>
-                  <input
-                    value={pan}
-                    onChange={(e) => setPan(e.target.value.toUpperCase())}
-                    maxLength={10}
-                    placeholder="Enter PAN"
-                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-foreground">Reverse Charge Applicable</label>
-                  <select className="w-full rounded-md border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-                    <option>No</option>
-                    <option>Yes</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-border px-8 py-5">
-          <button onClick={onClose} className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">
+      }
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!canSave || saving}
-            className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-          >
-            <span className="text-base leading-none">+</span>
+          </Button>
+          <Button variant="success" onClick={handleSave} disabled={!canSave || saving}>
+            <Plus />
             {saving ? "Adding…" : "Add Contact"}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      {tab !== "Information" ? (
+        <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">You can add this after creating the contact.</div>
+      ) : (
+        <div className="space-y-4">
+          <div className="mb-3 mt-2 rounded-lg border border-emerald-600/35 bg-emerald-50/90 px-3 py-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Autofill from GSTIN</span>
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
+                Recommended
+              </span>
+            </div>
+            <Input
+              value={gstin}
+              onChange={(e) => handleGstinChange(e.target.value.toUpperCase())}
+              maxLength={15}
+              placeholder="Enter GSTIN to auto-fill name, PAN, address & more"
+            />
+            {connected && (
+              <div className="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-800">
+                <BharatConnectMark size={11} />
+                We'll also check if they're on Bharat Connect
+              </div>
+            )}
+            {bcCheck.state === "checking" && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <CircularSpinner size={12} /> Checking Bharat Connect…
+              </div>
+            )}
+            {bcCheck.state === "found" && (
+              <div className="mt-2 rounded-md border border-emerald-600/25 bg-background p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                  <CheckCircle2 className="size-3.5" />
+                  On Bharat Connect
+                  <span className="tabular-nums text-emerald-800">{bcCheck.bcId}</span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">Email and mobile aren't shared by default. You can request them once saved.</p>
+                <button
+                  onClick={() => requestContactDetails(contactName || businessName || "them")}
+                  className="mt-1.5 cursor-pointer text-[11px] font-medium text-primary hover:text-primary/80"
+                >
+                  Request contact details
+                </button>
+              </div>
+            )}
+            {bcCheck.state === "not_found" && (
+              <div className="mt-2 rounded-md border border-border bg-background p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <BharatConnectMark size={12} className="grayscale opacity-60" />
+                  Not on Bharat Connect yet
+                </div>
+                <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox checked={invite} onChange={(e) => setInvite(e.target.checked)} />
+                  Invite them to Bharat Connect once saved
+                </label>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-input py-3 text-sm text-foreground">
+            <Upload className="size-4 opacity-60" />
+            Or upload a visiting card to create a contact <span className="text-xs text-muted-foreground">(.jpeg, .jpg, .png)</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            <div className="space-y-2">
+              <Label required>Contact Name</Label>
+              <div className="flex">
+                <Select value={salutation} onChange={(e) => setSalutation(e.target.value)} wrapperClassName="w-16 shrink-0" className="!rounded-e-none">
+                  {["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", "M/S"].map((x) => (
+                    <option key={x}>{x}</option>
+                  ))}
+                </Select>
+                <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Enter Contact Name" className="!rounded-s-none !border-s-0" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Display Name</Label>
+                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Enter Display Name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Entity</Label>
+                <Select defaultValue="Individual">
+                  {ENTITIES.map((x) => (
+                    <option key={x}>{x}</option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Business Name</Label>
+              <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Enter Business Name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Business Country</Label>
+              <Select defaultValue="INDIA">
+                <option>INDIA</option>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter Email" />
+            </div>
+            <div className="space-y-2">
+              <Label>Mobile</Label>
+              <div className="flex">
+                <Select defaultValue="+91" wrapperClassName="w-28 shrink-0" className="!rounded-e-none">
+                  <option value="+91">+91 India</option>
+                </Select>
+                <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Enter Mobile Number" className="!rounded-s-none !border-s-0" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>PAN</Label>
+              <Input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} maxLength={10} placeholder="Enter PAN" />
+            </div>
+            <div className="space-y-2">
+              <Label>Reverse Charge Applicable</Label>
+              <Select defaultValue="No">
+                <option>No</option>
+                <option>Yes</option>
+              </Select>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Sheet>
   );
 }

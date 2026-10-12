@@ -147,11 +147,16 @@ export function ResponseDialog({
   supplier,
   onClose,
   onSubmit,
+  children,
+  canSubmit = true,
 }: {
   decision: BuyerResponse | null;
   supplier: string;
   onClose: () => void;
   onSubmit: (decision: BuyerResponse, comment: string) => Promise<void>;
+  /** Shown above the comment (e.g. "Fill the missing details in Items" on Accept). */
+  children?: ReactNode;
+  canSubmit?: boolean;
 }) {
   const copy = decision ? RESPONSE_COPY[decision] : null;
   const [comment, setComment] = useState(copy?.preset ?? "");
@@ -163,7 +168,7 @@ export function ResponseDialog({
       open
       onClose={onClose}
       title={copy.title}
-      description={copy.description.replace("The supplier", supplier)}
+      description={copy.description ? copy.description.replace("The supplier", supplier) : undefined}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -171,7 +176,7 @@ export function ResponseDialog({
           </Button>
           <Button
             variant={copy.variant}
-            disabled={!comment.trim() || busy}
+            disabled={!comment.trim() || !canSubmit || busy}
             onClick={async () => {
               setBusy(true);
               await onSubmit(decision, comment.trim());
@@ -184,6 +189,7 @@ export function ResponseDialog({
         </>
       }
     >
+      {children}
       <CommentField label={copy.label} value={comment} onChange={setComment} max={REMARKS_MAX} required picks={copy.picks} />
     </Dialog>
   );
