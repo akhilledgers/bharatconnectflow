@@ -13,7 +13,7 @@ import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
  *    Accept / Return / Reject comment, the "what changed" note on a re-send. Read-only; comments are
  *    written through the Bharat Connect actions themselves.
  */
-export function NotesSection({ invoice, mode }: { invoice: Invoice; connected: boolean; mode: "internal" | "bc" }) {
+export function NotesSection({ invoice, mode, onAdd }: { invoice: Invoice; connected: boolean; mode: "internal" | "bc"; onAdd?: (text: string) => void }) {
   const addInvoiceNote = useStore((s) => s.addInvoiceNote);
   const [text, setText] = useState("");
   const notes = (invoice.notes ?? []).filter((n) => n.kind === (mode === "bc" ? "bc" : "internal"));
@@ -39,7 +39,8 @@ export function NotesSection({ invoice, mode }: { invoice: Invoice; connected: b
           size="sm"
           disabled={!text.trim()}
           onClick={() => {
-            addInvoiceNote(invoice.id, text.trim(), false);
+            if (onAdd) onAdd(text.trim());
+            else addInvoiceNote(invoice.id, text.trim(), false);
             setText("");
           }}
         >

@@ -89,6 +89,9 @@ interface BankingState {
    * vendor without a bank account if new), with those documents among its open bills. Returns the contact's id.
    */
   vendorForDocs: (name: string, docs: Bill[]) => string;
+  /** Bills / expense vouchers marked paid by hand (cash, UPI, cheque, or a transfer made outside LEDGERS). */
+  recordedDocs: Record<string, RecordedPayment>;
+  recordDocPayment: (number: string, p: RecordedPayment) => void;
   setEmployeeAccount: (employeeId: string, input: NewAccountInput) => BankAccount;
   /**
    * Register Connected Banking: the bank verifies the IDs over its API and answers straight away.
@@ -200,6 +203,9 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     set((s) => ({ contacts: s.contacts.map((c) => (c.id !== contactId ? c : { ...c, accounts: [...c.accounts, account] })) }));
     return account;
   },
+
+  recordedDocs: {},
+  recordDocPayment: (number, p) => set((s) => ({ recordedDocs: { ...s.recordedDocs, [number]: p } })),
 
   vendorForDocs: (name, docs) => {
     const key = name.trim().toLowerCase();
@@ -442,6 +448,12 @@ function goLive(accountId: string) {
       beneficiaries: needsList && !s.beneficiaries[accountId] ? { ...s.beneficiaries, [accountId]: syncedBeneficiaries() } : s.beneficiaries,
     };
   });
+}
+
+export interface RecordedPayment {
+  date: string;
+  mode: string;
+  reference?: string;
 }
 
 /** A payee on the bank's beneficiary list, with the code the customer finds it by in net banking. */

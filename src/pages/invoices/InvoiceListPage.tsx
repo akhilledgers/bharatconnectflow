@@ -36,7 +36,7 @@ import { InviteBcTooltip } from "../../components/InviteBcTooltip";
 import { FilterMenu } from "../../components/FilterMenu";
 import { configFor, sumAmount, sumUnpaid, inr } from "./kindConfig";
 import type { Invoice } from "../../types";
-import { paymentLabel, useDocPayment, usePayDocs } from "../banking/PayDocs";
+import { paymentLabel, useDocPaid, useDocPayment, usePayDocs } from "../banking/PayDocs";
 import { billDoc, isPayableBill } from "./payBill";
 
 // Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, FY range.
@@ -95,6 +95,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const [selected, setSelected] = useState<string[]>([]);
   const payDocs = usePayDocs();
   const payouts = useBankingStore((s) => s.payouts);
+  const recorded = useBankingStore((s) => s.recordedDocs);
 
   const rows = allInvoices.filter((i) => i.kind === kind);
   const filteredRows = connected ? rows.filter((i) => matchesBcFilter(i, bcFilter)) : rows;
@@ -103,7 +104,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
 
   // Bills: pay straight from the list. Only bills still owed and not already being paid from the bank.
   const purchase = kind === "purchase";
-  const inPayment = (i: Invoice) => payouts.some((p) => p.docs?.includes(i.id) && ["awaiting", "processing", "paid"].includes(p.status));
+  const inPayment = (i: Invoice) => !!recorded[i.id] || payouts.some((p) => p.docs?.includes(i.id) && ["awaiting", "processing", "paid"].includes(p.status));
   const selectedRows = filteredRows.filter((i) => selected.includes(i.id));
   const toPay = selectedRows.filter((i) => isPayableBill(i) && !inPayment(i));
   const allSelected = filteredRows.length > 0 && filteredRows.every((i) => selected.includes(i.id));
@@ -316,7 +317,8 @@ function InvoiceRow({
 }) {
   const navigate = useNavigate();
   const payment = useDocPayment(invoice.id);
-  const canPay = onPay && !payment;
+  const paidHere = useDocPaid(invoice.id);
+  const canPay = onPay && !payment && !paidHere;
   const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
   const bcComment = latestBcComment(invoice);
   const showRespond = connected && config.kind === "purchase" && invoice.bcConfirmationStatus === "pending";
@@ -344,7 +346,7 @@ function InvoiceRow({
       </td>
       <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
       <td className={tdCls}>
-        {payment?.status === "paid" ? (
+        {paidHere ? (
           <Badge variant={statusVariant("paid")}>{statusLabel("paid")}</Badge>
         ) : (
           <Badge variant={statusVariant(invoice.status)}>
