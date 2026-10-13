@@ -95,13 +95,22 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const connected = business.connectionState === "connected";
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [bcFilter, setBcFilter] = useState<BcFilter>("all");
-  // Deleted documents are kept (soft delete) and listed under "Deleted"; totals only count active ones.
+  // Sales: deleted documents are kept (soft delete) and listed under "Deleted"; totals only count active ones.
   const [showDeleted, setShowDeleted] = useState(false);
+  // Bills: the Bharat Connect view lists only bills received over Bharat Connect, the ones to create first.
+  const [bcOnly, setBcOnly] = useState(false);
 
   const rows = allInvoices.filter((i) => i.kind === kind && !i.deletedAt);
   // Raw Bharat Connect invoices are listed but aren't in the books yet, so they're left out of the totals.
   const booked = rows.filter((i) => !isIncoming(i));
-  const listed = showDeleted ? allInvoices.filter((i) => i.kind === kind && i.deletedAt) : rows;
+  const received = rows.filter((i) => i.bcSendStatus === "sent");
+  const toCreate = received.filter((i) => isIncoming(i) && i.bcConfirmationStatus === "pending").length;
+  const showBcView = kind === "purchase" && connected && bcOnly;
+  const listed = showDeleted
+    ? allInvoices.filter((i) => i.kind === kind && i.deletedAt)
+    : showBcView
+      ? [...received].sort((a, b) => Number(b.bcConfirmationStatus === "pending") - Number(a.bcConfirmationStatus === "pending"))
+      : rows;
   const filteredRows = connected && !showDeleted ? listed.filter((i) => matchesBcFilter(i, bcFilter)) : listed;
   const total = sumAmount(booked);
   const outstanding = sumUnpaid(booked);
@@ -131,7 +140,13 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
         }
       />
       {connected && (
-        <PendingActionsBanner kind={kind} onReview={() => setBcFilter(kind === "sales" ? "not_sent" : "pending")} />
+        <PendingActionsBanner
+          kind={kind}
+          onReview={() => {
+            setBcFilter(kind === "sales" ? "not_sent" : "pending");
+            if (kind === "purchase") setBcOnly(true);
+          }}
+        />
       )}
 
       <div className="mb-5 grid grid-cols-4 gap-5">
@@ -163,10 +178,32 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 <Funnel />
               </button>
             )}
-            <button className={toolbarIconBtn} onClick={() => setShowDeleted((d) => !d)} title="Show active or deleted">
-              <Archive />
-              {showDeleted ? "Deleted" : "Active"}
-            </button>
+            {kind === "purchase" ? (
+              connected && (
+                <button
+                  className={`relative ${toolbarIconBtn} ${bcOnly ? "!border-primary/50 !bg-primary/5 !text-primary" : ""}`}
+                  onClick={() => setBcOnly((v) => !v)}
+                  aria-pressed={bcOnly}
+                  title={bcOnly ? "Show all bills" : "Show bills received over Bharat Connect"}
+                >
+                  <BharatConnectMark size={14} />
+                  Bharat Connect
+                  {toCreate > 0 && (
+                    <span
+                      className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white"
+                      aria-label={`${toCreate} to create`}
+                    >
+                      {toCreate}
+                    </span>
+                  )}
+                </button>
+              )
+            ) : (
+              <button className={toolbarIconBtn} onClick={() => setShowDeleted((d) => !d)} title="Show active or deleted">
+                <Archive />
+                {showDeleted ? "Deleted" : "Active"}
+              </button>
+            )}
             <button className={toolbarIconBtn} title="Group by">
               <Split />
             </button>
@@ -216,6 +253,8 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-xs text-muted-foreground">
                   {showDeleted
                     ? `No deleted ${config.pageTitle.toLowerCase()}.`
+                    : showBcView && received.length === 0
+                    ? "No bills received over Bharat Connect yet."
                     : rows.length === 0
                     ? `No ${config.pageTitle.toLowerCase()} yet.`
                     : `No ${config.pageTitle.toLowerCase()} found.`}
@@ -408,11 +447,11 @@ function InvoiceRow({
             ) : (
               <InviteBcTooltip
                 counterpartyName={invoice.counterpartyName}
+                className="relative flex w-15 justify-center"
                 message={`${invoice.counterpartyName} hasn't joined Bharat Connect yet. Invite them so their future bills reach you over Bharat Connect.`}
               >
-                <span className="flex cursor-default items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
-                  <BharatConnectMark size={12} className="grayscale opacity-60" />
-                  Not on Bharat Connect
+                <span className="cursor-default text-xs text-muted-foreground" aria-label="Not on Bharat Connect">
+                  —
                 </span>
               </InviteBcTooltip>
             )

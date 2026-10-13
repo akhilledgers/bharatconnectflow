@@ -14,11 +14,13 @@ import { ResponseDialog } from "./BcDialogs";
 import { ItemReviewDialog } from "./BillItems";
 import { needsReview, useBillItems, type ItemRowState } from "./useBillItems";
 import { money } from "./kindConfig";
+import { stateFromGstin } from "./invoiceDoc";
+import type { Invoice } from "../../types";
 
 // An invoice received over Bharat Connect is raw data, not a LEDGERS bill yet. Opening it lands here: LEDGERS'
 // Create Purchase Invoice (in.ledgers.cloud/v4/create-purchase-invoice), prefilled from the supplier's invoice.
-// Amounts, quantities and taxes are the supplier's (locked); the Item column is the catalog match — "Review"
-// where it needs a decision. Creating it is the Accept on Bharat Connect (buyerRemarks required); Reject stays on
+// Amounts, quantities and taxes are the supplier's (locked); the Item column shows the supplier's item name with
+// its catalog match underneath — "Review" where it needs a decision. Creating it is the Accept on Bharat Connect (buyerRemarks required); Reject stays on
 // the strip, and a rejected invoice never becomes a LEDGERS bill.
 
 const field = "h-7 w-full rounded-md border border-input bg-muted/60 px-2.5 text-xs text-foreground";
@@ -111,19 +113,8 @@ export function BcBillCreatePage() {
           </div>
         </div>
 
-        {/* Vendor: the supplier who sent it */}
-        <div className="border-b border-border px-6 py-5">
-          <div className="inline-flex w-96 items-center gap-2 rounded-md border border-input bg-muted/60 px-3 py-1.5 text-xs">
-            <span className="truncate font-medium text-foreground">{bill.counterpartyName}</span>
-            {bill.counterpartyB2bId && (
-              <span className="ms-auto flex shrink-0 items-center gap-1 text-muted-foreground">
-                <BharatConnectMark size={11} />
-                <span className="tabular-nums">{bill.counterpartyB2bId}</span>
-              </span>
-            )}
-          </div>
-          {bill.counterpartyGstin && <div className="mt-1.5 text-xs text-muted-foreground">GSTIN: {bill.counterpartyGstin}</div>}
-        </div>
+        {/* Vendor, as on LEDGERS' Create Purchase Invoice: the supplier who sent it (fixed), with their addresses */}
+        <VendorBlock bill={bill} />
 
         {/* Line items: the supplier's figures, locked; the Item column is our catalog match */}
         <div className="border-b border-border px-6 pb-4 pt-2">
@@ -210,6 +201,52 @@ export function BcBillCreatePage() {
   );
 }
 
+/**
+ * LEDGERS shows the picked vendor as three columns: Vendor, Billing Address, Shipping Address. The vendor is the
+ * supplier who sent the invoice, so there's no remove; details come from the LEDGERS contact with the same
+ * Bharat Connect B2B ID or GSTIN, else from the invoice itself.
+ */
+function VendorBlock({ bill }: { bill: Invoice }) {
+  const contact = useStore((s) =>
+    s.contacts.find(
+      (c) => (bill.counterpartyB2bId && c.b2bId === bill.counterpartyB2bId) || (bill.counterpartyGstin && c.gstin === bill.counterpartyGstin),
+    ),
+  );
+  const addr = contact?.billingAddress;
+  const state = addr?.state ?? titleCase(stateFromGstin(bill.counterpartyGstin));
+  const address = [addr?.city, state, addr?.pincode].filter(Boolean) as string[];
+  const lines = [
+    contact?.businessName ?? (contact ? undefined : bill.counterpartyName),
+    contact?.email ?? bill.counterpartyEmail,
+    contact?.mobile,
+  ].filter(Boolean) as string[];
+
+  return (
+    <div className="grid grid-cols-3 gap-6 border-b border-border px-6 py-5 text-xs leading-[19.5px] text-muted-foreground">
+      <div>
+        <div className="mb-0.5 text-xs font-medium leading-4 text-foreground">Vendor</div>
+        {contact && <div className="font-medium">{contact.name}</div>}
+        {lines.map((l) => (
+          <div key={l}>{l}</div>
+        ))}
+        {bill.counterpartyGstin && <div>GSTIN: {bill.counterpartyGstin}</div>}
+        {bill.counterpartyB2bId && <div>B2B ID: {bill.counterpartyB2bId}</div>}
+      </div>
+      {(["Billing Address", "Shipping Address"] as const).map((label) => (
+        <div key={label}>
+          <div className="mb-0.5 flex items-center gap-1 text-xs font-medium leading-4 text-foreground">
+            {label}
+            <Pencil className="size-3 text-muted-foreground hover:text-foreground" />
+          </div>
+          {address.length ? address.map((l) => <div key={l}>{l}</div>) : <div>—</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const titleCase = (s?: string) => s?.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
 function DateBox({ value }: { value: string }) {
   return (
     <div className="relative">
@@ -235,33 +272,36 @@ function ItemRow({ row, onReview }: { row: ItemRowState; onReview: () => void })
   const lineTaxable = line.price * line.qty;
   const lineGst = (lineTaxable * line.gstPercent) / 100;
   const review = needsReview(row);
-  const label = draft.choice === "new" ? draft.name : (chosen?.name ?? "");
-  const differs = chosen && normName(chosen.name) !== normName(line.name);
+  const same = chosen && normName(chosen.name) === normName(line.name);
+
+  // Under the item name: where it goes in the catalog, or what still needs deciding.
+  const status = review
+    ? draft.choice === "new"
+      ? { tone: "warn", text: "New item · details missing" }
+      : chosen
+        ? { tone: "warn", text: `Possible match: ${chosen.name}` }
+        : { tone: "warn", text: "Not found in catalog" }
+    : draft.choice === "new"
+      ? { tone: "ok", text: "Will be added to catalog" }
+      : { tone: "ok", text: same ? "In catalog" : `Catalog: ${chosen?.name}` };
 
   return (
     <tr className="align-top">
-      <td className="space-y-2 py-3 pr-4">
-        {/* Our catalog item for this line */}
+      <td className="py-3 pr-4">
+        {/* The supplier's item: this is the item on the bill */}
+        <input className={field} value={line.name} readOnly title={line.name} aria-label="Item" />
         <button
           onClick={onReview}
-          className={`flex h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 text-left text-xs ${
-            review ? "border-primary/40 bg-primary/5" : "border-input bg-background hover:bg-accent"
-          }`}
+          className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 text-left text-[11px] hover:underline"
         >
-          <span className={`truncate ${review ? "text-muted-foreground" : "text-foreground"}`}>
-            {review ? "Select item…" : label}
-            {!review && draft.choice === "new" && <span className="text-muted-foreground"> · new</span>}
-          </span>
-          {review ? <span className="shrink-0 font-medium text-primary">Review</span> : <Check className="size-3.5 shrink-0 text-green-600" strokeWidth={3} />}
+          {status.tone === "ok" ? (
+            <Check className="size-3 shrink-0 text-green-600" strokeWidth={3} />
+          ) : (
+            <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+          )}
+          <span className={`truncate ${status.tone === "ok" ? "text-muted-foreground" : "text-foreground"}`}>{status.text}</span>
+          <span className="shrink-0 font-medium text-primary">{review ? "Review" : "Change"}</span>
         </button>
-        {/* What the supplier called it */}
-        <input
-          className={field}
-          value={line.name}
-          readOnly
-          title={differs ? `Supplier calls it "${line.name}"` : "Supplier's description"}
-          aria-label="Supplier's description"
-        />
       </td>
       <td className="py-3 pr-3">
         <input className={field} value={line.price.toFixed(2)} readOnly aria-label="Price" />

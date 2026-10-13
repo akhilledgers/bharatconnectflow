@@ -7,7 +7,7 @@ import { matchLine, type LineMatch, type LineResolution } from "../../lib/itemMa
 // Per-line catalog matching for a bill received over Bharat Connect, plus the user's review decisions (see BillItems).
 
 export interface Draft {
-  /** "new" or an existing catalog item id. */
+  /** An existing catalog item id, "new", or "" while the user hasn't decided. */
   choice: string;
   /** Name for a new catalog item (defaults to the supplier's description). */
   name: string;
@@ -37,8 +37,10 @@ export interface BillItems {
   toReview: ItemRowState[];
 }
 
-export const isComplete = (d: Draft) => d.choice !== "new" || (d.hsn.length >= 4 && d.gst !== "" && d.name.trim() !== "");
-export const needsReview = (r: ItemRowState) => !isComplete(r.draft) || (r.draft.choice === "new" && !r.draft.reviewed);
+export const isComplete = (d: Draft) =>
+  d.choice !== "" && (d.choice !== "new" || (d.hsn.length >= 4 && d.gst !== "" && d.name.trim() !== ""));
+/** Undecided, missing details, or a suggested match nobody has confirmed yet. */
+export const needsReview = (r: ItemRowState) => !isComplete(r.draft) || (r.match.kind === "suggest" && !r.draft.reviewed);
 
 function initDrafts(bill: Invoice | undefined) {
   if (!bill) return { key: "", rows: [] as ItemRowState[] };
@@ -52,7 +54,7 @@ function initDrafts(bill: Invoice | undefined) {
         line,
         match,
         draft: {
-          choice: match.kind === "new" ? "new" : match.item.id,
+          choice: match.kind === "none" ? "" : match.item.id,
           name: line.name,
           hsn: line.hsnSac ?? "",
           gst: line.gstMissing ? "" : String(line.gstPercent),
