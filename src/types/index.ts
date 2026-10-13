@@ -170,6 +170,8 @@ export interface InvoiceLineItem {
   gstMissing?: boolean;
   /** LEDGERS catalog item this line is booked against. Received bills get it on Accept. */
   catalogId?: string;
+  /** Account type (the item's Purchase Expense Type, a chart-of-accounts ledger) this line is posted to. */
+  account?: string;
 }
 
 /** One side (Sales or Purchase) of a LEDGERS catalog item, as on the Create Catalog form. */

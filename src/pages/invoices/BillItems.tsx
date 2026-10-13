@@ -6,9 +6,9 @@ import type { CatalogItem, Invoice, InvoiceLineItem } from "../../types";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Checkbox, Input, Label, Select } from "../../components/ui/input";
-import { CATALOG_UNITS, GST_RATES } from "../../mock/catalog";
-import { normName, rankCatalog } from "../../lib/itemMatch";
-import { isComplete, type Draft, type ItemRowState } from "./useBillItems";
+import { CATALOG_UNITS, EXPENSE_TYPES, GST_RATES } from "../../mock/catalog";
+import { normName, rankCatalog, suggestAccount } from "../../lib/itemMatch";
+import { isComplete, itemAccount, type Draft, type ItemRowState } from "./useBillItems";
 
 // Bills received over Bharat Connect carry the supplier's item details, not our catalog id. On the Create Purchase
 // Invoice page each line shows the supplier's item name with its catalog match underneath; lines that need a decision
@@ -69,8 +69,9 @@ export function ItemReviewDialog({
     line.gstMissing ? "No GST rate sent" : `GST ${line.gstPercent}%`,
   ].filter(Boolean);
 
+  // An existing item is mapped to its own account type; a new item gets one chosen below (preselected).
   const pick = (c: CatalogItem) => {
-    set({ choice: c.id });
+    set({ choice: c.id, account: itemAccount(c) || suggestAccount(line, catalog) });
     setMode("chosen");
   };
 
@@ -137,7 +138,7 @@ export function ItemReviewDialog({
             {/* Not in the catalog: a new item */}
             <button
               onClick={() => {
-                set({ choice: "new" });
+                set({ choice: "new", account: suggestAccount(line, catalog) });
                 setMode("new");
               }}
               className="flex cursor-pointer items-center gap-1 text-[11px] font-medium text-primary hover:underline"
@@ -179,7 +180,7 @@ export function ItemReviewDialog({
             <span className="text-[11px] text-muted-foreground">New catalog item</span>
             <button
               onClick={() => {
-                set({ choice: row.draft.choice === "new" ? "" : row.draft.choice });
+                set({ choice: row.draft.choice === "new" ? "" : row.draft.choice, account: row.draft.account });
                 setMode("pick");
               }}
               className="cursor-pointer text-[11px] font-medium text-primary hover:underline"
@@ -224,6 +225,16 @@ export function ItemReviewDialog({
             <div className="space-y-1.5">
               <Label>Type</Label>
               <Input inputSize="sm" value={line.isService ? "Services" : "Goods"} readOnly />
+            </div>
+            {/* LEDGERS needs an account type to post the purchase; saved as the new item's Purchase Expense Type. */}
+            <div className="col-span-2 space-y-1.5">
+              <Label required>Account Type</Label>
+              <Select selectSize="sm" value={d.account} onChange={(e) => set({ account: e.target.value })} aria-invalid={d.account === ""}>
+                <option value="">Select Account Type</option>
+                {EXPENSE_TYPES.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </Select>
             </div>
           </div>
         </div>

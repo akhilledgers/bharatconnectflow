@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../../store/useStore";
-import type { Invoice, InvoiceLineItem } from "../../types";
+import type { CatalogItem, Invoice, InvoiceLineItem } from "../../types";
 import { unitLabel } from "../../mock/catalog";
-import { matchLine, type LineMatch, type LineResolution } from "../../lib/itemMatch";
+import { matchLine, suggestAccount, type LineMatch, type LineResolution } from "../../lib/itemMatch";
 
 // Per-line catalog matching for a bill received over Bharat Connect, plus the user's review decisions (see BillItems).
 
@@ -14,6 +14,11 @@ export interface Draft {
   hsn: string;
   gst: string;
   unit: string;
+  /**
+   * Account type (Expense Type) the line is posted to; LEDGERS requires it. Existing items bring their own (mapped);
+   * a new item gets it chosen in the Review popup.
+   */
+  account: string;
   /** Train the system: remember this choice for the supplier's future bills. */
   remember: boolean;
   /** The user has looked at this line in the Review popup. */
@@ -38,7 +43,11 @@ export interface BillItems {
 }
 
 export const isComplete = (d: Draft) =>
-  d.choice !== "" && (d.choice !== "new" || (d.hsn.length >= 4 && d.gst !== "" && d.name.trim() !== ""));
+  d.choice !== "" && d.account !== "" && (d.choice !== "new" || (d.hsn.length >= 4 && d.gst !== "" && d.name.trim() !== ""));
+
+/** The catalog item's own account type (Purchase Expense Type), if it has one. */
+export const itemAccount = (item?: CatalogItem) => item?.purchase?.expenseType;
+
 /** Undecided, missing details, or a suggested match nobody has confirmed yet. */
 export const needsReview = (r: ItemRowState) => !isComplete(r.draft) || (r.match.kind === "suggest" && !r.draft.reviewed);
 
@@ -59,6 +68,7 @@ function initDrafts(bill: Invoice | undefined) {
           hsn: line.hsnSac ?? "",
           gst: line.gstMissing ? "" : String(line.gstPercent),
           unit: unitLabel(line.unit) ?? "UNT-UNITS",
+          account: (match.kind !== "none" && itemAccount(match.item)) || suggestAccount(line, catalog),
           remember: true,
           reviewed: false,
         },
@@ -82,8 +92,8 @@ export function useBillItems(bill: Invoice | undefined): BillItems {
         setState((s) => ({ ...s, rows: s.rows.map((r) => (r.line.id === lineId ? { ...r, draft: { ...r.draft, ...patch } } : r)) })),
       lines: rows.map(({ line, draft: d }) =>
         d.choice === "new"
-          ? { lineId: line.id, remember: d.remember, create: { name: d.name.trim(), hsn: d.hsn, gstRate: Number(d.gst), unit: d.unit } }
-          : { lineId: line.id, remember: d.remember, catalogId: d.choice },
+          ? { lineId: line.id, account: d.account, remember: d.remember, create: { name: d.name.trim(), hsn: d.hsn, gstRate: Number(d.gst), unit: d.unit } }
+          : { lineId: line.id, account: d.account, remember: d.remember, catalogId: d.choice },
       ),
       valid: rows.every((r) => isComplete(r.draft)),
       newCount: rows.filter((r) => r.draft.choice === "new").length,

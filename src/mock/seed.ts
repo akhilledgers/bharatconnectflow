@@ -302,6 +302,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2030",
+      billNo: "2026-30",
       kind: "purchase",
       counterpartyName: "Manoj Kumar Yadav",
       counterpartyGstin: "07ABCPY9668B1Z7",
@@ -315,6 +316,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2029",
+      billNo: "2026-29",
       kind: "purchase",
       counterpartyName: "Manoj Kumar Yadav",
       counterpartyGstin: "07ABCPY9668B1Z7",
@@ -328,6 +330,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2028",
+      billNo: "2026-28",
       kind: "purchase",
       counterpartyName: "Ganesh Packaging Co",
       counterpartyGstin: "27ABCPG1234K1Z1",
@@ -374,6 +377,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2025",
+      billNo: "2026-25",
       kind: "purchase",
       counterpartyName: "Sri Lakshmi Enterprises",
       counterpartyGstin: "29AASFL9988M1Z3",

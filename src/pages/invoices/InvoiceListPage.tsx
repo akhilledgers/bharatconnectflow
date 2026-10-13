@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Archive,
   ArrowDownToLine,
   CalendarDays,
+  ChevronDown,
+  ChevronsUpDown,
   Copy,
   Eye,
   Funnel,
@@ -38,16 +40,28 @@ import { FilterMenu } from "../../components/FilterMenu";
 import { configFor, sumAmount, sumUnpaid, inr } from "./kindConfig";
 import type { Invoice } from "../../types";
 
-// Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, FY range.
-function StatCard({ label, value, className }: { label: string; value: string; className: string }) {
+// Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, period underneath.
+function StatCard({ label, value, className, sub }: { label: string; value: string; className: string; sub: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
       <div className="space-y-1">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className={`text-xl font-semibold tracking-tight tabular-nums ${className}`}>{value}</p>
-        <p className="text-xs text-muted-foreground">01-04-2026 - 31-03-2027</p>
+        <p className={`text-xl tracking-tight tabular-nums ${className}`}>{value}</p>
+        <p className="text-xs text-muted-foreground">{sub}</p>
       </div>
     </div>
+  );
+}
+
+/** Sortable column header, as in LEDGERS' data grid (sorting itself isn't wired in the prototype). */
+function SortTh({ children, className = "" }: { children: string; className?: string }) {
+  return (
+    <th className={`${thCls} ${className}`}>
+      <span className="inline-flex items-center gap-1.5">
+        {children}
+        <ChevronsUpDown className="mt-px size-[0.7rem] opacity-60" />
+      </span>
+    </th>
   );
 }
 
@@ -77,6 +91,9 @@ const PURCHASE_BC_FILTERS: { value: BcFilter; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+/** LEDGERS lists purchase invoices newest bill number first ("2026-32" → 32). */
+const billNoSeq = (i: Invoice) => Number(i.billNo?.split("-")[1] ?? 0);
+
 function matchesBcFilter(invoice: Invoice, filter: BcFilter): boolean {
   if (filter === "all") return true;
   if (filter === "not_sent") return invoice.bcSendStatus === "not_sent";
@@ -86,6 +103,8 @@ function matchesBcFilter(invoice: Invoice, filter: BcFilter): boolean {
 export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const config = configFor(kind);
   const navigate = useNavigate();
+  // Set when Create Purchase Invoice (from Bharat Connect) lands back here: that row is highlighted.
+  const createdId = (useLocation().state as { createdId?: string } | null)?.createdId;
   const business = useStore((s) => s.currentBusiness());
   const deleteInvoice = useStore((s) => s.deleteInvoice);
   const cancelAndDeleteInvoice = useStore((s) => s.cancelAndDeleteInvoice);
@@ -101,31 +120,38 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const [bcOnly, setBcOnly] = useState(false);
 
   const rows = allInvoices.filter((i) => i.kind === kind && !i.deletedAt);
-  // Raw Bharat Connect invoices are listed but aren't in the books yet, so they're left out of the totals.
+  // Raw Bharat Connect invoices aren't in the books yet, so they're left out of the totals.
   const booked = rows.filter((i) => !isIncoming(i));
   const received = rows.filter((i) => i.bcSendStatus === "sent");
   const toCreate = received.filter((i) => isIncoming(i) && i.bcConfirmationStatus === "pending").length;
   const showBcView = kind === "purchase" && connected && bcOnly;
+  // Bills: the plain list is LEDGERS' own (bills in the books, no Bharat Connect column); the Bharat Connect view has
+  // everything received over Bharat Connect with its status. Sales keep the Bharat Connect column inline.
+  const bcColumn = connected && (kind === "sales" || showBcView);
+  // Purchase follows LEDGERS' Purchase Invoices list: its own columns, no row Action menu.
+  const purchase = kind === "purchase";
   const listed = showDeleted
     ? allInvoices.filter((i) => i.kind === kind && i.deletedAt)
     : showBcView
       ? [...received].sort((a, b) => Number(b.bcConfirmationStatus === "pending") - Number(a.bcConfirmationStatus === "pending"))
-      : rows;
-  const filteredRows = connected && !showDeleted ? listed.filter((i) => matchesBcFilter(i, bcFilter)) : listed;
+      : kind === "purchase"
+        ? [...booked].sort((a, b) => billNoSeq(b) - billNoSeq(a))
+        : rows;
+  const filteredRows = bcColumn && !showDeleted ? listed.filter((i) => matchesBcFilter(i, bcFilter)) : listed;
   const total = sumAmount(booked);
   const outstanding = sumUnpaid(booked);
 
   const stats = [
     { label: config.statCardLabels[0], value: inr(total), className: "text-emerald-600" },
-    { label: config.statCardLabels[1], value: inr(outstanding), className: "text-amber-600" },
-    { label: config.statCardLabels[2], value: inr(Math.round(outstanding * 0.79)), className: "text-red-600" },
-    { label: config.statCardLabels[3], value: "INR 0.00", className: "text-purple-600" },
-  ];
+    { label: config.statCardLabels[1], value: inr(outstanding), className: purchase ? "font-semibold text-yellow-600" : "font-semibold text-amber-600" },
+    { label: config.statCardLabels[2], value: inr(Math.round(outstanding * 0.79)), className: "font-semibold text-red-600" },
+    { label: config.statCardLabels[3], value: "INR 0.00", className: purchase ? "font-semibold text-blue-600" : "font-semibold text-purple-600" },
+  ].map((s, i) => ({ ...s, className: i === 0 ? `${s.className} ${purchase ? "font-medium" : "font-semibold"}` : s.className, sub: purchase ? "Today" : "01-04-2026 - 31-03-2027" }));
 
   return (
     <div>
       <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-xl font-medium text-foreground">{config.pageTitle}</h1>
+        <h1 className={`${purchase ? "text-lg" : "text-xl"} font-medium text-foreground`}>{config.pageTitle}</h1>
         <Button variant="outline" onClick={() => navigate(`${config.basePath}/create`)}>
           <Plus />
           {config.createLabel}
@@ -156,17 +182,17 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs shadow-black/5">
-        <div className="flex items-center justify-between gap-3 px-5 py-3">
-          <div className="relative w-72">
+        <div className={purchase ? "flex min-h-14 items-center justify-between gap-2.5 border-b border-border px-3 py-3" : "flex items-center justify-between gap-3 px-5 py-3"}>
+          <div className={`relative ${purchase ? "w-56" : "w-72"}`}>
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder={`Search ${config.singular}...`} className="ps-9" />
+            <Input placeholder={purchase ? "Search invoices..." : `Search ${config.singular}...`} className="ps-9" />
           </div>
           <div className="flex items-center gap-2">
             <button className="inline-flex h-8.5 w-56 items-center gap-2 rounded-md border border-input bg-background px-3 text-2sm text-muted-foreground/80 shadow-xs shadow-black/5">
               <CalendarDays className="size-4 text-muted-foreground" />
               Select Date range
             </button>
-            {connected ? (
+            {bcColumn ? (
               <FilterMenu
                 value={bcFilter}
                 defaultValue="all"
@@ -176,6 +202,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
             ) : (
               <button className={toolbarIconBtn} title="Filter">
                 <Funnel />
+                {purchase && "Filter"}
               </button>
             )}
             {kind === "purchase" ? (
@@ -204,9 +231,11 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 {showDeleted ? "Deleted" : "Active"}
               </button>
             )}
-            <button className={toolbarIconBtn} title="Group by">
-              <Split />
-            </button>
+            {!purchase && (
+              <button className={toolbarIconBtn} title="Group by">
+                <Split />
+              </button>
+            )}
             <button className={toolbarIconBtn} title="Columns">
               <SquareMenu />
             </button>
@@ -222,13 +251,29 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
               <th className={`${thCls} w-12`}>
                 <Checkbox aria-label="Select all" />
               </th>
-              <th className={thCls}>{config.singular} Number</th>
-              <th className={thCls}>{config.singular} Date</th>
-              <th className={`${thCls} w-[22%]`}>{config.counterpartyLabel}</th>
-              <th className={thCls}>Amount</th>
-              <th className={thCls}>{config.singular} Status</th>
-              {connected && <th className={`${thCls} w-44`}>Bharat Connect</th>}
-              <th className={`${thCls} w-20`}>Action</th>
+              {purchase ? (
+                <>
+                  <SortTh>Bill Number</SortTh>
+                  <SortTh className="w-[15%]">Purchase Invoice Number</SortTh>
+                  <SortTh>Purchase Date</SortTh>
+                  <SortTh className="w-[20%]">{config.counterpartyLabel}</SortTh>
+                  <th className={thCls}>GSTIN</th>
+                  <SortTh>Total Amount</SortTh>
+                  <th className={thCls}>Status</th>
+                  {/* Bharat Connect mark column: no heading, the mark is centred in it. */}
+                  <th className={`${thCls} w-10 !px-0`} aria-label="Created from Bharat Connect" />
+                </>
+              ) : (
+                <>
+                  <th className={thCls}>{config.singular} Number</th>
+                  <th className={thCls}>{config.singular} Date</th>
+                  <th className={`${thCls} w-[22%]`}>{config.counterpartyLabel}</th>
+                  <th className={thCls}>Amount</th>
+                  <th className={thCls}>{config.singular} Status</th>
+                </>
+              )}
+              {bcColumn && <th className={`${thCls} ${purchase ? "w-32" : "w-44"}`}>Bharat Connect</th>}
+              {!purchase && <th className={`${thCls} w-20`}>Action</th>}
             </tr>
           </thead>
           <tbody>
@@ -238,6 +283,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 invoice={inv}
                 config={config}
                 connected={connected}
+                bcColumn={bcColumn}
                 menuOpen={openMenuId === inv.id}
                 onToggleMenu={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
                 onCloseMenu={() => setOpenMenuId(null)}
@@ -246,11 +292,12 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 }
                 onSend={() => sendInvoiceViaBharatConnect(inv.id)}
                 onDelete={(mode) => setToDelete({ inv, mode })}
+                highlight={inv.id === createdId}
               />
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={connected ? 8 : 7} className="px-4 py-10 text-center text-xs text-muted-foreground">
+                <td colSpan={(purchase ? 9 : 7) + (bcColumn ? 1 : 0)} className="px-4 py-10 text-center text-xs text-muted-foreground">
                   {showDeleted
                     ? `No deleted ${config.pageTitle.toLowerCase()}.`
                     : showBcView && received.length === 0
@@ -335,22 +382,28 @@ function InvoiceRow({
   invoice,
   config,
   connected,
+  bcColumn,
   menuOpen,
   onToggleMenu,
   onCloseMenu,
   onView,
   onSend,
   onDelete,
+  highlight,
 }: {
   invoice: Invoice;
   config: ReturnType<typeof configFor>;
   connected: boolean;
+  /** Show the Bharat Connect column (always on Sales; on Bills only in the Bharat Connect view). */
+  bcColumn: boolean;
   menuOpen: boolean;
   onToggleMenu: () => void;
   onCloseMenu: () => void;
   onView: () => void;
   onSend: () => void;
   onDelete: (mode: "delete" | "cancel-delete") => void;
+  /** Just created from Bharat Connect. */
+  highlight?: boolean;
 }) {
   const navigate = useNavigate();
   const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
@@ -360,26 +413,57 @@ function InvoiceRow({
   const showSending = connected && invoice.bcSendStatus === "sending";
   const showRetry = connected && config.kind === "sales" && invoice.bcConfirmationStatus === "failure";
   const counterpartyOnBc = !!invoice.counterpartyB2bId;
+  const purchase = config.kind === "purchase";
 
   return (
-    <tr className={`relative ${trCls}`}>
+    <tr className={`relative ${trCls} ${highlight ? "bg-primary/5" : ""}`}>
       <td className={tdCls}>
         <Checkbox aria-label={`Select ${invoice.id}`} />
       </td>
-      <td className={`${tdCls} text-xs`}>
-        <button onClick={onView} className="text-primary hover:underline">
-          {invoice.id}
-        </button>
-      </td>
-      <td className={`${tdCls} text-xs text-foreground`}>{invoice.date}</td>
-      <td className={`${tdCls} truncate text-xs`}>
-        <button onClick={onView} className="text-primary hover:underline">
-          {invoice.counterpartyName}
-        </button>
-        {invoice.counterpartyEmail && <div className="truncate text-muted-foreground">{invoice.counterpartyEmail}</div>}
-      </td>
-      <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
+      {purchase ? (
+        <>
+          {/* Our bill number (given on create) and the supplier's invoice number, as LEDGERS lists them. */}
+          <td className={`${tdCls} text-xs`}>
+            {invoice.billNo ? (
+              <button onClick={onView} className="text-primary hover:underline">
+                {invoice.billNo}
+              </button>
+            ) : (
+              <span className="text-muted-foreground" title="Not created in LEDGERS yet">
+                —
+              </span>
+            )}
+          </td>
+          <td className={`${tdCls} truncate text-xs text-foreground`}>{invoice.id}</td>
+          <td className={`${tdCls} text-xs text-foreground`}>{invoice.date}</td>
+          <td className={`${tdCls} truncate text-xs`}>
+            <button onClick={onView} className="text-primary hover:underline">
+              {invoice.counterpartyName}
+            </button>
+          </td>
+          <td className={`${tdCls} truncate text-xs text-primary`}>{invoice.counterpartyGstin}</td>
+          <td className={`${tdCls} whitespace-nowrap text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
+        </>
+      ) : (
+        <>
+          <td className={`${tdCls} text-xs`}>
+            <button onClick={onView} className="text-primary hover:underline">
+              {invoice.id}
+            </button>
+          </td>
+          <td className={`${tdCls} text-xs text-foreground`}>{invoice.date}</td>
+          <td className={`${tdCls} truncate text-xs`}>
+            <button onClick={onView} className="text-primary hover:underline">
+              {invoice.counterpartyName}
+            </button>
+            {invoice.counterpartyEmail && <div className="truncate text-muted-foreground">{invoice.counterpartyEmail}</div>}
+          </td>
+          <td className={`${tdCls} text-xs tabular-nums text-foreground`}>{inr(invoice.amount)}</td>
+        </>
+      )}
       <td className={tdCls}>
+        {/* One line: status badge, then the Bharat Connect mark when it applies. */}
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
         {invoice.deletedAt ? (
           <Badge variant="secondary" title={`Deleted on ${invoice.deletedAt}`}>
             Deleted
@@ -389,12 +473,29 @@ function InvoiceRow({
             <Badge variant="secondary" title="Received on Bharat Connect. Not created in LEDGERS yet.">
               Not created
             </Badge>
+          ) : purchase && invoice.status !== "paid" ? (
+            // LEDGERS: unpaid statuses open a menu (record payment etc.), shown by the chevron.
+            <Badge variant={statusVariant(invoice.status)} className="gap-0.5">
+              {statusLabel(invoice.status)}
+              <ChevronDown className="size-3" />
+            </Badge>
           ) : (
             <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
           )
         )}
+        </div>
       </td>
-      {connected && (
+      {/* Bharat Connect "B", centred in its own column: created in LEDGERS from an invoice received over Bharat Connect. */}
+      {purchase && (
+        <td className={`${tdCls} !px-0 text-center`}>
+          {invoice.billNo && invoice.bcSendStatus === "sent" && (
+            <span title="Created from Bharat Connect" aria-label="Created from Bharat Connect" className="inline-flex align-middle">
+              <BharatConnectMark size={12} />
+            </span>
+          )}
+        </td>
+      )}
+      {bcColumn && (
         <td className={tdCls}>
           {showSend ? (
             counterpartyOnBc ? (
@@ -460,6 +561,7 @@ function InvoiceRow({
           )}
         </td>
       )}
+      {!purchase && (
       <td className={tdCls}>
         <div className="relative inline-block">
           <button
@@ -545,6 +647,7 @@ function InvoiceRow({
           )}
         </div>
       </td>
+      )}
     </tr>
   );
 }

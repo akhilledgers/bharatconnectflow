@@ -24,12 +24,13 @@ export const SALES_CONFIG: KindConfig = {
 
 export const PURCHASE_CONFIG: KindConfig = {
   kind: "purchase",
-  pageTitle: "Bills",
+  // As on LEDGERS' list page (in.ledgers.cloud/v4/manage-purchase-invoice).
+  pageTitle: "Purchase Invoices",
   singular: "Bill",
-  createLabel: "Create Bill",
+  createLabel: "Create Purchase Invoice",
   basePath: "/expenses/bills",
   counterpartyLabel: "Supplier Name",
-  statCardLabels: ["Total Bills", "Payables", "Overdue", "TDS"],
+  statCardLabels: ["Total Purchase", "Payables", "Overdue", "TDS"],
   bcSendActionLabel: "Send via Bharat Connect",
 };
 

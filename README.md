@@ -20,6 +20,9 @@ Two builds are stacked here:
    render exactly as they would with no Bharat Connect connection at all until the business
    connects, at which point send/accept/reject actions, status filters, pending-action
    banners, and a Bharat Connect column appear in place — same page, same URL, same table.
+   Bills work slightly differently: the Purchase Invoices list stays LEDGERS' own, and a
+   **Bharat Connect** button on it shows everything received over Bharat Connect (see
+   [§9](#9-bills-received-over-bharat-connect--purchase-invoices)).
 
 ## Running it
 
@@ -44,6 +47,10 @@ footer. It lets you:
 - Fire the two simulated Bharat Connect webhooks (confirm activation / reject an update)
 - Simulate the buyer's side of a sent sales invoice — Accept or Fail any invoice currently
   sitting in "sent, awaiting confirmation," without leaving the page you're on
+- **Purchase** tab: receive a bill from a supplier (In catalog / New items / Mixed / Missing
+  HSN), load one of eight bill-item scenarios (all in catalog, linked before, all new,
+  similar item, Sales-only item, missing HSN/GST, services, mixed), reset the catalog, and
+  play a supplier editing or cancelling a bill that's waiting on you
 
 The "Reach full verification" documents dialog has one dev control of its own ("Dev ·
 Simulate re-request"), kept inside the dialog because the dev panel sits behind it.
@@ -146,6 +153,8 @@ Implemented in [`src/lib/id-standard.ts`](src/lib/id-standard.ts):
 `PAN@BCB` / `GSTIN@BCB` for companies, `AAAA.BBBB.CCCC.DDD@BCB` for individuals (from
 business name, proprietor name, PAN digits 6–9, and a disambiguation sequence), and
 `base.ENDING@BCB` for extra IDs. No user ever types an ID from scratch.
+**⚠ Not confirmed:** no R3.8 reference defines this standard, and handbook Annexure F asks for IDs
+derived from the registered business name — see [Flow audit §2](#2-b2b-ids).
 
 ### 6. Profile-edit page (`/settings/bharatconnect/profile`)
 The page that took the most iteration — see the notes below on what changed and why. It's
@@ -184,7 +193,8 @@ as a single full-width card with five sections in a fixed order:
   couple seconds later), and Bharat Connect can re-request an already-verified document at
   any time (dev-toggleable), which reopens the upload control for just that document.
 - MCC is hidden behind a collapsed "needed once you enable payments" row below Level 2,
-  and becomes a required visible field once Level 2 is complete.
+  and becomes a required visible field once Level 2 is complete. **⚠ To fix:** handbook
+  Annexure Q makes MCC mandatory only at Level 3 — see [Flow audit §3](#3-profile-and-verification-levels).
 - The form opens with two pending demo edits (MCC set to 6211, "Use as default settlement
   account" toggled) so Save and the tier-2 confirm step can be tried straight away. No
   additional addresses are seeded; add one with a wrong pincode to see the invalid state.
@@ -212,10 +222,9 @@ What "augmented" means, connected:
   pattern — Send / Sending… / Status+Confirmation for sales, Accept/Reject for bills. A
   failed send gets a **Send Again** button right there (and a matching **Retry** link in
   the list's Bharat Connect column) — same underlying action as the original send.
-- **Bills not received over Bharat Connect** (a supplier with no B2B ID, bill entered by
-  hand): the list's Bharat Connect column says **Not on Bharat Connect** (never "Not sent" —
-  bills are received, not sent), and hovering it offers **Invite to Bharat Connect** worded
-  for suppliers ("…so their future bills reach you over Bharat Connect").
+- **Bills** don't get the inline column on the main list — see
+  [§9](#9-bills-received-over-bharat-connect--purchase-invoices). Bills are received, never
+  sent, so nothing on them ever says "Not sent".
 - **Create → review → send**: creating never sends. After **Create**, you always land on
   the new document's view page with a "created" toast. For a sales invoice, a
   **review-and-send callout** sits above the document
@@ -278,6 +287,71 @@ with an Invite-on-hover tooltip when checked and not found, and a barely-visible
 when there's no GSTIN/PAN on file at all — kept in a fixed-width slot so rows stay aligned
 regardless of which state a given contact is in.
 
+### 9. Bills received over Bharat Connect → Purchase Invoices
+An invoice a supplier sends over Bharat Connect is raw data, not a LEDGERS bill. It becomes one
+when the user creates it, and creating it is the **Accept** on Bharat Connect.
+
+**Purchase Invoices list** (`/expenses/bills`,
+[`InvoiceListPage.tsx`](src/pages/invoices/InvoiceListPage.tsx)) — matched to the live LEDGERS
+page (`in.ledgers.cloud/v4/manage-purchase-invoice`): title **Purchase Invoices**, **Create
+Purchase Invoice**, stat cards Total Purchase / Payables / Overdue / TDS with "Today", toolbar
+search · date range · Filter · columns · settings, and columns **Bill Number · Purchase Invoice
+Number · Purchase Date · Supplier Name · GSTIN · Total Amount · Status** with sort icons and no
+Action column (Edit / Delete live on the bill's own page). Unpaid statuses carry LEDGERS'
+dropdown chevron. Newest bill number first.
+
+- **Two views, one page.** The default list is LEDGERS' own: only bills that exist in the
+  books, no Bharat Connect column. The toolbar's **Bharat Connect** button (it replaces the old
+  Active / Deleted toggle) switches to everything received over Bharat Connect in any status —
+  waiting first with a **Create** button, then Accepted / Rejected / Cancelled — with the Bharat
+  Connect column and status filter. A red count on the button shows how many are waiting to be
+  created; the pending banner's "Show bills" opens this view.
+- **Bill Number vs Purchase Invoice Number.** Bill Number is LEDGERS' own sequence
+  (`2026-31`, given on create, [`lib/billNo.ts`](src/lib/billNo.ts)); Purchase Invoice Number is
+  the supplier's. Not created yet → Bill Number shows "—".
+- **The Bharat Connect "B".** A purchase invoice created from Bharat Connect carries the
+  Bharat Connect mark in its own narrow column right after Status, centred, so it lines up down
+  the list. It's a marker only — the bill number and its sequence are untouched.
+
+**Create Purchase Invoice from Bharat Connect** (`/expenses/bills/:id/create`,
+[`BcBillCreatePage.tsx`](src/pages/invoices/BcBillCreatePage.tsx)) — LEDGERS' Create Purchase
+Invoice, prefilled from the supplier's invoice (amounts, quantities and taxes locked):
+
+- **Vendor block as on LEDGERS**: Vendor | Billing Address | Shipping Address. Vendor shows
+  the matching LEDGERS contact (by B2B ID or GSTIN) or the invoice's own details, then
+  `GSTIN: …` and `B2B ID: …`. No remove — the vendor is whoever sent it. When no address is on
+  file, the state comes from the GSTIN.
+- **Bill No** is LEDGERS' next number; **Invoice No** is the supplier's.
+- **Items.** Each line shows the supplier's item name, with its catalog match underneath:
+  ✓ In catalog / ✓ Catalog: *name* / ● Possible match: *name* · Review / ● Not found in catalog ·
+  Review / ✓ Will be added to catalog. Matching ([`lib/itemMatch.ts`](src/lib/itemMatch.ts)):
+  a link saved from an earlier bill → same HSN and same name → a likely match by name
+  similarity (same HSN, or a close name without HSN), preselected but confirmed by the user →
+  otherwise nothing is chosen. Lines never default to "new item".
+- **Review popup** ([`BillItems.tsx`](src/pages/invoices/BillItems.tsx)) goes in order: the match
+  we found (one click to confirm, **Change** to pick another) → a short catalog search ranked by
+  HSN and name (top 5) → **+ Add new item** (top right). The new-item form is prefilled from the
+  bill and asks for HSN/SAC, GST rate, units and **Account Type** — all required by LEDGERS.
+  "Remember for future bills" links the supplier's item to ours for next time.
+- **Account type.** LEDGERS posts each line to an account (the catalog item's Purchase
+  **Expense Type**, a chart-of-accounts ledger). Existing items are mapped to their own; a new
+  item gets one chosen in the popup, preselected from an item with the same HSN, else from the
+  HSN/SAC (freight → Freight Inward, packing → Packing Materials, services → Professional
+  Fees), else Purchases. It's saved on the new catalog item and on the invoice line.
+- **Remarks** (`buyerRemarks`, required): a right-aligned box in the totals column, half its
+  width, growing with the text; 1–100 characters and no `"` (API spec, `reqConfirmInvoice`).
+- **Create Purchase Invoice** creates the bill in LEDGERS (new items added to Catalog), accepts
+  it on Bharat Connect, and lands back on the Purchase Invoices list with the new invoice on
+  top, highlighted. **Reject** stays on the Bharat Connect strip above; a rejected invoice
+  never becomes a LEDGERS bill.
+
+**After Accept** (handbook Annexure H): the buyer can't edit, reject, return or cancel on Bharat
+Connect — only pay (on/off platform) and raise a debit note (§5.12). Delete in LEDGERS is
+blocked with "Raise a debit note instead" ([`lib/editRules.ts`](src/lib/editRules.ts)).
+
+**Printed invoice**: a document that went over Bharat Connect prints `B2B ID: …` under the
+issuer's GSTIN — the supplier's on a bill, ours on a sales invoice.
+
 ## Mocked endpoints and what drives them
 
 Every function in [`src/mock/api.ts`](src/mock/api.ts) simulates a network call with
@@ -299,7 +373,9 @@ re-renders from that state. Nothing here is a real request.
 | — (client-side, per-field) | `useProfileForm`'s `doSend` | The profile save bar's send pipeline — resolves to success, or (when armed via the dev panel's "Profile page — next save", stored as `devProfileSaveOutcome`) a field-specific rejection or a version-conflict merge |
 | `POST /contacts/otp/send` / `POST /contacts/otp/verify` | `mockOtpSend` / `mockOtpVerify` | Wired but not currently called from any screen — reserved for a future "verify new contact before adding to draft" flow |
 | — (client-side) | `sendInvoiceViaBharatConnect` (store) | Send / Send Again / Retry, everywhere they appear — sending → sent+pending, then resolves via the dev panel or `simulateInvoiceConfirmation` |
-| — (client-side) | `respondToBill` (store) | Accept/Reject on a bill, list or view page |
+| — (client-side) | `respondToBill` (store) | Accept/Reject on a bill — on Accept, links each line to a catalog item (adding new ones with their account type) and saves "remember" links per supplier |
+| — (client-side) | `createPurchaseFromBc` (store) | Create Purchase Invoice from Bharat Connect — Accept with `buyerRemarks`, then books the bill with LEDGERS' next bill number |
+| — (client-side) | `devReceiveBill` / scenario loader (store, dev panel) | A supplier sending a bill (Awaiting Response), or one of the eight bill-item scenarios |
 | — (client-side) | `createInvoice` (store) | Create Invoice/Bill submit — never sends; the page then opens the new document for review |
 | — (client-side) | `simulateInvoiceConfirmation` (store) | Dev-panel-only — plays the buyer's side of a sent sales invoice (Accept/Fail) |
 | — (client-side) | `inviteToBharatConnect` (store) | Every "Invite to Bharat Connect" CTA (invoice send column, view pages, contacts) |
@@ -397,7 +473,7 @@ rules for user roles inside a business, so this is LEDGERS' call.
 | Bharat Connect action | Covered by existing permission |
 |---|---|
 | Send an invoice via Bharat Connect, Edit & Resend, Cancel | Sales → Invoice → **Update** |
-| Accept / Return / Reject a bill received over Bharat Connect | Purchase → Bill → **Update** |
+| Accept / Return / Reject a bill received over Bharat Connect | Purchase → Bill → **Update** (Accept also creates the LEDGERS bill, so it needs **Create** too) |
 | Onboard, edit the Bharat Connect profile, create / deactivate B2B IDs, disconnect | **Settings → Bharat Connect** (one new row in the existing Settings group, next to Sales, Purchases, Taxation, Payments, June) |
 | See Bharat Connect statuses, badges and activity on invoices / bills | View on the same module (Sales → Invoice, Purchase → Bill) |
 
@@ -405,6 +481,208 @@ Trade-off accepted with this option: anyone who can update a bill can also accep
 it on Bharat Connect, which the supplier sees. A dedicated "Bharat Connect" group with its own
 actions (like Banking's Credit / Debit / Fund Transfer / Max Limit columns) was considered and not
 taken for now; it remains the path if finer control (or a payments limit in Phase 2) is needed.
+
+## Reference documents (R3.8)
+
+Rules in the prototype are checked against NBBL's R3.8 pack, which isn't stored in this repo.
+References below use these short names:
+
+| Short name | Document |
+|---|---|
+| **HB** | Partner development and integration handbook v1.8 (R3.8). `HB §5.4` = Section A §5.4; `HB A§4.2` = Annexure A §4.2; `HB Ann. H` = Annexure H |
+| **SW** | B2B Swagger, Release 3.8 v1.30 (`b2bSwagger_Release3.8_v1.30.json`) — schema names in `code` |
+| **XL** | Per-API Excel sheets, R3.8 (e.g. `ReqStatusChangeInvoice.xlsx`) |
+| **RN** | Release Note 3.8 v1.0 |
+| **EC** | Error code and message v4.16 |
+| **SPEC** | `docs/BharatConnect_LEDGERS_Spec_v1.0.docx` (29-Sep-26, product spec) |
+| **ONB** | `docs/BharatConnect_Onboarding_APIs_v1.0.docx` (03-Oct-26, onboarding tech handover) |
+
+## Flow audit against R3.8 (13-10-2026)
+
+Every Bharat Connect flow in the prototype, checked against the references above. Verdicts:
+**✓** matches · **◐** partly / needs a change · **✗** conflicts with a reference ·
+**◇** LEDGERS' own choice — the references are silent, so it's ours to decide.
+
+### How every Bharat Connect call works (applies to all flows)
+Every API is a POST that returns only an **Ack/Nack within 5 s**; the business result arrives
+later on LEDGERS' webhook as `respXxx`, **within 180 s** (HB Ann. E). No response → `reqCheckStatus`
+by `txn.id` (HB Ann. P). Two-party flows (invoices, notes, POs, payments) are relayed by the central
+unit to the other business's **primary AI**, and other AIs of the same IDs get a broadcast copy they
+must not reject (HB Ann. O). Before sending and after receiving anything, run the common checks:
+AI/OU IDs valid, business mapped to the AI, mandatory fields, formats, duplicate `txn.id` (HB Ann. B).
+
+**What this means for the UI:** every action that sends something has three outcomes — accepted by
+the network (Ack), succeeded, failed — and a "still waiting" state that can last up to 3 minutes. The
+prototype collapses this to one short mocked delay. Production screens need a visible pending state
+for every action (◐, see the bill Accept finding below).
+
+### 1. Onboarding and connection
+| | |
+|---|---|
+| **What** | Connect a business to Bharat Connect: create its business record and default B2B ID, or link one that already exists |
+| **Where** | Dashboard banner, top-bar chip, Settings → Bharat Connect (§1–§3 above) |
+| **When** | On login / business switch LEDGERS checks the PAN (`reqCheckEntity`); the user starts it from the banner or chip |
+| **How** | `reqCheckEntity` → `reqCheckId` → `reqRegEntity` → `respRegEntity` + `respEntityKyc`; existing ID: `reqMapEntity` → `reqFetchEntity` (ONB §2.4, §4) |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| Six connection states and how each is entered | ONB §4.1 | ✓ (SPEC 6.1 still shows "ID found" as blue; the code and ONB use orange) |
+| Skip the OTP step when LEDGERS already verified ownership | HB Ann. Q L1(b): **every** mobile and email sent must be OTP-verified | ◐ fine for contacts verified at LEDGERS sign-up; any other contact sent in `reqRegEntity` still needs an OTP |
+| Onboard at Level 1 (`verificationLevel` "1") | HB Ann. Q: tag values 1 / 3 / 5; **if the tag is left out it is treated as 5 (full due diligence)** | ✓ — always send the tag |
+| Non-sole-props: one business per PAN; sole props may create several | HB §1.1 notes 2–3 | ◐ "ID found" offers only *link*; the sole-prop *create a new business* and *edit existing details* options aren't built (already in Not built yet) |
+| Default bank account linked to the default B2B ID | HB §1.1 note 4, Ann. R | ✓ |
+| Disconnect = deactivate the business for this AI–OU pair | HB §1.5 (`reqActivateEntity`) | ◇ the "blocked while invoices are unpaid" rule is LEDGERS' own; SPEC open question 6 still open |
+| Linking an existing business via `reqMapEntity` / `reqFetchEntity` | In SW only, not described in HB Ann. A | ◐ confirm with NBBL (ONB open question 1) |
+
+### 2. B2B IDs
+| | |
+|---|---|
+| **What** | The business's default ID, extra IDs, deactivate / reactivate |
+| **Where** | Settings → Bharat Connect → IDs, Create ID drawer |
+| **When** | Default ID at onboarding; extra IDs any time after |
+| **How** | `reqCheckId` (availability), `reqRegId` (create), `reqEditId` (edit, privacy, primary AI, (de)activate) — HB §1.2, §1.4 |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| Company IDs are `PAN@BCB` / `GSTIN@BCB` ([`id-standard.ts`](src/lib/id-standard.ts)) | HB Ann. F: an ID "should be derived from registered business name or acronym of first letters of registered business name"; SW only limits length (`b2BId` 3–256, no `"`) | **✗** No reference in the R3.8 pack defines `PAN@BCB`. It also puts the PAN in a public ID. **Find the source of this standard or switch to a name-based ID** (e.g. `STOCKHOLDING@BCB`, `SHCIL.MUMBAI@BCB`) |
+| Sole-prop `AAAA.BBBB.CCCC.DDD@BCB` | HB Ann. F (name-based ✓); the PAN-digits part isn't in any reference | ◐ same source question |
+| Ending rules: 2–5 letters/digits, no offensive words, no platform names | HB Ann. F: avoid offensive or generic terms; no AI/OU or brand name | ✓ (length 2–5 is ours ◇) |
+| Many IDs per identifier; one ID across identifiers | HB §1.2 notes 1–3 | ✓ |
+| Deactivation blocked while the ID has open invoices / financing | Not in HB (§1.4 only says a deactivated ID can't transact) | ◇ |
+| `reqEditId` needs privacyType, **reason, description**, primaryAI, businessIdentifier | RN (reqEditId fields now mandatory) | ◐ the Deactivate action has no reason / description field yet |
+
+### 3. Profile and verification levels
+| | |
+|---|---|
+| **What** | Keep the business record on Bharat Connect current; show what the business can do at its level |
+| **Where** | Settings → Bharat Connect → Profile, documents dialog |
+| **When** | Any time after connecting |
+| **How** | `reqEditEntity` — **send the full record, not just the changed fields** (HB §1.3); level changes also via `reqEditEntity` (HB Ann. Q) |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| Level 1 = send and receive invoices; Level 2 = pay on-platform; Level 3 = receive on-platform payments | HB Ann. Q action table (on-platform payment: payer L2, payee L3; invoices L1 both sides) | ✓ |
+| Level 2 checklist: ownership + bank penny-drop | HB Ann. Q L2: PAN verified, **every identifier given** verified, ownership via mobile/email linked to PAN/GSTIN/Udyam, bank penny-drop **only if a bank account was given** | ◐ add "PAN and all identifiers verified"; make bank conditional |
+| MCC hidden below Level 2, **required from Level 2** ([`BusinessSection.tsx`](src/pages/settings/bharatconnect/profile/sections/BusinessSection.tsx)) | HB Ann. Q: MCC mandatory only when `verificationLevel` is 5 (**Level 3**); bank details mandatory at 5; address optional | **✗** require MCC (and a bank account) only for Level 3 |
+| Payment address shown as `pan.ending@bcb` ([`profile.ts`](src/lib/profile.ts)) | HB Ann. I: first 4 of PAN + first 4 of IFSC + last 4 of account + count digit, e.g. `ABCDPUNB00131` | **✗** use the Annexure I format |
+| Keep logs proving each verification | HB Ann. Q ("maintain the logs") | ◐ backend requirement — ONB §8 lists it |
+| Field permissions, tier-2 confirmation, save bar | Not in HB | ◇ |
+
+### 4. Contacts: search and invite
+| | |
+|---|---|
+| **What** | Find a counterparty's B2B ID; ask for their contact details; tell them you're on Bharat Connect |
+| **Where** | Create Contact (Autofill from GSTIN), Contacts list and view, Invite links on invoices |
+| **When** | Adding or editing a contact; before sending the first invoice |
+| **How** | `reqSearchEntity`, `reqNonPublicInfo` / `reqShareNonPublicInfo`, `reqSendInvite` (HB §2.1–2.4) |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| Store the found B2B ID on the contact; don't search every time | HB §2.1 notes 2–3 | ✓ |
+| Contacts checked and not found stay "not on Bharat Connect" | HB §2.1 note 4: **search again periodically** for counterparts not yet on the network | ◐ add a periodic re-check (and SPEC/ONB open question 6 for our own PAN) |
+| Email / mobile only through a consent request | HB §2.2–2.3 | ✓ |
+| Answering others' `reqNonPublicInfo` | HB §2.3: show the request; offer auto-reply for chosen fields | ◐ not built (we only send requests) |
+| Invite = for counterparts **not** on Bharat Connect | HB §2.4: invite mainly tells a counterpart **already found** that you're on it too; **send it automatically when a B2B ID is added to the master**; with no receiver ID it's broadcast to all AIs | ◐ add the automatic invite when a contact with a B2B ID is saved; keep the broadcast invite for the not-found case |
+| Search limit and search before onboarding | RN: `reqSearchEntity` returns at most **50** (make it configurable); search allowed **without a B2B ID** (use the AI ID) | ◐ could show "N of your contacts are already on Bharat Connect" on the connect page |
+
+### 5. Sales invoices (we are the supplier)
+| | |
+|---|---|
+| **What** | Send a LEDGERS sales invoice to the buyer; cancel it while allowed |
+| **Where** | Sales → Invoices list / view (review-and-send callout, Bharat Connect card) |
+| **When** | After Create, by a deliberate Send; Cancel while Sent To Buyer, Under Review or Rejected |
+| **How** | `reqSendInvoice` → buyer AI validates → `respSendInvoice`; buyer answers with `reqConfirmInvoice`; Cancel via `reqStatusChangeInvoice` (`supplierAction` CANCEL, `supplierRemarks` 1–100) — HB §5.1, §5.3, A§4.1–4.4 |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| Create never sends; Send is a separate click | Not in HB | ◇ |
+| Statuses: Sent To Buyer / Accepted / Returned (Under Review) / Rejected / Cancelled / Failed | HB Ann. H; SW `statusTransition` | ◐ also needs **Closed, Abandoned, Partially Paid, Fully Paid, Payment Initiated** once payments or close/abandon exist. "Failed" = `respSendInvoice` FAILURE or timeout (HB Ann. E), not a buyer decision |
+| Cancel only from Sent To Buyer / Under Review / Rejected; Accepted → credit note | HB Ann. H; XL `ReqStatusChangeInvoice` | ✓ |
+| Phase 1: no Edit & Resend; e-invoices never editable | HB §5.2 note 3, A§4.3 ("edits only to a regular invoice") | ✓ (Phase 2 switch in [`phase.ts`](src/lib/phase.ts)) |
+| Close / Abandon (e.g. paid outside, written off) | HB Ann. H, XL (`supplierAction` CLOSE / ABANDON) | ◇ not offered in Phase 1 |
+| Before sending: totals add up; supplier name/GSTIN match onboarding; only our own bank VPA | HB A§4.1(i) 4–5 | ◐ backend validations to build |
+| Reminders | HB §6: max **3 per invoice**; the receiver must show them and offer mute | ◐ not built |
+
+### 6. Bills (we are the buyer)
+| | |
+|---|---|
+| **What** | Receive a supplier's invoice, create it as a LEDGERS purchase invoice (= Accept) or Reject it; follow supplier edits, cancels, closes |
+| **Where** | Purchase Invoices list → Bharat Connect view → Create page (§9 above) |
+| **When** | When `reqSendInvoice` arrives on our webhook; the user acts on it from the Bharat Connect view |
+| **How** | Receive `reqSendInvoice` → validate → **send `respSendInvoice`** → user Accepts/Rejects → `reqConfirmInvoice` (`buyerResponse`, `buyerRemarks` 1–100) → `respConfirmInvoice` from the supplier's AI (HB §5.1, §5.4, A§4.1–4.2) |
+
+| Decision | Reference | Verdict |
+|---|---|---|
+| A received invoice isn't a LEDGERS bill until created; creating it = Accept | Not in HB (HB only requires storing and showing it, A§4.1(iii) 6) | ◇ |
+| **Accept books the bill immediately** ([`useStore.ts`](src/store/useStore.ts) `createPurchaseFromBc`) | HB §5.4, A§4.2: status becomes ACCEPTED only when `respConfirmInvoice` arrives (up to 180 s; HB Ann. E) | **✗** show "Accepting…" and **book the bill only on SUCCESS**; on FAILURE keep it waiting with the error |
+| On receiving, LEDGERS validates and answers `respSendInvoice` | HB §5.1 step 5, A§4.1(iii): objectId, B2B IDs belong to our business, totals add up, statuses per Ann. H | ◐ not modelled — every incoming invoice is assumed valid |
+| Reject needs a reason | SW `invoiceConfirmation.buyerRemarks` required, 1–100, no `"` | ✓ (SPEC P0-5 and open question 2 are superseded: the API requires it) |
+| Accept / Reject from Sent To Buyer or Under Review; Return is Phase 2 | HB Ann. H; XL `ReqConfirmInvoice` | ✓ |
+| Supplier edit → replace in place, back to waiting; supplier cancel → Cancelled | HB Ann. H; XL `ReqStatusChangeInvoice` | ✓ |
+| Supplier **Close / Abandon** | XL `ReqStatusChangeInvoice`: allowed from Sent To Buyer, Under Review, **Accepted**, Partially Paid | **✗** not handled — a bill waiting on us or already booked can become Closed / Abandoned; show it, and stop offering Create on a closed one |
+| Line amounts recomputed as price × qty × GST% (exclusive) | SW `itemLists` carries the supplier's `assessmentAmount`, `itemValueDetails`, `totalItemValue`; `transactionDetails.isItemAmtTaxInclusive` (default NO) | **✗** use the supplier's amounts and honour tax-inclusive invoices, or totals can differ by rounding |
+| Item name always present | SW `itemLists.productDescription` is **optional** (`itemCode`, `hsnCode`, `gstRate`, `unit` too) | ◐ fall back to item code / HSN in the Item column and matching |
+| Taxability of new catalog items | RN: `itemLists.gstTaxType` (TAXABLE, EXEMPT, ZERO, NIL, NONTAXABLE, NONGST, SCHEDULEIII; default TAXABLE) | ◐ carry it onto the new item (LEDGERS' Non-Taxable field) |
+| Reverse charge | SW `transactionDetails.reverseChargeTax` | ◐ prefill LEDGERS' "Reverse Charge" page setting |
+| Incoming supplier **debit notes** sent as invoices | XL `ReqSendInvoice`: invoice `type` NEW / DEBIT NOTE, linked via `precedingInvoiceDetails` | ◐ label them and link to the original bill |
+| Account type per line (new items ask; existing items mapped) | Not in HB — LEDGERS needs it to post the bill | ◇ |
+| LEDGERS bill number + supplier's invoice number; Bharat Connect "B" marker | Not in HB (`supplierInvoiceNumber` max 50) | ◇ |
+| After Accept: no edit / reject / return / cancel; delete blocked → debit note | HB Ann. H, §5.12 | ✓ |
+| Fetch a supplier's open invoices | HB §5.17 (`reqFetchInvoice`) | ◇ optional, not built |
+
+### 7. Payments, notes, POs (Phase 2 and later)
+On-platform payment needs payer Level 2 and payee Level 3; **off-platform payment needs only Level 1**
+(HB Ann. Q). RN makes the UTR optional for off-platform payments. Credit / debit notes must link to an
+invoice and can't be edited (HB §5.9–5.14, Ann. L). POs follow Ann. K. None are built.
+
+### Open questions from the working notes, answered
+1. **Should a bill (or sales invoice) the counterparty rejected go to GST filing?** Bills: a rejected
+   received invoice is never booked, so it's not in the purchase register; it may still show in
+   GSTR-2B from the supplier's filing, which is a reconciliation item. Sales: a rejected invoice stays a
+   LEDGERS invoice until we **cancel** it (HB Ann. H) — only then delete it or, if already in GSTR-1, raise
+   a credit note ([`editRules.ts`](src/lib/editRules.ts)). The handbook is silent on GST; this is ◇.
+2. **Does recording payment with a native LEDGERS receipt cause issues?** Nothing reaches Bharat
+   Connect, so the counterparty keeps seeing *Accepted*. Fix: when a receipt/payment is recorded against
+   a Bharat Connect invoice, send an **off-platform `reqPay`** (Level 1 is enough; UTR optional per RN). The
+   invoice then moves to Payment Initiated until the supplier confirms (HB Ann. H).
+3. **Is LEDGERS' payment gateway discarded for Bharat Connect payments?** No — on-platform payment is a
+   separate flow (Level 2 payer / Level 3 payee). Off-platform covers everything else, including LEDGERS'
+   gateway, as long as it's reported with `reqPay`.
+4. **Rejected / cancelled vs deleted in LEDGERS?** Cancelled = deleted in LEDGERS (soft delete, kept for the
+   record). Rejected = still a document until the supplier cancels it. SW also lists a `DELETED` invoice
+   status that HB doesn't describe — confirm with NBBL.
+5. **Accounting for bills created from Bharat Connect?** Each line posts to the catalog item's account
+   type (Expense Type); new items get one chosen in the Review popup (§9). Still to do: add the supplier to
+   Contacts for the payable, and use the supplier's own tax split (finding above).
+
+### Fixes, in priority order
+| # | Fix | Why | Reference |
+|---|---|---|---|
+| 1 | Book a bill only after `respConfirmInvoice` SUCCESS; show "Accepting…" | Otherwise a failed Accept leaves a bill in the books | HB §5.4, A§4.2, Ann. E |
+| 2 | Confirm the B2B ID standard with NBBL; if none, switch to name-based IDs | `PAN@BCB` has no source in R3.8 and contradicts Ann. F | HB Ann. F |
+| 3 | Handle supplier Close / Abandon on bills | Valid incoming statuses we don't show | XL `ReqStatusChangeInvoice`, HB Ann. H |
+| 4 | Use the supplier's line amounts, tax split and tax-inclusive flag | Totals must match the supplier's invoice | SW `itemLists`, `transactionDetails` |
+| 5 | Validate incoming invoices and send `respSendInvoice` | Required of the buyer's platform | HB §5.1, A§4.1(iii) |
+| 6 | MCC and bank account required only at Level 3 | Over-asks Level 2 businesses | HB Ann. Q |
+| 7 | Payment address in Annexure I format | Wrong format shown | HB Ann. I |
+| 8 | Off-platform `reqPay` when a payment is recorded | Counterparty never sees payments | HB Ann. H, Ann. Q, RN |
+| 9 | Auto-invite when a contact with a B2B ID is saved; periodic re-search of not-found contacts | Handbook asks for both | HB §2.1 note 4, §2.4 note 1 |
+| 10 | Optional item name, `gstTaxType`, reverse charge, debit-note-type invoices on the create page | Fields the API can send | SW, RN, XL `ReqSendInvoice` |
+| 11 | Reason + description on ID deactivation | Now mandatory in `reqEditId` | RN |
+| 12 | Receiving reminders (show, mute) and answering `reqNonPublicInfo` | Receiver duties | HB §6.1, §2.3 |
+
+### Questions for NBBL (certification)
+1. Source of the `PAN@BCB` / `AAAA.BBBB.CCCC.DDD@BCB` ID standard, given HB Ann. F.
+2. `statusTransition.newStatus` in SW lists `REJECTED` twice and no `CANCELLED`; and what is the `DELETED` status?
+3. Is `reqMapEntity` + `reqFetchEntity` the way to link an existing business (ONB open question 1)?
+4. Are Return and Edit expected for go-live (see Phase 1 scope)?
+5. Where is Public / Private set for the default ID at onboarding (ONB open question 3)?
+
+### Where SPEC v1.0 is out of date
+SPEC predates the Bills work. Superseded points: bills are accepted by **creating** them, not from list
+icons (6.8, P0-5); Reject needs a reason (open question 2 — the API requires it); "Failure" on a bill is
+now "Rejected"; the Create page no longer ticks "Send via Bharat Connect" (6.8); Bills have their own
+Bharat Connect view instead of an inline column (6.8, P0-6); Return / Edit are Phase 2 (Phase 1 scope).
 
 ## Not built yet
 
@@ -417,6 +695,15 @@ taken for now; it remains the path if finer control (or a payments limit in Phas
 - The "reqNonPublicInfo" request in Contacts stops at "request sent" — there's no simulated
   counterparty response that actually fills in the email/mobile fields afterward.
 - No persistence across a hard reload — all state lives in the Zustand store in memory.
+- **Purchase Invoices list**: the sort icons and the status chevron are visual only (no sorting,
+  no status menu), and there's no way to see deleted bills since the Active / Deleted toggle
+  gave way to the Bharat Connect button. Amounts use the Indian grouping (`6,72,600`); live
+  LEDGERS shows `672,600`.
+- **Account type for Sales-only items**: a Sales-only item bought for the first time gets a
+  preselected account type without being asked.
+- **Supplier as a contact**: creating a bill from a supplier who isn't in Contacts doesn't add
+  them yet, so there's no party to post the payable to.
+- **Debit note** from an accepted bill (§5.12) isn't built; the Delete tooltip points to it.
 - **Handbook-aligned "ID found" flow (deferred).** Per the partner handbook (Annexure A §1.1,
   `reqCheckEntity`), when a PAN is already registered LEDGERS should first show the
   business's public details from Bharat Connect, then offer *proceed* / *edit existing
@@ -444,7 +731,8 @@ to be removed once every screen is converted).
 | App shell — sidebar, top bar, Bharat Connect status chip | Done |
 | Bharat Connect profile page (+ documents dialog, level badge) | Done |
 | Invoice view — review-and-send callout | Done (rest of the page not yet restyled) |
-| Dashboard, Invoices/Bills list + view + create, Contacts, Connect flow, Overview, IDs page | Not yet |
+| Purchase Invoices list, Create Purchase Invoice from Bharat Connect, Contacts, Catalog | Done (matched to live LEDGERS) |
+| Dashboard, Sales Invoices list + view + create, Connect flow, Overview, IDs page | Not yet |
 
 Design and plan notes: [`docs/superpowers/specs/2026-09-29-ledgers-ds-restyle-design.md`](docs/superpowers/specs/2026-09-29-ledgers-ds-restyle-design.md),
 [`docs/superpowers/plans/2026-09-29-ledgers-ds-restyle.md`](docs/superpowers/plans/2026-09-29-ledgers-ds-restyle.md).
@@ -460,7 +748,10 @@ src/
                      aliases for the old token names
   lib/               id-standard.ts (B2B ID generation, existingIdFor), status.ts (connection-state
                      metadata), invoiceStatus.ts (status labels/pill classes), profile.ts (MCC
-                     list, pincode validation, payment-address generation), cn.ts (class joiner)
+                     list, pincode validation, payment-address generation), cn.ts (class joiner),
+                     itemMatch.ts (bill line → catalog matching, account type suggestion),
+                     billNo.ts (LEDGERS' next bill number), editRules.ts (edit / delete rules
+                     from Annexure H), phase.ts (Phase 2 switches)
   store/useStore.ts  Single Zustand store — business/connection/profile/invoices/contacts/
                      toasts/dev-panel state, all in one place
   components/
@@ -487,11 +778,18 @@ src/
     invoices/
       kindConfig.ts             Per-kind (sales/purchase) copy + money/inr formatters
       InvoiceListPage.tsx       List + Bharat Connect column/filter/pending banner, shared by
-                                 Invoices and Bills
+                                 Invoices and Bills (Bills: LEDGERS Purchase Invoices layout +
+                                 Bharat Connect view)
+      BcBillCreatePage.tsx      Create Purchase Invoice prefilled from a Bharat Connect invoice
+      BillItems.tsx             Item Review popup (match → catalog search → add new item)
+      useBillItems.ts           Per-line matching state and the decisions sent on Create
+      BcStrip.tsx, BcDialogs.tsx  Bharat Connect strip above a bill/invoice; Accept/Reject/Cancel
+                                 dialogs
       InvoiceViewPage.tsx       View + Bharat Connect sidebar card, shared by both
       ReviewAndSendCallout.tsx  "Created — review, then send" callout on a new sales invoice
       InvoiceCreatePage.tsx     Create + counterparty search, shared by both; lands on the
                                  new document's view page
+    catalog/                    Catalog list, Create Catalog, item page (matched to LEDGERS)
     contacts/
       ContactsListPage.tsx      List + Bharat Connect column, All/Customer/Supplier filter
       CreateContactModal.tsx    GSTIN autofill (native + Bharat Connect), invite-on-save

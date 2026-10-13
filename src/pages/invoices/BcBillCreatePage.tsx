@@ -15,6 +15,7 @@ import { ItemReviewDialog } from "./BillItems";
 import { needsReview, useBillItems, type ItemRowState } from "./useBillItems";
 import { money } from "./kindConfig";
 import { stateFromGstin } from "./invoiceDoc";
+import { nextBillNo } from "../../lib/billNo";
 import type { Invoice } from "../../types";
 
 // An invoice received over Bharat Connect is raw data, not a LEDGERS bill yet. Opening it lands here: LEDGERS'
@@ -22,6 +23,9 @@ import type { Invoice } from "../../types";
 // Amounts, quantities and taxes are the supplier's (locked); the Item column shows the supplier's item name with
 // its catalog match underneath — "Review" where it needs a decision. Creating it is the Accept on Bharat Connect (buyerRemarks required); Reject stays on
 // the strip, and a rejected invoice never becomes a LEDGERS bill.
+
+/** buyerRemarks: 1–100 characters (reqConfirmInvoice). */
+const REMARKS_MAX = 100;
 
 const field = "h-7 w-full rounded-md border border-input bg-muted/60 px-2.5 text-xs text-foreground";
 
@@ -32,7 +36,7 @@ export function BcBillCreatePage() {
   const bill = useStore((s) => s.invoices.find((i) => i.id === id));
   const createPurchaseFromBc = useStore((s) => s.createPurchaseFromBc);
   const respondToBill = useStore((s) => s.respondToBill);
-  const nextBillNo = useStore((s) => `2026-${33 + s.invoices.filter((i) => i.billNo).length}`);
+  const billNo = useStore((s) => nextBillNo(s.invoices));
   const connected = business.connectionState === "connected";
   const items = useBillItems(bill);
   const [reviewLine, setReviewLine] = useState<string | null>(null);
@@ -100,7 +104,7 @@ export function BcBillCreatePage() {
           </div>
           <div className="grid w-80 shrink-0 grid-cols-[90px_1fr] items-center gap-x-3 gap-y-2.5 text-xs">
             <span className="font-medium text-foreground">Bill No:</span>
-            <input className={field} value={nextBillNo} readOnly aria-label="Bill No" />
+            <input className={field} value={billNo} readOnly aria-label="Bill No" />
             <span className="font-medium text-foreground">Date:</span>
             <DateBox value={bill.date} />
             <span className="font-medium text-foreground">Due Date:</span>
@@ -151,13 +155,24 @@ export function BcBillCreatePage() {
               <span className="tabular-nums">INR {money(bill.amount)}</span>
             </div>
 
-            {/* Creating = accepting on Bharat Connect, which needs a remark for the supplier (buyerRemarks). */}
+            {/* Creating = accepting on Bharat Connect, which needs a remark for the supplier: buyerRemarks in
+                reqConfirmInvoice, required, 1–100 characters, no double quotes (API spec). */}
             <div className="space-y-1.5 border-t border-border pt-3">
-              <label className="text-[11px] font-medium text-foreground">
-                Remarks to {bill.counterpartyName}
-                <span className="text-destructive"> *</span>
-              </label>
-              <Input inputSize="sm" maxLength={100} value={remark} onChange={(e) => setRemark(e.target.value)} />
+              <div className="flex items-start justify-between gap-3">
+                <label htmlFor="bc-remarks" className="shrink-0 pt-1.5 text-foreground" title={`Sent to ${bill.counterpartyName} with the acceptance`}>
+                  Remarks<span className="text-destructive"> *</span>
+                </label>
+                {/* Half the column wide; grows a line at a time as the remark gets longer. No line breaks: it's one string. */}
+                <Textarea
+                  id="bc-remarks"
+                  rows={1}
+                  maxLength={REMARKS_MAX}
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value.replace(/["\r\n]/g, ""))}
+                  aria-invalid={remark.trim().length === 0}
+                  className="min-h-7 !w-1/2 [field-sizing:content] !py-1.5 text-right"
+                />
+              </div>
               {!items.valid && <p className="text-[11px] text-destructive">Review the items marked Review first.</p>}
               <div className="flex items-center justify-between gap-3 pt-1">
                 <span className="text-[11px] text-muted-foreground">Creating it also accepts it on Bharat Connect.</span>
@@ -168,7 +183,8 @@ export function BcBillCreatePage() {
                     setSaving(true);
                     await createPurchaseFromBc(bill.id, remark.trim(), items.lines);
                     setSaving(false);
-                    navigate(`/expenses/bills/${bill.id}`);
+                    // Back to LEDGERS' own Purchase Invoices list, where the new invoice sits on top.
+                    navigate("/expenses/bills", { state: { createdId: bill.id } });
                   }}
                 >
                   {saving ? "Creating…" : "Create Purchase Invoice"}

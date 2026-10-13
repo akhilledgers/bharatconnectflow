@@ -69,9 +69,26 @@ export function rankCatalog(line: InvoiceLineItem, catalog: CatalogItem[], query
     .map(({ c }) => c);
 }
 
+/**
+ * Account type for a line, when its catalog item doesn't have one (a new item, or a Sales-only item): LEDGERS needs it
+ * to post the purchase. Preselected from an item with the same HSN, else from the HSN/SAC, else Purchases.
+ */
+export function suggestAccount(line: InvoiceLineItem, catalog: CatalogItem[]): string {
+  const sameHsn = line.hsnSac && catalog.find((c) => c.hsn === line.hsnSac && c.purchase?.expenseType);
+  if (sameHsn) return sameHsn.purchase!.expenseType!;
+  const h = line.hsnSac ?? "";
+  if (h.startsWith("9965") || h.startsWith("9967")) return "Freight Inward";
+  if (["4819", "3920", "3923", "4415"].some((p) => h.startsWith(p))) return "Packing Materials";
+  if (h.startsWith("4820")) return "Office Expenses";
+  if (line.isService) return "Professional Fees";
+  return "Purchases";
+}
+
 /** What the user decided for one line in the Accept form. */
 export interface LineResolution {
   lineId: string;
+  /** Account type the line is posted to (saved on the catalog item when it has none). */
+  account: string;
   /** Book against this existing item… */
   catalogId?: string;
   /** …or add a new one with these details (HSN / GST / unit filled in where the bill left them out). */
