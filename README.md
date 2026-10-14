@@ -308,7 +308,9 @@ dropdown chevron. Newest bill number first.
   created; the pending banner's "Show bills" opens this view.
 - **Bill Number vs Purchase Invoice Number.** Bill Number is LEDGERS' own sequence
   (`2026-31`, given on create, [`lib/billNo.ts`](src/lib/billNo.ts)); Purchase Invoice Number is
-  the supplier's. Not created yet → Bill Number shows "—".
+  the supplier's (`supplierInvoiceNumber`, e.g. `VFS/26-27/2031`; our internal id is never shown as either). Not
+  created yet → Bill Number shows "—". The default list has only bills in the books: waiting, rejected and
+  cancelled Bharat Connect invoices appear only in the Bharat Connect view.
 - **The Bharat Connect "B".** A purchase invoice created from Bharat Connect carries the
   Bharat Connect mark in its own narrow column right after Status, centred, so it lines up down
   the list. It's a marker only — the bill number and its sequence are untouched.
@@ -320,7 +322,15 @@ Invoice, prefilled from the supplier's invoice (amounts, quantities and taxes lo
 - **Vendor block as on LEDGERS**: Vendor | Billing Address | Shipping Address. Vendor shows
   the matching LEDGERS contact (by B2B ID or GSTIN) or the invoice's own details, then
   `GSTIN: …` and `B2B ID: …`. No remove — the vendor is whoever sent it. When no address is on
-  file, the state comes from the GSTIN.
+  file, the state comes from the GSTIN. **The vendor is mapped to an existing contact whenever there is one; a
+  contact is created only when there isn't** ([`lib/vendorMatch.ts`](src/lib/vendorMatch.ts)):
+  same B2B ID or GSTIN → mapped automatically ("Matched to your contact by B2B ID"); same PAN (another state) or
+  same name → suggested, **Use this contact** to confirm; otherwise **Select existing contact** or **Create
+  Contact** (LEDGERS' sheet, prefilled with name, GSTIN autofill, B2B ID, type Supplier; saving stays on the
+  page). **Change** clears a mapping. On Create, the mapped contact gets the supplier's GSTIN / B2B ID if it
+  lacked them, so the next bill maps by itself. Create is disabled until a vendor contact is set. Demo: Om Traders
+  (dev panel → Receive a bill) maps by B2B ID; Verve (BILL-2031) is suggested by name; Pugal (BILL-2027) isn't
+  in Contacts.
 - **Bill No** is LEDGERS' next number; **Invoice No** is the supplier's.
 - **Items.** Each line shows the supplier's item name, with its catalog match underneath:
   ✓ In catalog / ✓ Catalog: *name* / ● Possible match: *name* · Review / ● Not found in catalog ·

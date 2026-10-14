@@ -39,6 +39,7 @@ import { InviteBcTooltip } from "../../components/InviteBcTooltip";
 import { FilterMenu } from "../../components/FilterMenu";
 import { configFor, sumAmount, sumUnpaid, inr } from "./kindConfig";
 import type { Invoice } from "../../types";
+import { supplierInvoiceNo } from "../../lib/billNo";
 
 // Stat card as on LEDGERS' Invoices page: rounded-2xl, p-6, grey label, xl amount, period underneath.
 function StatCard({ label, value, className, sub }: { label: string; value: string; className: string; sub: string }) {
@@ -120,8 +121,10 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const [bcOnly, setBcOnly] = useState(false);
 
   const rows = allInvoices.filter((i) => i.kind === kind && !i.deletedAt);
-  // Raw Bharat Connect invoices aren't in the books yet, so they're left out of the totals.
-  const booked = rows.filter((i) => !isIncoming(i));
+  // Raw Bharat Connect invoices aren't in the books yet, so they're left out of the list and totals: of everything
+  // received over Bharat Connect, only those created in LEDGERS (and so accepted) count. Waiting, rejected and
+  // cancelled ones are only in the Bharat Connect view.
+  const booked = rows.filter((i) => kind === "sales" || i.bcSendStatus !== "sent" || (i.booked !== false && i.bcConfirmationStatus === "accepted"));
   const received = rows.filter((i) => i.bcSendStatus === "sent");
   const toCreate = received.filter((i) => isIncoming(i) && i.bcConfirmationStatus === "pending").length;
   const showBcView = kind === "purchase" && connected && bcOnly;
@@ -130,6 +133,8 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
   const bcColumn = connected && (kind === "sales" || showBcView);
   // Purchase follows LEDGERS' Purchase Invoices list: its own columns, no row Action menu.
   const purchase = kind === "purchase";
+  // The "B" marker column picks out Bharat Connect bills in the LEDGERS list; in the Bharat Connect view every row is one, so it's left out.
+  const markColumn = purchase && !showBcView;
   const listed = showDeleted
     ? allInvoices.filter((i) => i.kind === kind && i.deletedAt)
     : showBcView
@@ -261,7 +266,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                   <SortTh>Total Amount</SortTh>
                   <th className={thCls}>Status</th>
                   {/* Bharat Connect mark column: no heading, the mark is centred in it. */}
-                  <th className={`${thCls} w-10 !px-0`} aria-label="Created from Bharat Connect" />
+                  {markColumn && <th className={`${thCls} w-10 !px-0`} aria-label="Created from Bharat Connect" />}
                 </>
               ) : (
                 <>
@@ -284,6 +289,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
                 config={config}
                 connected={connected}
                 bcColumn={bcColumn}
+                markColumn={markColumn}
                 menuOpen={openMenuId === inv.id}
                 onToggleMenu={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
                 onCloseMenu={() => setOpenMenuId(null)}
@@ -297,7 +303,7 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={(purchase ? 9 : 7) + (bcColumn ? 1 : 0)} className="px-4 py-10 text-center text-xs text-muted-foreground">
+                <td colSpan={(purchase ? 8 : 7) + (markColumn ? 1 : 0) + (bcColumn ? 1 : 0)} className="px-4 py-10 text-center text-xs text-muted-foreground">
                   {showDeleted
                     ? `No deleted ${config.pageTitle.toLowerCase()}.`
                     : showBcView && received.length === 0
@@ -390,6 +396,7 @@ function InvoiceRow({
   onSend,
   onDelete,
   highlight,
+  markColumn,
 }: {
   invoice: Invoice;
   config: ReturnType<typeof configFor>;
@@ -404,6 +411,7 @@ function InvoiceRow({
   onDelete: (mode: "delete" | "cancel-delete") => void;
   /** Just created from Bharat Connect. */
   highlight?: boolean;
+  markColumn?: boolean;
 }) {
   const navigate = useNavigate();
   const confirmation = confirmationMeta(invoice.bcConfirmationStatus, config.kind);
@@ -434,7 +442,7 @@ function InvoiceRow({
               </span>
             )}
           </td>
-          <td className={`${tdCls} truncate text-xs text-foreground`}>{invoice.id}</td>
+          <td className={`${tdCls} truncate text-xs text-foreground`}>{supplierInvoiceNo(invoice)}</td>
           <td className={`${tdCls} text-xs text-foreground`}>{invoice.date}</td>
           <td className={`${tdCls} truncate text-xs`}>
             <button onClick={onView} className="text-primary hover:underline">
@@ -486,7 +494,7 @@ function InvoiceRow({
         </div>
       </td>
       {/* Bharat Connect "B", centred in its own column: created in LEDGERS from an invoice received over Bharat Connect. */}
-      {purchase && (
+      {markColumn && (
         <td className={`${tdCls} !px-0 text-center`}>
           {invoice.billNo && invoice.bcSendStatus === "sent" && (
             <span title="Created from Bharat Connect" aria-label="Created from Bharat Connect" className="inline-flex align-middle">

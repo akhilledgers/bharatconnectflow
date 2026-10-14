@@ -4,6 +4,7 @@ import { ArrowDownToLine, ChevronDown, Copy, Link, Printer, SquarePen, Trash2 } 
 import { useStore } from "../../store/useStore";
 import { statusLabel } from "../../lib/invoiceStatus";
 import type { Business, BuyerResponse, Invoice } from "../../types";
+import { supplierInvoiceNo } from "../../lib/billNo";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/input";
@@ -78,7 +79,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">
-          View {config.singular} - <span># {invoice.id}</span>
+          View {config.singular} - <span># {kind === "purchase" ? invoice.billNo ?? supplierInvoiceNo(invoice) : invoice.id}</span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
           <CreateMenu kind={kind} />
@@ -348,7 +349,7 @@ function PrintedInvoice({
 
       <div className="flex flex-col items-end py-[5px] text-right">
         <h5 className="font-bold uppercase leading-[1.5]">{config.singular}</h5>
-        <p>Number: {invoice.id}</p>
+        <p>Number: {invoice.kind === "purchase" ? supplierInvoiceNo(invoice) : invoice.id}</p>
         <p>Date: {invoice.date}</p>
         {invoice.dueDate && <p>Due Date: {invoice.dueDate}</p>}
         {/* LEDGERS prints this as an image stamp. */}

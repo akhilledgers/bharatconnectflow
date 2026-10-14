@@ -77,3 +77,51 @@ Prototype: github.com/akhilledgers/bharatconnectflow, branch `bills-item-review-
 - Every created bill line has a catalog item and an account.
 - A failed Accept never leaves a bill in the books.
 - Remembered items match automatically on the next bill from the same supplier.
+
+---
+
+# Bharat Connect list — dependent tasks
+
+Each task tracks the Bharat Connect side of one area and depends on its module task above.
+Order: **BC-1 → BC-2** and **BC-1 → BC-3**.
+
+## BC-1 — Bharat Connect: Contacts and Catalog
+
+**Owner:** Karthik
+**Depends on:** Contacts module task (Karthik)
+**Blocks:** BC-2, BC-3
+
+- [ ] Search a contact on Bharat Connect by GSTIN; store the B2B ID on the contact.
+- [ ] Invite contacts not on Bharat Connect.
+- [ ] Request contact details by consent only (never auto-fill email or mobile).
+- [ ] Hand the final Match catalog and create rules to Ranjith (doc 1.4).
+- [ ] Contact and catalog tables (doc 1.6).
+
+**Done when:** a saved contact has its B2B ID, ready for Invoices and Bills.
+
+## BC-2 — Bharat Connect: Send sales invoices
+
+**Owner:** Vairavan
+**Depends on:** Invoices module task (Vairavan), BC-1
+
+- [ ] Send an invoice over Bharat Connect; show its status (Sent To Buyer / Accepted / Rejected / Failed).
+- [ ] Show the buyer's comment; Resend on Failed.
+- [ ] Cancel & Delete with a required reason (1–100 characters).
+- [ ] Show "in progress" until Bharat Connect replies (up to 180 seconds).
+- [ ] Log every call in `bc_events`, shared with Bills (doc 2.9).
+
+**Done when:** an invoice goes from Send to the buyer's answer, with every step logged.
+
+## BC-3 — Bharat Connect: Receive bills
+
+**Owner:** Ranjith
+**Depends on:** Bills module task (Ranjith), BC-1, `bc_events` from BC-2
+
+- [ ] Store incoming invoices as "Not created"; show them in the Bharat Connect view.
+- [ ] Create Purchase Invoice = Accept; book the bill only after Bharat Connect confirms.
+- [ ] Reject with a required comment.
+- [ ] Match catalog and create, with Account Type, using Karthik's rules.
+- [ ] Handle supplier Edit, Cancel, Close and Abandon.
+- [ ] Bills tables (doc 3.11).
+
+**Done when:** a supplier's invoice is either booked in LEDGERS with every line on a catalog item and account, or rejected.

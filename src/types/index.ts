@@ -234,6 +234,10 @@ export interface Invoice {
   booked?: boolean;
   /** Our own bill number, given when the purchase invoice is created. */
   billNo?: string;
+  /** Bills: the supplier's own invoice number (`supplierInvoiceNumber`, max 50). See lib/billNo `supplierInvoiceNo`. */
+  supplierInvoiceNo?: string;
+  /** Bills created from Bharat Connect: the LEDGERS vendor contact the bill is booked against. */
+  contactId?: string;
   /** Deleted in LEDGERS (soft delete: kept for the record, shown under the Deleted filter, read-only). */
   deletedAt?: string;
   /** Reported in a filed GSTR-1: can't be deleted any more (a credit note corrects it). */

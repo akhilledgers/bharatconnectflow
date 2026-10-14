@@ -613,5 +613,15 @@ export function makeSeedContacts(): LedgerContact[] {
       region: "INDIA",
       b2bId: null,
     },
+    {
+      // Saved without a GSTIN: a bill from Verve over Bharat Connect suggests this contact by name.
+      id: "ct-9",
+      salutation: "M/S",
+      name: "Verve Financial Services",
+      type: "supplier",
+      businessName: "Verve Financial Services",
+      email: "accounts@vervefin.in",
+      region: "INDIA",
+    },
   ];
 }
