@@ -99,7 +99,7 @@ export function Sidebar() {
     <aside className="fixed inset-y-0 start-0 z-20 flex w-(--sidebar-width) flex-col border-e border-border bg-background">
       <div className="flex h-(--header-height) shrink-0 items-center justify-between gap-2.5 border-b border-border px-2.5">
         <div className="flex items-center ps-1.5">
-          <LedgersLogoFull height={22} />
+          <LedgersLogoFull />
         </div>
         <button className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-accent-foreground hover:bg-accent" title="Collapse sidebar">
           <PanelRightOpen className="size-4 opacity-60" />
