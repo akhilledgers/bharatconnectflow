@@ -4,6 +4,7 @@ import { ArrowDownToLine, ChevronDown, Copy, Link, Printer, SquarePen, Trash2 } 
 import { useStore } from "../../store/useStore";
 import { statusLabel } from "../../lib/invoiceStatus";
 import type { Business, BuyerResponse, Invoice } from "../../types";
+import { supplierInvoiceNo } from "../../lib/billNo";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/input";
@@ -78,7 +79,7 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">
-          View {config.singular} - <span># {invoice.id}</span>
+          View {config.singular} - <span># {kind === "purchase" ? invoice.billNo ?? supplierInvoiceNo(invoice) : invoice.id}</span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
           <CreateMenu kind={kind} />
@@ -291,12 +292,15 @@ function PrintedInvoice({
   const addr = business.registeredAddress;
 
   // The issuer is whoever raised the document: us on a sales invoice, the supplier on a bill.
+  // B2B ID prints under GSTIN when the document went over Bharat Connect.
+  const viaBc = invoice.bcSendStatus === "sent";
   const ours = {
     name: business.name,
     lines: [addr.line1, addr.city, `${addr.city} - ${addr.pincode}`, `${addr.state}, INDIA`],
     email: business.contacts.email,
     mobile: business.contacts.mobile.replace(/^\+91/, ""),
     gstin: business.gstin,
+    b2bId: viaBc ? business.bharatConnectIds.find((i) => i.status === "active")?.id : undefined,
     state: addr.state,
   };
   const theirState = contact?.billingAddress?.state?.toUpperCase() ?? stateFromGstin(invoice.counterpartyGstin);
@@ -305,6 +309,7 @@ function PrintedInvoice({
     lines: contact?.billingAddress ? [contact.billingAddress.line1, contact.billingAddress.city] : [],
     email: invoice.counterpartyEmail,
     gstin: invoice.counterpartyGstin,
+    b2bId: viaBc ? (invoice.counterpartyB2bId ?? undefined) : undefined,
     state: theirState,
   };
   const issuer = kind === "sales" ? ours : { ...theirs, mobile: undefined };
@@ -339,11 +344,12 @@ function PrintedInvoice({
         {issuer.email && <p>Email: {issuer.email}</p>}
         {"mobile" in issuer && issuer.mobile && <p>Mobile: {issuer.mobile}</p>}
         {issuer.gstin && <p>GSTIN: {issuer.gstin}</p>}
+        {issuer.b2bId && <p>B2B ID: {issuer.b2bId}</p>}
       </div>
 
       <div className="flex flex-col items-end py-[5px] text-right">
         <h5 className="font-bold uppercase leading-[1.5]">{config.singular}</h5>
-        <p>Number: {invoice.id}</p>
+        <p>Number: {invoice.kind === "purchase" ? supplierInvoiceNo(invoice) : invoice.id}</p>
         <p>Date: {invoice.date}</p>
         {invoice.dueDate && <p>Due Date: {invoice.dueDate}</p>}
         {/* LEDGERS prints this as an image stamp. */}

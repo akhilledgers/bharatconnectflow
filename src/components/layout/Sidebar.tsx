@@ -76,14 +76,23 @@ export function Sidebar() {
   const location = useLocation();
 
   const sectionFor = (path: string) =>
-    path.startsWith("/sales") ? "Sales" : path.startsWith("/expenses") ? "Expenses" : path.startsWith("/hrms") ? "HRMS" : null;
+    path.startsWith("/sales")
+      ? "Sales"
+      : path.startsWith("/expenses")
+        ? "Expenses"
+        : path.startsWith("/hrms")
+          ? "HRMS"
+          : path.startsWith("/settings")
+            ? "Settings"
+            : null;
   const [openSection, setOpenSection] = useState<string | null>(() => sectionFor(location.pathname));
+  const settingsOpen = openSection === "Settings";
 
   // Sidebar persists across route changes (it's outside the routed Outlet), so
   // the section has to re-sync on every navigation, not just once at mount.
   useEffect(() => {
-    const s = sectionFor(location.pathname);
-    if (s) setOpenSection(s);
+    const section = sectionFor(location.pathname);
+    if (section) setOpenSection(section);
   }, [location.pathname]);
 
   return (
@@ -143,30 +152,38 @@ export function Sidebar() {
           );
         })}
 
-        <div className={cn(ITEM, "cursor-default")}>
+        {/* Settings opens and closes like the other sections; collapsed, its row keeps the setup dot. */}
+        <button
+          onClick={() => setOpenSection(settingsOpen ? null : "Settings")}
+          className={cn(ITEM, "cursor-pointer text-left")}
+          aria-expanded={settingsOpen}
+        >
           <Settings2 className={ICON} />
           <span className="flex-1">Settings</span>
-          <ChevronDown className={cn(CHEVRON, "-rotate-180")} />
-        </div>
+          {incomplete && !settingsOpen && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
+          <ChevronDown className={cn(CHEVRON, settingsOpen && "-rotate-180")} />
+        </button>
 
-        <div className="space-y-0.5 ps-4">
-          {SETTINGS_ITEMS.map((item) =>
-            typeof item === "string" ? (
-              <div key={item} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
-                {item}
-              </div>
-            ) : (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
-                {item.label}
-              </NavLink>
-            ),
-          )}
+        {settingsOpen && (
+          <div className="space-y-0.5 ps-4">
+            {SETTINGS_ITEMS.map((item) =>
+              typeof item === "string" ? (
+                <div key={item} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
+                  {item}
+                </div>
+              ) : (
+                <NavLink key={item.to} to={item.to} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
+                  {item.label}
+                </NavLink>
+              ),
+            )}
 
-          <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
-            <span>Bharat Connect</span>
-            {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
-          </NavLink>
-        </div>
+            <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
+              <span>Bharat Connect</span>
+              {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
+            </NavLink>
+          </div>
+        )}
       </nav>
 
       <div className="flex h-16 shrink-0 items-center gap-2 border-t border-border px-2.5">

@@ -5,7 +5,7 @@ import { useStore } from "../../store/useStore";
 import { lookupBcByGstin, lookupGstRegistry } from "../../mock/seed";
 import { BharatConnectMark } from "../../components/layout/BharatConnectMark";
 import { CircularSpinner } from "../../components/layout/CircularSpinner";
-import type { Address, LedgerContact } from "../../types";
+import type { Address, ContactType, LedgerContact } from "../../types";
 import { Button } from "../../components/ui/button";
 import { Sheet } from "../../components/ui/dialog";
 import { Checkbox, Input, Label, Select } from "../../components/ui/input";
@@ -34,24 +34,42 @@ type BcCheck = { state: "idle" } | { state: "checking" } | { state: "found"; bcI
 
 const TABS = ["Information", "Billing Address", "Tax Information"] as const;
 
-export function CreateContactModal({ onClose }: { onClose: () => void }) {
+/** Prefill when the contact is created from somewhere else, e.g. a bill received over Bharat Connect. */
+export type ContactPrefill = { type: ContactType; name: string; gstin?: string; email?: string; b2bId?: string };
+
+/**
+ * `onCreated` set: the sheet was opened from another page (e.g. Create Purchase Invoice), so saving stays there
+ * instead of going to Contacts.
+ */
+export function CreateContactModal({
+  onClose,
+  onCreated,
+  initial,
+}: {
+  onClose: () => void;
+  onCreated?: (contact: LedgerContact) => void;
+  initial?: ContactPrefill;
+}) {
   const navigate = useNavigate();
   const createContact = useStore((s) => s.createContact);
   const requestContactDetails = useStore((s) => s.requestContactDetails);
   const business = useStore((s) => s.currentBusiness());
   const connected = business.connectionState === "connected";
   const [tab, setTab] = useState<(typeof TABS)[number]>("Information");
+  // GST-portal autofill for a prefilled GSTIN, as if it had been typed.
+  const [gst] = useState(() => (initial?.gstin ? lookupGstRegistry(initial.gstin) : undefined));
 
-  const [salutation, setSalutation] = useState("Mr");
-  const [contactName, setContactName] = useState("");
+  const [salutation, setSalutation] = useState(initial ? "M/S" : "Mr");
+  const [contactName, setContactName] = useState(initial?.name ?? "");
   const [displayName, setDisplayName] = useState("");
-  const [businessName, setBusinessName] = useState("");
-  const [email, setEmail] = useState("");
+  const [businessName, setBusinessName] = useState(initial?.name ?? "");
+  const [email, setEmail] = useState(initial?.email ?? "");
   const [mobile, setMobile] = useState("");
-  const [pan, setPan] = useState("");
-  const [gstin, setGstin] = useState("");
-  const [billingAddress, setBillingAddress] = useState<Address | undefined>(undefined);
-  const [bcCheck, setBcCheck] = useState<BcCheck>({ state: "idle" });
+  const [pan, setPan] = useState(gst?.pan ?? "");
+  const [gstin, setGstin] = useState(initial?.gstin ?? "");
+  const [billingAddress, setBillingAddress] = useState<Address | undefined>(gst?.address ?? undefined);
+  // The B2B ID already came with the invoice, so there's nothing to search.
+  const [bcCheck, setBcCheck] = useState<BcCheck>(initial?.b2bId ? { state: "found", bcId: initial.b2bId } : { state: "idle" });
   const [invite, setInvite] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -96,7 +114,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
       salutation,
       name: contactName.trim(),
       displayName: displayName.trim() || undefined,
-      type: "customer",
+      type: initial?.type ?? "customer",
       businessName: businessName.trim() || undefined,
       email: email.trim() || undefined,
       mobile: mobile.trim() || undefined,
@@ -109,6 +127,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
     const shouldInvite = bcCheck.state === "not_found" && invite;
     await createContact(contact, shouldInvite);
     setSaving(false);
+    if (onCreated) return onCreated(contact);
     onClose();
     navigate("/contacts");
   }
@@ -202,7 +221,7 @@ export function CreateContactModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-2">
               <Label required>Contact Name</Label>
               <div className="flex">
-                <Select value={salutation} onChange={(e) => setSalutation(e.target.value)} wrapperClassName="w-16 shrink-0" className="!rounded-e-none">
+                <Select value={salutation} onChange={(e) => setSalutation(e.target.value)} wrapperClassName="w-[4.5rem] shrink-0" className="!rounded-e-none">
                   {["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", "M/S"].map((x) => (
                     <option key={x}>{x}</option>
                   ))}

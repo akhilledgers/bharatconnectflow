@@ -13,6 +13,7 @@ import { baseId, existingIdFor } from "../lib/id-standard";
 import type { BuyerResponse, CatalogItem, Invoice, InvoiceNote, Receipt } from "../types";
 import { BC_SUPPLIERS, makeIncomingBill, makeSeedCatalog, makeSeedItemLinks, makePurchaseScenarios, type IncomingItems } from "../mock/catalog";
 import { linkKey, type LineResolution } from "../lib/itemMatch";
+import { nextBillNo } from "../lib/billNo";
 
 /** "07-10-2026, 11:20" — the stamp shown on Notes entries. */
 function noteStamp(): string {
@@ -146,7 +147,8 @@ interface StoreState {
   /** On Accept, `lines` links each line to a catalog item, adding new ones to the catalog. */
   respondToBill: (invoiceId: string, decision: BuyerResponse, comment: string, lines?: LineResolution[], opts?: { silent?: boolean }) => Promise<void>;
   /** Create a LEDGERS purchase invoice from a bill received over Bharat Connect — which accepts it there. */
-  createPurchaseFromBc: (invoiceId: string, remark: string, lines: LineResolution[]) => Promise<void>;
+  /** vendorId: the LEDGERS contact the bill is booked against; it gets the supplier's GSTIN / B2B ID if missing. */
+  createPurchaseFromBc: (invoiceId: string, remark: string, lines: LineResolution[], vendorId?: string) => Promise<void>;
   addInvoiceNote: (invoiceId: string, text: string, shareOnSend: boolean) => void;
   recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id">) => Promise<void>;
   updateInvoice: (invoiceId: string, patch: Partial<Invoice>) => Promise<void>;
@@ -726,7 +728,7 @@ export const useStore = create<StoreState>((set, get) => {
                 unit: r.create.unit,
                 gstRate: r.create.gstRate,
                 hsn: r.create.hsn,
-                purchase: { price: line.price, taxInclusive: false, description: line.name, expenseType: "Purchases", sku: line.itemCode },
+                purchase: { price: line.price, taxInclusive: false, description: line.name, expenseType: r.account, sku: line.itemCode },
                 status: "active",
                 createdBy: "Bharat Connect",
                 createdAt: noteStamp().slice(0, 10),
@@ -737,12 +739,13 @@ export const useStore = create<StoreState>((set, get) => {
           } else if (catalogId) {
             // A Sales-only item bought for the first time: turn its Purchase side on.
             catalog = catalog.map((c) =>
-              c.id === catalogId && !c.purchase ? { ...c, purchase: { price: line.price, taxInclusive: false, expenseType: "Purchases", sku: line.itemCode } } : c,
+              c.id === catalogId && !c.purchase ? { ...c, purchase: { price: line.price, taxInclusive: false, expenseType: r.account, sku: line.itemCode } } : c,
             );
           }
           if (!catalogId) return line;
           if (r.remember !== false) itemLinks[linkKey(supplier, line)] = catalogId;
-          return { ...line, catalogId };
+          // The account type the line is posted to in LEDGERS: the item's own (mapped), or the one chosen for a new item.
+          return { ...line, catalogId, account: r.account };
         });
       }
 
@@ -772,12 +775,21 @@ export const useStore = create<StoreState>((set, get) => {
     );
   },
 
-  createPurchaseFromBc: async (invoiceId, remark, lines) => {
+  createPurchaseFromBc: async (invoiceId, remark, lines, vendorId) => {
     const before = get().catalog.length;
     await get().respondToBill(invoiceId, "accept", remark, lines, { silent: true });
     const added = get().catalog.length - before;
-    const billNo = `2026-${33 + get().invoices.filter((i) => i.billNo).length}`;
-    set((s) => ({ invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, booked: true, billNo } : i)) }));
+    const billNo = nextBillNo(get().invoices);
+    const bill = get().invoices.find((i) => i.id === invoiceId);
+    set((s) => ({
+      invoices: s.invoices.map((i) => (i.id === invoiceId ? { ...i, booked: true, billNo, contactId: vendorId } : i)),
+      // Mapping a contact by hand (or by PAN / name) saves the supplier's identifiers on it, so the next bill matches by itself.
+      contacts: s.contacts.map((c) =>
+        c.id === vendorId && bill
+          ? { ...c, gstin: c.gstin ?? bill.counterpartyGstin ?? undefined, b2bId: c.b2bId || bill.counterpartyB2bId || c.b2bId }
+          : c,
+      ),
+    }));
     get().pushToast(
       `Purchase invoice ${billNo} created and accepted on Bharat Connect.${added ? ` ${added} new item${added > 1 ? "s" : ""} added to Catalog.` : ""}`,
     );

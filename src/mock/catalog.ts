@@ -124,7 +124,7 @@ export function makePurchaseScenarios(): PurchaseScenario[] {
     {
       key: "all-new",
       title: "All new items",
-      expect: "Nothing matches → each line is added to the catalog on Accept.",
+      expect: "Nothing matches → each line shows Not found in catalog; Review → search, then Add as new item.",
       bill: bill("BILL-3003", "Kaveri Hardware Stores", "KAVE.HARD.4410.001@BCB", "33AAHFK4410R1Z2", [
         { name: "Safety Helmet ISI Marked", hsnSac: "6506", unit: "NOS", qty: 25, price: 240, gstPercent: 18, itemCode: "KH-HLM-01" },
         { name: "Leather Hand Gloves", hsnSac: "4203", unit: "PRS", qty: 50, price: 180, gstPercent: 12, itemCode: "KH-GLV-02" },
@@ -134,7 +134,7 @@ export function makePurchaseScenarios(): PurchaseScenario[] {
     {
       key: "similar",
       title: "Similar item exists",
-      expect: "\"MS Rod 10 MM\" has the same HSN as Steel Rod 10mm but a different name → New, with Steel Rod suggested.",
+      expect: "\"MS Rod 10 MM\" has the same HSN as Steel Rod 10mm but a different name → Steel Rod 10mm preselected as a possible match, confirm in Review.",
       bill: bill("BILL-3004", "Bharat Steel Suppliers", "BHAR.STEE.7788.001@BCB", "27AAECB7788N1Z4", [
         { name: "MS Rod 10 MM", hsnSac: "7214", unit: "KGS", qty: 300, price: 60, gstPercent: 18 },
       ], "Rate as discussed on call."),
@@ -168,7 +168,7 @@ export function makePurchaseScenarios(): PurchaseScenario[] {
     {
       key: "mixed",
       title: "Mixed bill",
-      expect: "Two lines match, one is new, one is new and missing its HSN.",
+      expect: "Two lines match, two are not in the catalog (one also missing its HSN).",
       bill: bill("BILL-3008", "Metro Building Supplies", "METR.BUIL.9090.001@BCB", "33AAGCM9090P1Z5", [
         { name: "Steel Rod 10mm", hsnSac: "7214", unit: "KGS", qty: 200, price: 63, gstPercent: 18 },
         { name: "Cement OPC 53 Grade", hsnSac: "2523", unit: "BAG", qty: 120, price: 375, gstPercent: 28 },
