@@ -221,7 +221,7 @@ export function CreateContactModal({
             <div className="space-y-2">
               <Label required>Contact Name</Label>
               <div className="flex">
-                <Select value={salutation} onChange={(e) => setSalutation(e.target.value)} wrapperClassName="w-16 shrink-0" className="!rounded-e-none">
+                <Select value={salutation} onChange={(e) => setSalutation(e.target.value)} wrapperClassName="w-[4.5rem] shrink-0" className="!rounded-e-none">
                   {["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", "M/S"].map((x) => (
                     <option key={x}>{x}</option>
                   ))}

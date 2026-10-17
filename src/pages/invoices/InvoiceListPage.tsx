@@ -259,9 +259,9 @@ export function InvoiceListPage({ kind }: { kind: "sales" | "purchase" }) {
               {purchase ? (
                 <>
                   <SortTh>Bill Number</SortTh>
-                  <SortTh className="w-[15%]">Purchase Invoice Number</SortTh>
+                  <SortTh className="w-[18%]">Purchase Invoice Number</SortTh>
                   <SortTh>Purchase Date</SortTh>
-                  <SortTh className="w-[20%]">{config.counterpartyLabel}</SortTh>
+                  <SortTh className="w-[18%]">{config.counterpartyLabel}</SortTh>
                   <th className={thCls}>GSTIN</th>
                   <SortTh>Total Amount</SortTh>
                   <th className={thCls}>Status</th>

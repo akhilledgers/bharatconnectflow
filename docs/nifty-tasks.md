@@ -1,6 +1,6 @@
 # Nifty tasks — Bharat Connect part 2 (Contacts, Invoices, Bills)
 
-Reference for all three: `docs/BharatConnect_Contacts_Invoices_Bills_Screens_v1.1.docx` (section number in each task).
+Reference for all three: `docs/BharatConnect_Contacts_Invoices_Bills_Screens_v1.2.docx` (section number in each task).
 Prototype: github.com/akhilledgers/bharatconnectflow, branch `bills-item-review-bc-view`.
 
 ---
@@ -65,13 +65,14 @@ Prototype: github.com/akhilledgers/bharatconnectflow, branch `bills-item-review-
 - [ ] Purchase Invoices list: LEDGERS layout; Bharat Connect button with a red count of invoices waiting; "N bills pending to accept" banner.
 - [ ] Bharat Connect view: all received invoices, waiting first, with Create.
 - [ ] Create Purchase Invoice page: prefilled and locked; Bill No = LEDGERS' next number; Invoice No = supplier's; Vendor / Billing / Shipping as on LEDGERS with GSTIN and B2B ID.
+- [ ] Vendor contact (doc 3.5): map to an existing contact (B2B ID / GSTIN automatically; PAN / name suggested); else Select contact or + Create Contact (prefilled). Create needs a vendor contact.
 - [ ] Match catalog and create: status under each item; Review popup (match → search → Add new item with Account Type); "Remember for future bills".
 - [ ] Remarks required (1–100 characters, no `"`); Create disabled until every item is resolved.
 - [ ] Create: show "Accepting…", and create the bill only when Bharat Connect confirms the Accept. Then return to the list with the new bill on top and the Bharat Connect mark.
 - [ ] Reject: comment required; the invoice never becomes a bill.
 - [ ] Supplier edits → replace and stay waiting; supplier cancels → Cancelled. Handle Close and Abandon too.
 - [ ] After Accept: no edit or cancel; delete blocked with "Raise a debit note instead."
-- [ ] Add the table changes in doc 3.11: `bc_incoming_invoices`, `purchase_invoices` and `purchase_invoice_lines` columns.
+- [ ] Add the table changes in doc 3.12: `bc_incoming_invoices`, `purchase_invoices` and `purchase_invoice_lines` columns.
 
 **Done when**
 - Every created bill line has a catalog item and an account.
@@ -120,8 +121,9 @@ Order: **BC-1 → BC-2** and **BC-1 → BC-3**.
 - [ ] Store incoming invoices as "Not created"; show them in the Bharat Connect view.
 - [ ] Create Purchase Invoice = Accept; book the bill only after Bharat Connect confirms.
 - [ ] Reject with a required comment.
+- [ ] Map the supplier to an existing contact, or create one (doc 3.5).
 - [ ] Match catalog and create, with Account Type, using Karthik's rules.
 - [ ] Handle supplier Edit, Cancel, Close and Abandon.
-- [ ] Bills tables (doc 3.11).
+- [ ] Bills tables (doc 3.12).
 
 **Done when:** a supplier's invoice is either booked in LEDGERS with every line on a catalog item and account, or rejected.
