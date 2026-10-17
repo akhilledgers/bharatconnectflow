@@ -1,6 +1,5 @@
 import { useState, type ChangeEvent, type ReactNode } from "react";
-import { Plus, X } from "lucide-react";
-import { Badge, type BadgeVariant } from "../../components/ui/badge";
+import { Plus, Upload, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { buttonVariants } from "../../components/ui/button-variants";
 import { cn } from "../../lib/cn";
@@ -10,27 +9,38 @@ import { useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
+  BillPicker,
   DrawerFooter,
+  FieldLabel,
   PayeePicker,
   LG,
   Note,
   OtpStep,
   PANEL,
   PayFromSelect,
+  PurposeModeRow,
   ReviewRow,
   SuccessView,
   TransferDrawer,
+  VerifiedDot,
 } from "./shared";
 import {
   BULK_BANKS_LABEL,
   BULK_TEMPLATE_HREF,
+  PURPOSES,
+  RTGS_MIN,
   amountOnly,
   bankFromIfsc,
   demoUploadRows,
   fmtINR,
   maskIfsc,
+  oldestBill,
+  type Bill,
   type BulkRow,
+  type PayeeContact,
   type PickedPayee,
+  type Purpose,
+  type TransferMode,
 } from "./data";
 
 export interface BulkPreset {
@@ -38,16 +48,15 @@ export interface BulkPreset {
   rows?: BulkRow[];
 }
 
-type RowStatus = { label: string; variant: BadgeVariant; error: string | null; blocking: boolean };
-
-function rowStatus(row: BulkRow, duplicate: boolean): RowStatus {
-  if (duplicate) return { label: "Duplicate", variant: "destructive", error: "Duplicate account in this batch", blocking: true };
-  if (!row.ifscValid) return { label: "Invalid IFSC", variant: "destructive", error: "IFSC code is invalid", blocking: true };
-  if (!row.amount || (parseFloat(row.amount) || 0) <= 0)
-    return { label: "Missing Amount", variant: "destructive", error: "Enter an amount for this row", blocking: true };
-  if (!row.verified) return { label: "Unverified", variant: "warning", error: null, blocking: false };
-  return { label: "Verified", variant: "success", error: null, blocking: false };
+/** What's wrong with a row, if anything, in a few words. Blocking issues stop the batch from going to review. */
+function rowIssue(row: BulkRow, duplicate: boolean): string | null {
+  if (duplicate) return "Same account twice in this batch";
+  if (!row.ifscValid) return "IFSC code is invalid · remove and add again";
+  if (!row.amount || (parseFloat(row.amount) || 0) <= 0) return "Enter an amount";
+  return null;
 }
+
+const DEFAULT_PURPOSE = (key: string): Purpose => (key.startsWith("employee:") ? "salary" : key.startsWith("contact:") ? "vendor" : "other");
 
 export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; onClose: () => void }) {
   const all = usePayFromAccounts();
@@ -56,21 +65,37 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
   const payFrom = all.find((a) => a.id === payFromId) ?? options[0] ?? all[0];
 
   const [rows, setRows] = useState<BulkRow[]>(preset?.rows ?? []);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(!preset?.rows?.length);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [purpose, setPurpose] = useState<Purpose | "">(preset?.rows?.length ? DEFAULT_PURPOSE(preset.rows[0].key) : "");
+  const [purposeOther, setPurposeOther] = useState("");
+  const [modeOverride, setModeOverride] = useState<TransferMode | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | "success">(1);
-  const [listOpen, setListOpen] = useState(false);
   const [otp, setOtp] = useState("");
   const [snapshot, setSnapshot] = useState<{ count: number; total: string } | null>(null);
 
   const keyCounts = rows.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.key]: (acc[r.key] ?? 0) + 1 }), {});
-  const computed = rows.map((r) => ({ row: r, status: rowStatus(r, keyCounts[r.key] > 1) }));
+  const computed = rows.map((r) => ({ row: r, issue: rowIssue(r, keyCounts[r.key] > 1) }));
   const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-  const errorCount = computed.filter((c) => c.status.blocking).length;
-  const unverifiedCount = computed.filter((c) => c.status.label === "Unverified").length;
+  const issueCount = computed.filter((c) => c.issue).length;
+  const unverifiedCount = rows.filter((r) => !r.verified).length;
+  const overBalance = total > payFrom.balance;
+  // RTGS only when every payment in the batch qualifies.
+  const rtgsDisabled = !rows.length || rows.some((r) => (parseFloat(r.amount) || 0) < RTGS_MIN);
+  const mode: TransferMode = modeOverride && !(modeOverride === "RTGS" && rtgsDisabled) ? modeOverride : "NEFT";
+  const purposeOpt = PURPOSES.find((p) => p.value === purpose);
+  const purposeValid = purpose !== "" && (purpose !== "other" || purposeOther.trim() !== "");
   const makerChecker = payFrom.approvalMode === "maker-checker";
   const beneList = useBankingStore((s) => s.beneficiaries[payFrom.id]);
   const beneReady = useBeneficiariesReady(payFrom, rows.map((r) => r.key));
+  const reviewDisabled = rows.length === 0 || issueCount > 0 || overBalance || !purposeValid || !beneReady;
+
+  const addRows = (next: BulkRow[]) => {
+    if (!next.length) return;
+    setRows((prev) => [...prev, ...next]);
+    if (!purpose) setPurpose(DEFAULT_PURPOSE(next[0].key));
+  };
+  const setAmount = (id: string, amount: string) => setRows((prev) => prev.map((r) => (r.id === id ? { ...r, amount } : r)));
 
   const onUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,22 +103,23 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".csv"))
       return setFileError(`"${file.name}" isn't a CSV file. Download the template and re-upload using that format.`);
-    if (file.size === 0) return setFileError(`"${file.name}" is empty. Add at least one beneficiary row and re-upload.`);
+    if (file.size === 0) return setFileError(`"${file.name}" is empty. Add at least one payee row and re-upload.`);
     // Prototype: any non-empty CSV loads a fixed demo batch covering each row status.
-    setRows((prev) => [...prev, ...demoUploadRows()]);
+    addRows(demoUploadRows());
+    setPickerOpen(false);
     setFileError(null);
   };
 
   if (step === "success" && snapshot) {
     return (
-      <TransferDrawer title="Bulk Transfer" width={798} step="success" onClose={onClose}>
+      <TransferDrawer title="Bulk payment" width={798} step="success" onClose={onClose}>
         <SuccessView
           wide
           title={makerChecker ? "Submitted for approval" : "Transfer initiated"}
           body={
             makerChecker
-              ? `${snapshot.count} transfers totalling ${snapshot.total} have been submitted. They now need a checker's approval in netbanking to complete.`
-              : `${snapshot.count} transfers totalling ${snapshot.total} have been initiated and are now processing.`
+              ? `${snapshot.count} payments totalling ${snapshot.total} have been submitted. They now need a checker's approval in net banking to complete.`
+              : `${snapshot.count} payments totalling ${snapshot.total} have been initiated and are now processing.`
           }
           onDone={onClose}
         />
@@ -102,31 +128,30 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
   }
 
   return (
-    <TransferDrawer title="Bulk Transfer" width={798} step={step} onClose={onClose}>
+    <TransferDrawer title="Bulk payment" width={798} step={step} onClose={onClose}>
       {step === 1 && (
         <>
-          <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-7 py-5">
-            <div className="max-w-[340px] shrink-0">
-              <PayFromSelect
-                account={payFrom}
-                options={options}
-                note={`Bulk transfer works with ${BULK_BANKS_LABEL}.`}
-                onSelect={setPayFromId}
-              />
+          <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-7 py-5">
+            <div className="max-w-[440px] shrink-0">
+              <PayFromSelect account={payFrom} options={options} note={`Bulk payment works with ${BULK_BANKS_LABEL}.`} onSelect={setPayFromId} />
             </div>
 
-            <div className="flex shrink-0 gap-2.5">
-              <Button variant="primary" onClick={() => setPickerOpen(true)}>
-                <Plus />
-                Add Payment
-              </Button>
-              <label className={buttonVariants({ variant: "outline" })}>
-                Upload File
-                <input type="file" onChange={onUpload} className="hidden" />
-              </label>
-              <a href={BULK_TEMPLATE_HREF} download="beneficiaries-template.csv" className="self-center text-xs font-medium text-primary hover:underline">
-                Download Template
-              </a>
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <FieldLabel>Pay to</FieldLabel>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Button variant={pickerOpen ? "outline" : "primary"} onClick={() => setPickerOpen(true)} disabled={pickerOpen}>
+                  <Plus />
+                  Add payment
+                </Button>
+                <label className={buttonVariants({ variant: "outline" })}>
+                  <Upload />
+                  Upload file
+                  <input type="file" accept=".csv" onChange={onUpload} className="hidden" />
+                </label>
+                <a href={BULK_TEMPLATE_HREF} download="payees-template.csv" className="text-xs font-medium text-primary hover:underline">
+                  Download template
+                </a>
+              </div>
             </div>
 
             {fileError && (
@@ -141,8 +166,8 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
             {pickerOpen && (
               <AddPayment
                 onCancel={() => setPickerOpen(false)}
-                onAdd={(payee, amount) => {
-                  setRows((prev) => [...prev, { ...payee, id: `r${Date.now()}`, amount, ifscValid: true }]);
+                onAdd={(payee, amount, docs) => {
+                  addRows([{ ...payee, id: `r${Date.now()}`, amount, ifscValid: true, docs }]);
                   setPickerOpen(false);
                 }}
               />
@@ -150,48 +175,71 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
 
             {rows.length > 0 && (
               <div className="shrink-0 overflow-hidden rounded-md border border-border">
-                <div className="grid grid-cols-[1fr_120px_140px_40px] gap-2 bg-muted px-3.5 py-2.5 text-xs font-semibold uppercase tracking-[0.02em] text-muted-foreground">
-                  <div>Beneficiary</div>
+                <div className="grid grid-cols-[minmax(0,1fr)_160px_32px] gap-3 bg-muted px-3.5 py-2 text-xs font-medium text-muted-foreground">
+                  <div>Payee</div>
                   <div>Amount</div>
-                  <div>Status</div>
                   <div />
                 </div>
-                {computed.map(({ row, status }) => (
-                  <div key={row.id} className="grid grid-cols-[1fr_120px_140px_40px] items-center gap-2 border-t border-border px-3.5 py-3">
-                    <div>
-                      <div className="text-2sm font-semibold">{row.name}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {row.docs?.length ? `${row.docs.join(", ")} · ` : ""}
-                        {row.bank} · {row.maskedIfsc}
-                        {payFrom.needsBeneficiary &&
-                          (beneList?.[row.key]?.status === "active" ? (
-                            <span className="ms-1.5">
-                              · <span className="font-mono">{beneList[row.key].code}</span>
-                            </span>
-                          ) : (
-                            <span className="ms-1.5 text-[var(--color-warning-accent)]">
-                              · {beneList?.[row.key]?.status === "pending" ? "Waiting for checker" : `Not in ${payFrom.short} beneficiaries`}
-                            </span>
-                          ))}
+                {computed.map(({ row, issue }) => {
+                  const bene = payFrom.needsBeneficiary ? beneList?.[row.key] : undefined;
+                  return (
+                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_160px_32px] items-center gap-3 border-t border-border px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-2sm font-semibold">{row.name}</span>
+                          {row.verified && <VerifiedDot size={14} />}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {row.docs?.length ? `${row.docs.join(", ")} · ` : ""}
+                          {row.bank} · {row.maskedIfsc}
+                          {!row.verified && " · Unverified"}
+                          {payFrom.needsBeneficiary &&
+                            (bene?.status === "active" ? (
+                              <>
+                                {" · "}
+                                <span className="font-mono">{bene.code}</span>
+                              </>
+                            ) : bene?.status === "pending" ? (
+                              " · Waiting for checker"
+                            ) : (
+                              ` · Not in ${payFrom.short} beneficiaries`
+                            ))}
+                        </div>
+                        {issue && <div className="mt-0.5 text-xs text-destructive">{issue}</div>}
                       </div>
+                      <AmountInput
+                        value={row.amount}
+                        onChange={(v) => setAmount(row.id, amountOnly(v))}
+                        invalid={!row.amount || (parseFloat(row.amount) || 0) <= 0}
+                        label={`Amount for ${row.name}`}
+                      />
+                      <Button variant="ghost" size="icon-sm" aria-label={`Remove ${row.name}`} onClick={() => setRows((prev) => prev.filter((x) => x.id !== row.id))}>
+                        <X />
+                      </Button>
                     </div>
-                    <div className="text-2sm tabular-nums">{row.amount ? fmtINR(parseFloat(row.amount) || 0) : "—"}</div>
-                    <div>
-                      <Badge variant={status.variant} className={cn(status.variant === "destructive" && "text-destructive")}>
-                        {status.label}
-                      </Badge>
-                      {status.error && <div className="mt-[3px] text-[11px] text-destructive">{status.error}</div>}
-                    </div>
-                    <Button variant="ghost" size="icon-sm" aria-label="Remove" onClick={() => setRows((prev) => prev.filter((x) => x.id !== row.id))}>
-                      <X />
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+
+            {rows.length === 0 && !pickerOpen && (
+              <div className="shrink-0 rounded-md border border-dashed border-input px-6 py-8 text-center text-xs text-muted-foreground">
+                Add payees one by one, or upload a CSV with name, account number, IFSC and amount.
+              </div>
+            )}
+
             {rows.length > 0 && (
-              <div className="max-w-[600px] shrink-0">
+              <div className="flex max-w-[600px] shrink-0 flex-col gap-[22px]">
                 <BeneficiaryGate payFrom={payFrom} payees={rows.map((r) => ({ key: r.key, name: r.name }))} />
+                <PurposeModeRow
+                  purpose={purpose}
+                  onPurpose={setPurpose}
+                  purposeOther={purposeOther}
+                  onPurposeOther={setPurposeOther}
+                  mode={mode}
+                  onMode={setModeOverride}
+                  rtgsDisabled={rtgsDisabled}
+                />
               </div>
             )}
           </div>
@@ -199,18 +247,22 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
           <DrawerFooter wide className="flex-wrap items-center justify-between gap-4 py-3.5">
             <div className="flex flex-wrap gap-[22px] text-xs text-muted-foreground">
               <div>
-                <span className="font-bold text-foreground">{rows.length}</span> beneficiaries
+                <span className="font-bold text-foreground">{rows.length}</span> {rows.length === 1 ? "payee" : "payees"}
               </div>
               <div>
-                Total <span className="font-bold text-foreground">{fmtINR(total)}</span>
+                Total <span className={cn("font-bold", overBalance ? "text-destructive" : "text-foreground")}>{fmtINR(total)}</span>
               </div>
               <div>
                 Available <span className="font-bold text-foreground">{fmtINR(payFrom.balance)}</span>
               </div>
-              {errorCount > 0 && <div className="font-semibold text-destructive">{errorCount} need attention</div>}
+              {overBalance ? (
+                <div className="font-semibold text-destructive">Exceeds available balance</div>
+              ) : (
+                issueCount > 0 && <div className="font-semibold text-destructive">{issueCount} need attention</div>
+              )}
             </div>
-            <Button variant="primary" className={LG} disabled={rows.length === 0 || errorCount > 0 || !beneReady} onClick={() => setStep(2)}>
-              Review Batch
+            <Button variant="primary" className={LG} disabled={reviewDisabled} onClick={() => setStep(2)}>
+              Review batch
             </Button>
           </DrawerFooter>
         </>
@@ -218,49 +270,49 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
 
       {step === 2 && (
         <>
-          <div className="flex flex-1 flex-col gap-[18px] overflow-y-auto px-7 py-6">
-            <div className="text-2sm font-semibold text-foreground">Review Batch</div>
-            <div className="flex max-w-[440px] flex-col gap-3.5 rounded-lg border border-border p-4">
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-7 py-6">
+            <div className="text-2sm font-semibold text-foreground">Review batch</div>
+            <div className="flex max-w-[520px] flex-col gap-3.5 rounded-lg border border-border p-4">
               <ReviewRow label="From">
                 {payFrom.bank} · {payFrom.masked}
               </ReviewRow>
-              <ReviewRow label="Beneficiaries">{rows.length}</ReviewRow>
+              <ReviewRow label="Payees">{rows.length}</ReviewRow>
               <div className="flex justify-between gap-2.5">
                 <span className="text-xs text-muted-foreground">Total amount</span>
                 <span className="text-[15px] font-bold">{fmtINR(total)}</span>
               </div>
+              <ReviewRow label="Mode">{mode} · Bank charges may apply</ReviewRow>
+              <ReviewRow label="Purpose">{purpose === "other" ? `${purposeOpt?.label} — ${purposeOther}` : purposeOpt?.label}</ReviewRow>
+            </div>
+            <div className="max-h-[280px] max-w-[520px] overflow-y-auto rounded-md border border-border">
+              {rows.map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-2.5 border-t border-border px-3.5 py-2.5 first:border-t-0">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-2sm font-semibold">
+                      <span className="truncate">{r.name}</span>
+                      {r.verified && <VerifiedDot size={14} />}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {r.docs?.length ? `${r.docs.join(", ")} · ` : ""}
+                      {r.bank} · {r.maskedIfsc}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-2sm tabular-nums">{fmtINR(parseFloat(r.amount) || 0)}</div>
+                </div>
+              ))}
             </div>
             {unverifiedCount > 0 && (
-              <Note tone="warning" className="max-w-[440px]">
-                {unverifiedCount} beneficiaries are unverified. You can still proceed — verification isn't required to send.
+              <Note tone="warning" className="max-w-[520px]">
+                {unverifiedCount === 1 ? "1 payee hasn't" : `${unverifiedCount} payees haven't`} been verified yet. Confirm the account details are correct before
+                proceeding.
               </Note>
             )}
             {makerChecker && (
-              <Note tone="warning" className="max-w-[440px]">
-                Confirming here only initiates this batch. It will need a checker's approval in netbanking to complete.
+              <Note tone="warning" className="max-w-[520px]">
+                Confirming here only initiates this batch. It will need a checker's approval in net banking to complete — LEDGERS does not complete this
+                step.
               </Note>
             )}
-            <div>
-              <Button variant="link" className="text-xs" onClick={() => setListOpen(!listOpen)}>
-                {listOpen ? "Hide Beneficiary List" : `Show All ${rows.length} Beneficiaries`}
-              </Button>
-              {listOpen && (
-                <div className="mt-2.5 max-w-[520px] rounded-md border border-border">
-                  {rows.map((r) => (
-                    <div key={r.id} className="flex items-center justify-between gap-2.5 border-t border-border px-3.5 py-2.5 first:border-t-0">
-                      <div>
-                        <div className="text-2sm font-semibold">{r.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {r.docs?.length ? `${r.docs.join(", ")} · ` : ""}
-                          {r.bank} · {r.maskedIfsc}
-                        </div>
-                      </div>
-                      <div className="text-2sm tabular-nums">{fmtINR(parseFloat(r.amount) || 0)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
           <DrawerFooter wide>
             <Button className={cn(LG, "max-w-[200px] flex-1")} onClick={() => setStep(1)}>
@@ -297,11 +349,11 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
               disabled={otp.length !== 6}
               onClick={() => {
                 useBankingStore.getState().addPayout({
-                  name: `Bulk payment · ${rows.length} beneficiaries`,
-                  detail: `${rows.length} payments`,
+                  name: `Bulk payment · ${rows.length} payees`,
+                  detail: purpose === "other" ? purposeOther || "Other" : (purposeOpt?.label ?? `${rows.length} payments`),
                   amount: total,
                   fromAccountId: payFrom.id,
-                  mode: "NEFT",
+                  mode,
                   status: makerChecker ? "awaiting" : "processing",
                   batch: { count: rows.length, paid: 0, failed: 0 },
                   docs: rows.some((r) => r.docs?.length) ? rows.flatMap((r) => r.docs ?? []) : undefined,
@@ -325,20 +377,33 @@ type AddPanel =
   | { type: "employee-account"; employeeId: string }
   | { type: "one-off" };
 
-/** "Add Payment" card: pick a contact / employee / one-off payee, then an amount. */
-function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: PickedPayee, amount: string) => void }) {
+/** "Add payment" card: pick a contact / employee / one-off payee, then an amount (or a vendor's unpaid bills). */
+function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: PickedPayee, amount: string, docs?: string[]) => void }) {
   const contacts = useBankingStore((s) => s.contacts);
   const employees = useBankingStore((s) => s.employees);
   const store = useBankingStore.getState;
   const [selected, setSelected] = useState<PickedPayee | null>(null);
   const [panel, setPanel] = useState<AddPanel | null>(null);
   const [amount, setAmount] = useState("");
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [billIds, setBillIds] = useState<string[]>([]);
 
-  const pick = (payee: PickedPayee) => {
+  const pick = (payee: PickedPayee, contact?: PayeeContact) => {
     setSelected(payee);
     setPanel(null);
+    // Vendors with unpaid bills: pre-select the oldest bill and fill its amount, as in New payment.
+    const open = contact?.category === "vendor" ? (contact.bills ?? []) : [];
+    setBills(open);
+    if (open.length) {
+      const oldest = oldestBill(open);
+      setBillIds([oldest.id]);
+      setAmount(String(oldest.amount));
+    } else {
+      setBillIds([]);
+    }
   };
   const addDisabled = !selected || (parseFloat(amount) || 0) <= 0;
+  const docs = bills.filter((b) => billIds.includes(b.id)).map((b) => b.number);
 
   const body = (() => {
     if (selected)
@@ -346,21 +411,43 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
         <>
           <div className={cn(PANEL, "flex items-start justify-between gap-2.5 p-3")}>
             <div className="min-w-0">
-              <div className="text-2sm font-semibold">{selected.name}</div>
+              <div className="flex items-center gap-1.5 text-2sm font-semibold">
+                {selected.name}
+                {selected.verified && <VerifiedDot size={14} />}
+              </div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {selected.bank} · {selected.maskedIfsc}
               </div>
             </div>
-            <Button variant="link" className="shrink-0 text-xs" onClick={() => setSelected(null)}>
+            <Button
+              variant="link"
+              className="shrink-0 text-xs"
+              onClick={() => {
+                setSelected(null);
+                setBills([]);
+                setBillIds([]);
+                setAmount("");
+              }}
+            >
               Change
             </Button>
           </div>
+          {bills.length > 0 && (
+            <BillPicker
+              bills={bills}
+              value={billIds}
+              onChange={(ids, sum) => {
+                setBillIds(ids);
+                setAmount(sum > 0 ? String(sum) : "");
+              }}
+            />
+          )}
           <div className="flex flex-col gap-1.5">
-            <div className="text-xs font-medium text-foreground">Amount</div>
+            <FieldLabel>Amount</FieldLabel>
             <AmountInput value={amount} onChange={(v) => setAmount(amountOnly(v))} />
           </div>
-          <Button variant="primary" disabled={addDisabled} onClick={() => selected && onAdd(selected, amount)}>
-            Add to Batch
+          <Button variant="primary" disabled={addDisabled} onClick={() => selected && onAdd(selected, amount, docs.length ? docs : undefined)}>
+            Add to batch
           </Button>
         </>
       );
@@ -376,10 +463,13 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
       });
     else if (panel?.type === "contact-account") {
       const contactId = panel.contactId;
-      const name = contacts.find((c) => c.id === contactId)?.name ?? "";
-      sub = compactForm(`New account for ${name}`, (input) => {
+      const contact = contacts.find((c) => c.id === contactId);
+      sub = compactForm(`New account for ${contact?.name ?? ""}`, (input) => {
         const account = store().addContactAccount(contactId, input);
-        pick({ key: `contact:${contactId}:${account.id}`, name, bank: account.bank, maskedIfsc: maskIfsc(account.ifsc), verified: account.verified });
+        pick(
+          { key: `contact:${contactId}:${account.id}`, name: contact?.name ?? "", bank: account.bank, maskedIfsc: maskIfsc(account.ifsc), verified: account.verified },
+          contact,
+        );
       });
     } else if (panel?.type === "employee-account") {
       const employeeId = panel.employeeId;
@@ -388,9 +478,7 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
         const account = store().setEmployeeAccount(employeeId, input);
         pick({ key: `employee:${employeeId}`, name, bank: account.bank, maskedIfsc: maskIfsc(account.ifsc), verified: account.verified });
       });
-    }
-
-    else if (panel?.type === "one-off")
+    } else if (panel?.type === "one-off")
       sub = (
         <AccountForm
           withPayeeName
@@ -406,7 +494,7 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
 
     return (
       <PayeePicker
-        onSelectContact={(c, a) => pick({ key: `contact:${c.id}:${a.id}`, name: c.name, bank: a.bank, maskedIfsc: maskIfsc(a.ifsc), verified: a.verified })}
+        onSelectContact={(c, a) => pick({ key: `contact:${c.id}:${a.id}`, name: c.name, bank: a.bank, maskedIfsc: maskIfsc(a.ifsc), verified: a.verified }, c)}
         onAddContact={(name) => setPanel({ type: "new-contact", name })}
         onAddContactAccount={(c) => setPanel({ type: "contact-account", contactId: c.id })}
         onSelectEmployee={(e) =>
@@ -421,7 +509,7 @@ function AddPayment({ onCancel, onAdd }: { onCancel: () => void; onAdd: (payee: 
   return (
     <div className={cn(PANEL, "flex max-w-[440px] shrink-0 flex-col gap-3")}>
       <div className="flex items-center justify-between">
-        <div className="text-2sm font-semibold">Add Payment</div>
+        <div className="text-2sm font-semibold">Add payment</div>
         <Button variant="ghost" size="icon-sm" onClick={onCancel} aria-label="Cancel">
           <X />
         </Button>

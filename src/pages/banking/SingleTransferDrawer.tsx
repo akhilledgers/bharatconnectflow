@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
 import { BeneficiaryGate } from "./BeneficiaryGate";
@@ -9,7 +8,7 @@ import { payeeKey, useBeneficiariesReady } from "./beneficiaries";
 import {
   AccountForm,
   AmountInput,
-  ClickAway,
+  BillPicker,
   DrawerFooter,
   PayeePicker,
   ErrorText,
@@ -19,15 +18,14 @@ import {
   OtpStep,
   PANEL,
   PayFromSelect,
+  PurposeModeRow,
   ReviewRow,
-  SelectButton,
   SuccessView,
   TransferDrawer,
   VerifiedDot,
   type BeneType,
 } from "./shared";
 import {
-  MODES,
   PURPOSES,
   RTGS_MIN,
   amountOnly,
@@ -72,7 +70,7 @@ export function SingleTransferDrawer({
 }: {
   preset?: SingleTransferPreset;
   onClose: () => void;
-  onSwitchToBulk: (payFromId: string, carry: (PickedPayee & { amount: string }) | null) => void;
+  onSwitchToBulk: (payFromId: string, carry: (PickedPayee & { amount: string; docs?: string[] }) | null) => void;
 }) {
   const contacts = useBankingStore((s) => s.contacts);
   const employees = useBankingStore((s) => s.employees);
@@ -89,14 +87,10 @@ export function SingleTransferDrawer({
 
   const [amount, setAmount] = useState(preset?.amount ?? "");
   const [billIds, setBillIds] = useState<string[]>(preset?.billIds ?? []);
-  const [billOpen, setBillOpen] = useState(false);
-  const [billSearch, setBillSearch] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const [modeExpanded, setModeExpanded] = useState(false);
   const [modeOverride, setModeOverride] = useState<TransferMode | null>(null);
   const [purpose, setPurpose] = useState<Purpose | "">(preset?.beneficiary || preset?.billIds?.length ? "vendor" : "");
-  const [purposeOpen, setPurposeOpen] = useState(false);
   const [purposeOther, setPurposeOther] = useState("");
 
   const [step, setStep] = useState<1 | 2 | 3 | "success">(1);
@@ -154,7 +148,6 @@ export function SingleTransferDrawer({
     setVerifying(false);
     setBillIds([]);
     setHistoryOpen(false);
-    setBillOpen(false);
   };
 
   const verifySelected = async () => {
@@ -166,13 +159,6 @@ export function SingleTransferDrawer({
     if (!ok) return setVerifyError("Couldn't verify this account. Check the details or try a different account.");
     if (beneficiary.kind === "contact") store().markContactAccountVerified(beneficiary.contactId, beneficiary.accountId);
     if (beneficiary.kind === "employee") store().markEmployeeAccountVerified(beneficiary.employeeId);
-  };
-
-  const toggleBill = (id: string) => {
-    const next = billIds.includes(id) ? billIds.filter((x) => x !== id) : [...billIds, id];
-    const sum = bills.filter((b) => next.includes(b.id)).reduce((acc, b) => acc + b.amount, 0);
-    setBillIds(next);
-    setAmount(sum > 0 ? String(sum) : "");
   };
 
   const switchToBulk = () => {
@@ -191,6 +177,7 @@ export function SingleTransferDrawer({
             maskedIfsc: maskIfsc(bene.ifsc),
             verified: bene.verified,
             amount,
+            docs: billIds.length ? bills.filter((b) => billIds.includes(b.id)).map((b) => b.number) : undefined,
           }
         : null;
     onSwitchToBulk(payFrom.id, carry);
@@ -219,7 +206,7 @@ export function SingleTransferDrawer({
           title={makerChecker ? "Submitted for approval" : "Transfer initiated"}
           body={
             makerChecker
-              ? `${snapshot.amount} to ${snapshot.name} via ${snapshot.mode} has been submitted. It now needs a checker's approval in netbanking to complete.`
+              ? `${snapshot.amount} to ${snapshot.name} via ${snapshot.mode} has been submitted. It now needs a checker's approval in net banking to complete.`
               : `${snapshot.amount} sent to ${snapshot.name} via ${snapshot.mode}. This transfer is now processing.`
           }
           onDone={onClose}
@@ -329,9 +316,6 @@ export function SingleTransferDrawer({
     );
   })();
 
-  const billSearchLc = billSearch.trim().toLowerCase();
-  const visibleBills = bills.filter((b) => billSearchLc === "" || b.number.toLowerCase().includes(billSearchLc) || String(b.amount).includes(billSearchLc));
-  const billSum = bills.filter((b) => billIds.includes(b.id)).reduce((acc, b) => acc + b.amount, 0);
 
   return (
     <TransferDrawer title="New payment" width={520} step={step} onClose={onClose}>
@@ -347,47 +331,16 @@ export function SingleTransferDrawer({
 
             <div className="flex flex-col gap-1.5">
               {bills.length > 0 && (
-                <>
-                  <FieldLabel>Unpaid Bills</FieldLabel>
-                  <div className="relative">
-                    {billOpen && <ClickAway onClose={() => setBillOpen(false)} />}
-                    <SelectButton onClick={() => setBillOpen(!billOpen)} className="z-20">
-                      <span className={billIds.length ? "text-foreground" : "text-muted-foreground"}>
-                        {billIds.length
-                          ? `${billIds.length} bill${billIds.length > 1 ? "s" : ""} selected · ${fmtINR(billSum)}`
-                          : "Select Unpaid Bills"}
-                      </span>
-                    </SelectButton>
-                    {billOpen && (
-                      <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
-                        <input
-                          value={billSearch}
-                          onChange={(e) => setBillSearch(e.target.value)}
-                          placeholder="Search by invoice number or amount"
-                          className="h-9 w-full border-b border-border bg-transparent px-3 text-2sm outline-none"
-                        />
-                        <div className="max-h-[220px] overflow-y-auto">
-                          {visibleBills.map((b) => (
-                            <div
-                              key={b.id}
-                              onClick={() => toggleBill(b.id)}
-                              className="flex cursor-pointer items-center gap-2.5 border-b border-border px-3 py-[11px] last:border-b-0 hover:bg-accent/60"
-                            >
-                              <input type="checkbox" readOnly checked={billIds.includes(b.id)} className="pointer-events-none size-4.5 accent-primary" />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-2sm font-semibold">{b.number}</div>
-                                <div className="mt-0.5 text-xs text-muted-foreground">
-                                  Billed {b.date} · Due {b.dueDate}
-                                </div>
-                              </div>
-                              <div className="text-2sm font-semibold tabular-nums">{fmtINR(b.amount)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
+                <div className="mb-3">
+                  <BillPicker
+                    bills={bills}
+                    value={billIds}
+                    onChange={(ids, sum) => {
+                      setBillIds(ids);
+                      setAmount(sum > 0 ? String(sum) : "");
+                    }}
+                  />
+                </div>
               )}
               <FieldLabel>Amount</FieldLabel>
               <AmountInput value={amount} onChange={(v) => setAmount(amountOnly(v))} />
@@ -413,72 +366,19 @@ export function SingleTransferDrawer({
               )}
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)] gap-3">
-              <div className="relative flex min-w-0 flex-col gap-1.5">
-                <FieldLabel>Purpose</FieldLabel>
-                {purposeOpen && <ClickAway onClose={() => setPurposeOpen(false)} />}
-                <SelectButton onClick={() => setPurposeOpen(!purposeOpen)} className={cn(purposeOpen && "z-20")}>
-                  <span className={cn("truncate", purpose ? "text-foreground" : "text-muted-foreground")}>{purposeOpt?.label ?? "Select purpose"}</span>
-                </SelectButton>
-                {purposeOpen && (
-                  <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
-                    {PURPOSES.map((p) => (
-                      <div
-                        key={p.value}
-                        onClick={() => {
-                          setPurpose(p.value);
-                          setPurposeOpen(false);
-                        }}
-                        className="cursor-pointer border-b border-border px-3 py-2.5 text-2sm last:border-b-0 hover:bg-accent/60"
-                      >
-                        {p.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="relative flex min-w-0 flex-col gap-1.5">
-                <FieldLabel>Mode</FieldLabel>
-                {modeExpanded && <ClickAway onClose={() => setModeExpanded(false)} />}
-                <SelectButton onClick={() => setModeExpanded(!modeExpanded)} className={cn(modeExpanded && "z-20")}>
-                  <span className="truncate">
-                    <span className="font-semibold">{mode}</span>
-                    <span className="text-muted-foreground"> · {MODES.find((m) => m.value === mode)!.label}</span>
-                  </span>
-                </SelectButton>
-                {modeExpanded && (
-                  <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md shadow-black/5">
-                    {MODES.map((m) => {
-                      const disabled = m.value === "RTGS" && rtgsDisabled;
-                      return (
-                        <div
-                          key={m.value}
-                          onClick={() => {
-                            if (disabled) return;
-                            setModeOverride(m.value);
-                            setModeExpanded(false);
-                          }}
-                          title={disabled ? "RTGS is for ₹2,00,000 and above" : undefined}
-                          className={cn(
-                            "cursor-pointer border-b border-border px-3 py-2.5 text-2sm last:border-b-0 hover:bg-accent/60",
-                            mode === m.value && "bg-[var(--color-primary-soft)]",
-                            disabled && "cursor-not-allowed opacity-45",
-                          )}
-                        >
-                          <span className="font-semibold">{m.value}</span>
-                          <span className="text-muted-foreground"> · {m.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-            {purpose === "other" && <Input value={purposeOther} onChange={(e) => setPurposeOther(e.target.value)} placeholder="Describe the purpose" className="-mt-3" />}
+            <PurposeModeRow
+              purpose={purpose}
+              onPurpose={setPurpose}
+              purposeOther={purposeOther}
+              onPurposeOther={setPurposeOther}
+              mode={mode}
+              onMode={setModeOverride}
+              rtgsDisabled={rtgsDisabled}
+            />
 
             {payFrom.bulkSupported && (
               <Button variant="link" className="self-start text-xs" onClick={switchToBulk}>
-                Paying several people? Use bulk transfer
+                Paying several people? Use bulk payment
               </Button>
             )}
           </>
@@ -486,7 +386,7 @@ export function SingleTransferDrawer({
 
         {step === 2 && bene && (
           <div className="flex flex-col gap-4">
-            <div className="text-2sm font-semibold text-foreground">Review Transfer Details</div>
+            <div className="text-2sm font-semibold text-foreground">Review payment</div>
             <div className="flex flex-col gap-3.5 rounded-lg border border-border p-4">
               <ReviewRow label="From">
                 {payFrom.bank} · {payFrom.masked}
@@ -512,7 +412,7 @@ export function SingleTransferDrawer({
             )}
             {makerChecker && (
               <Note tone="warning">
-                Confirming here only initiates this transfer. It will need a checker's approval in netbanking to complete — LEDGERS does not
+                Confirming here only initiates this transfer. It will need a checker's approval in net banking to complete — LEDGERS does not
                 complete this step.
               </Note>
             )}
@@ -525,7 +425,7 @@ export function SingleTransferDrawer({
       {step === 1 && (
         <DrawerFooter>
           <Button variant="primary" className={cn(LG, "w-full")} disabled={reviewDisabled} onClick={() => setStep(2)}>
-            Review Transfer
+            Review payment
           </Button>
         </DrawerFooter>
       )}

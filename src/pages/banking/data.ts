@@ -185,10 +185,10 @@ export const ONBOARDING_BANKS: { key: BankKey; name: string; initials: string }[
 ];
 
 export const PURPOSES = [
-  { value: "vendor", label: "Vendor Payment" },
+  { value: "vendor", label: "Vendor payment" },
   { value: "salary", label: "Salary" },
   { value: "reimbursement", label: "Reimbursement" },
-  { value: "loan", label: "Loan / Advance" },
+  { value: "loan", label: "Loan / advance" },
   { value: "other", label: "Other" },
 ] as const;
 export type Purpose = (typeof PURPOSES)[number]["value"];

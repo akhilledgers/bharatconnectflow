@@ -73,7 +73,7 @@ export function BankingPage() {
   const bulk = () => (bulkAvailable || !connected ? open({ kind: "bulk" }) : open({ kind: "single" }));
   const payBill = () => open({ kind: "single", preset: { beneficiary: { kind: "contact", contactId: "c1", accountId: "a1" }, billIds: ["b1"], amount: "18500" } });
   const MORE = [
-    { icon: <Users />, label: "Bulk pay", run: bulk },
+    { icon: <Users />, label: "Bulk payment", run: bulk },
     { icon: <Receipt />, label: "Pay a purchase bill", run: payBill },
     { icon: <FileUp />, label: "Upload statement", run: () => setTab("accounts") },
     { icon: <Plus />, label: "Add bank account", run: () => setFlow({ kind: "add" }) },

@@ -9,17 +9,22 @@ import { useBankingStore, type NewAccountInput } from "../../store/useBankingSto
 import { useEscape } from "./useEscape";
 import { BankIcon } from "./BankLogo";
 import {
+  MODES,
+  PURPOSES,
   bankKeyFromName,
   digitsOnly,
   fmtINR,
   maskIfsc,
   type BankAccount,
+  type Bill,
+  type Purpose,
+  type TransferMode,
   type Employee,
   type PayeeContact,
   type PayFromAccount,
 } from "./data";
 
-// Building blocks shared by the Single and Bulk Transfer drawers.
+// Building blocks shared by the New payment and Bulk payment drawers.
 
 export const OVERLAY = "fixed inset-0 z-50 bg-black/30 [backdrop-filter:blur(4px)] animate-[fade-in_.15s_ease]";
 /** Inline bordered panel (new-account forms, selected beneficiary card). */
@@ -117,7 +122,7 @@ export function PayFromSelect({
   if (options.length < 2)
     return (
       <div className="flex flex-col gap-1.5">
-        <FieldLabel>Pay From</FieldLabel>
+        <FieldLabel>Pay from</FieldLabel>
         <div className="rounded-md border border-border px-3 py-2">
           <AccountLine account={account} />
         </div>
@@ -126,7 +131,7 @@ export function PayFromSelect({
     );
   return (
     <div className={cn("relative flex flex-col gap-1.5", open && "z-30")}>
-      <FieldLabel>Pay From</FieldLabel>
+      <FieldLabel>Pay from</FieldLabel>
       {open && <ClickAway onClose={() => setOpen(false)} />}
       <SelectButton onClick={() => setOpen(!open)} className={cn("py-2", open && "z-20")}>
         <AccountLine account={account} />
@@ -166,18 +171,178 @@ function AccountLine({ account }: { account: PayFromAccount }) {
   );
 }
 
-export function AmountInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function AmountInput({
+  value,
+  onChange,
+  invalid,
+  label = "Amount",
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+  label?: string;
+  className?: string;
+}) {
   return (
-    <div className="flex items-center rounded-md border border-input px-3 shadow-xs shadow-black/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30">
+    <div
+      className={cn(
+        "flex items-center rounded-md border px-3 shadow-xs shadow-black/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30",
+        invalid ? "border-destructive" : "border-input",
+        className,
+      )}
+    >
       <span className="text-2sm text-muted-foreground">₹</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="0"
         inputMode="decimal"
-        className="h-8 flex-1 bg-transparent px-1.5 text-2sm tabular-nums text-foreground outline-none"
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        className="h-8 w-full min-w-0 flex-1 bg-transparent px-1.5 text-2sm tabular-nums text-foreground outline-none"
       />
     </div>
+  );
+}
+
+/** A vendor's unpaid bills, picked from a searchable list; the amount follows what's ticked. */
+export function BillPicker({ bills, value, onChange }: { bills: Bill[]; value: string[]; onChange: (ids: string[], sum: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const visible = bills.filter((b) => !q || b.number.toLowerCase().includes(q) || String(b.amount).includes(q));
+  const sum = (ids: string[]) => bills.filter((b) => ids.includes(b.id)).reduce((acc, b) => acc + b.amount, 0);
+  const toggle = (id: string) => {
+    const next = value.includes(id) ? value.filter((x) => x !== id) : [...value, id];
+    onChange(next, sum(next));
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <FieldLabel>Unpaid bills</FieldLabel>
+      <div className={cn("relative", open && "z-30")}>
+        {open && <ClickAway onClose={() => setOpen(false)} />}
+        <SelectButton onClick={() => setOpen(!open)} className="z-20">
+          <span className={value.length ? "text-foreground" : "text-muted-foreground"}>
+            {value.length ? `${value.length} bill${value.length > 1 ? "s" : ""} selected · ${fmtINR(sum(value))}` : "Select unpaid bills"}
+          </span>
+        </SelectButton>
+        {open && (
+          <div className={LIST_PANEL}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by bill number or amount"
+              className="h-9 w-full border-b border-border bg-transparent px-3 text-2sm outline-none"
+            />
+            <div className="max-h-[220px] overflow-y-auto">
+              {visible.map((b) => (
+                <div key={b.id} onClick={() => toggle(b.id)} className={cn(ROW, "flex items-center gap-2.5")}>
+                  <input type="checkbox" readOnly checked={value.includes(b.id)} className="pointer-events-none size-4.5 accent-primary" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-2sm font-semibold">{b.number}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      Billed {b.date} · Due {b.dueDate}
+                    </div>
+                  </div>
+                  <div className="text-2sm font-semibold tabular-nums">{fmtINR(b.amount)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Purpose and mode side by side, as in both payment drawers. RTGS is greyed out when it can't apply. */
+export function PurposeModeRow({
+  purpose,
+  onPurpose,
+  purposeOther,
+  onPurposeOther,
+  mode,
+  onMode,
+  rtgsDisabled,
+}: {
+  purpose: Purpose | "";
+  onPurpose: (p: Purpose) => void;
+  purposeOther: string;
+  onPurposeOther: (v: string) => void;
+  mode: TransferMode;
+  onMode: (m: TransferMode) => void;
+  rtgsDisabled: boolean;
+}) {
+  const [purposeOpen, setPurposeOpen] = useState(false);
+  const [modeOpen, setModeOpen] = useState(false);
+  const purposeOpt = PURPOSES.find((p) => p.value === purpose);
+  return (
+    <>
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)] gap-3">
+        <div className={cn("relative flex min-w-0 flex-col gap-1.5", purposeOpen && "z-30")}>
+          <FieldLabel>Purpose</FieldLabel>
+          {purposeOpen && <ClickAway onClose={() => setPurposeOpen(false)} />}
+          <SelectButton onClick={() => setPurposeOpen(!purposeOpen)} className={cn(purposeOpen && "z-20")}>
+            <span className={cn("truncate", purpose ? "text-foreground" : "text-muted-foreground")}>{purposeOpt?.label ?? "Select purpose"}</span>
+          </SelectButton>
+          {purposeOpen && (
+            <div className={LIST_PANEL}>
+              {PURPOSES.map((p) => (
+                <div
+                  key={p.value}
+                  onClick={() => {
+                    onPurpose(p.value);
+                    setPurposeOpen(false);
+                  }}
+                  className={cn(ROW, "py-2.5 text-2sm")}
+                >
+                  {p.label}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className={cn("relative flex min-w-0 flex-col gap-1.5", modeOpen && "z-30")}>
+          <FieldLabel>Mode</FieldLabel>
+          {modeOpen && <ClickAway onClose={() => setModeOpen(false)} />}
+          <SelectButton onClick={() => setModeOpen(!modeOpen)} className={cn(modeOpen && "z-20")}>
+            <span className="truncate">
+              <span className="font-semibold">{mode}</span>
+              <span className="text-muted-foreground"> · {MODES.find((m) => m.value === mode)!.label}</span>
+            </span>
+          </SelectButton>
+          {modeOpen && (
+            <div className={LIST_PANEL}>
+              {MODES.map((m) => {
+                const disabled = m.value === "RTGS" && rtgsDisabled;
+                return (
+                  <div
+                    key={m.value}
+                    onClick={() => {
+                      if (disabled) return;
+                      onMode(m.value);
+                      setModeOpen(false);
+                    }}
+                    title={disabled ? "RTGS is for ₹2,00,000 and above" : undefined}
+                    className={cn(
+                      ROW,
+                      "py-2.5 text-2sm",
+                      mode === m.value && "bg-[var(--color-primary-soft)]",
+                      disabled && "cursor-not-allowed opacity-45",
+                    )}
+                  >
+                    <span className="font-semibold">{m.value}</span>
+                    <span className="text-muted-foreground"> · {m.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+      {purpose === "other" && <Input value={purposeOther} onChange={(e) => onPurposeOther(e.target.value)} placeholder="Describe the purpose" className="-mt-3" />}
+    </>
   );
 }
 
