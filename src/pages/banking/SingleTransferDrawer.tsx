@@ -14,7 +14,7 @@ import {
   ErrorText,
   FieldLabel,
   LG,
-  Note,
+  UnverifiedTag,
   OtpStep,
   PANEL,
   PayFromSelect,
@@ -392,7 +392,10 @@ export function SingleTransferDrawer({
                 {payFrom.bank} · {payFrom.masked}
               </ReviewRow>
               <ReviewRow label="To">
-                {bene.name}
+                <span className="inline-flex items-center gap-2">
+                  {bene.name}
+                  {!bene.verified && <UnverifiedTag />}
+                </span>
                 <br />
                 <span className="font-normal text-muted-foreground">
                   {bene.bank} · {maskIfsc(bene.ifsc)}
@@ -404,18 +407,8 @@ export function SingleTransferDrawer({
               </div>
               <ReviewRow label="Mode">{mode} · Bank charges may apply</ReviewRow>
               <ReviewRow label="Purpose">{purpose === "other" ? `${purposeOpt?.label} — ${purposeOther}` : purposeOpt?.label}</ReviewRow>
+              {makerChecker && <ReviewRow label="Approval">Checker approves in {payFrom.short} net banking</ReviewRow>}
             </div>
-            {bene.verified ? (
-              <Note tone="primary">Verified beneficiary · Funds are sent only to confirmed accounts.</Note>
-            ) : (
-              <Note tone="warning">This beneficiary hasn't been verified yet. Confirm the account details are correct before proceeding.</Note>
-            )}
-            {makerChecker && (
-              <Note tone="warning">
-                Confirming here only initiates this transfer. It will need a checker's approval in net banking to complete — LEDGERS does not
-                complete this step.
-              </Note>
-            )}
           </div>
         )}
 

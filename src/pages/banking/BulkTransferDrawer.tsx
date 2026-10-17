@@ -14,7 +14,7 @@ import {
   FieldLabel,
   PayeePicker,
   LG,
-  Note,
+  UnverifiedTag,
   OtpStep,
   PANEL,
   PayFromSelect,
@@ -78,7 +78,6 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
   const computed = rows.map((r) => ({ row: r, issue: rowIssue(r, keyCounts[r.key] > 1) }));
   const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
   const issueCount = computed.filter((c) => c.issue).length;
-  const unverifiedCount = rows.filter((r) => !r.verified).length;
   const overBalance = total > payFrom.balance;
   // RTGS only when every payment in the batch qualifies.
   const rtgsDisabled = !rows.length || rows.some((r) => (parseFloat(r.amount) || 0) < RTGS_MIN);
@@ -187,12 +186,11 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-2sm font-semibold">{row.name}</span>
-                          {row.verified && <VerifiedDot size={14} />}
+                          {row.verified ? <VerifiedDot size={14} /> : <UnverifiedTag />}
                         </div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           {row.docs?.length ? `${row.docs.join(", ")} · ` : ""}
                           {row.bank} · {row.maskedIfsc}
-                          {!row.verified && " · Unverified"}
                           {payFrom.needsBeneficiary &&
                             (bene?.status === "active" ? (
                               <>
@@ -283,6 +281,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
               </div>
               <ReviewRow label="Mode">{mode} · Bank charges may apply</ReviewRow>
               <ReviewRow label="Purpose">{purpose === "other" ? `${purposeOpt?.label} — ${purposeOther}` : purposeOpt?.label}</ReviewRow>
+              {makerChecker && <ReviewRow label="Approval">Checker approves in {payFrom.short} net banking</ReviewRow>}
             </div>
             <div className="max-h-[280px] max-w-[520px] overflow-y-auto rounded-md border border-border">
               {rows.map((r) => (
@@ -290,7 +289,7 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-2sm font-semibold">
                       <span className="truncate">{r.name}</span>
-                      {r.verified && <VerifiedDot size={14} />}
+                      {r.verified ? <VerifiedDot size={14} /> : <UnverifiedTag />}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {r.docs?.length ? `${r.docs.join(", ")} · ` : ""}
@@ -301,18 +300,6 @@ export function BulkTransferDrawer({ preset, onClose }: { preset?: BulkPreset; o
                 </div>
               ))}
             </div>
-            {unverifiedCount > 0 && (
-              <Note tone="warning" className="max-w-[520px]">
-                {unverifiedCount === 1 ? "1 payee hasn't" : `${unverifiedCount} payees haven't`} been verified yet. Confirm the account details are correct before
-                proceeding.
-              </Note>
-            )}
-            {makerChecker && (
-              <Note tone="warning" className="max-w-[520px]">
-                Confirming here only initiates this batch. It will need a checker's approval in net banking to complete — LEDGERS does not complete this
-                step.
-              </Note>
-            )}
           </div>
           <DrawerFooter wide>
             <Button className={cn(LG, "max-w-[200px] flex-1")} onClick={() => setStep(1)}>

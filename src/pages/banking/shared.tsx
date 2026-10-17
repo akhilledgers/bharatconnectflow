@@ -1,5 +1,5 @@
 import { useState, type ClipboardEvent, type ReactNode } from "react";
-import { Check, ChevronDown, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Plus, TriangleAlert, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -68,19 +68,13 @@ export function VerifiedDot({ size = 16 }: { size?: 14 | 16 }) {
   );
 }
 
-export function Note({ tone, children, className }: { tone: "primary" | "warning"; children: ReactNode; className?: string }) {
+/** Marks an unverified payee where it's listed: a small amber icon and the word, nothing louder. */
+export function UnverifiedTag() {
   return (
-    <div
-      className={cn(
-        "rounded-md px-3 py-2.5 text-xs",
-        tone === "primary"
-          ? "bg-[var(--color-primary-soft)] text-[var(--color-primary-accent)]"
-          : "bg-[var(--color-warning-soft)] text-[var(--color-warning-accent)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground">
+      <TriangleAlert className="size-3.5 text-[var(--color-warning-accent)]" />
+      Unverified
+    </span>
   );
 }
 
