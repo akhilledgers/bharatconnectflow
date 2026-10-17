@@ -431,6 +431,83 @@ taken for now; it remains the path if finer control (or a payments limit in Phas
   business has completed the GSTN connection. Both seeded businesses hard-code
   `ownershipVerified: true` today; it should record which route verified it.
 
+## HRMS & Payroll (built 15-10-2026)
+
+A replica of LEDGERS v4 HRMS as it works **today** (observed on Demo Ledgers), as the base for the
+PF wage-ceiling revision (₹15,000 → ₹25,000 from 17-Sep-2026). Own store:
+[`useHrmsStore.ts`](src/store/useHrmsStore.ts); code in [`src/pages/hrms/`](src/pages/hrms/).
+
+| Screen | Route | v4 equivalent |
+|---|---|---|
+| Employee list | `/hrms/employees` | `/v4/hrms/list-employee` |
+| Add employee (5-step wizard) | `/hrms/employees/new` | `/v4/hrms/add-employee` |
+| Employee view — Attendance, Application, Salary Setup, Payslip, Documents, Notes | `/hrms/employees/:id?tab=…` | `/v4/hrms/employee-dashboard` |
+| Payroll dashboard | `/hrms/payroll` | `/v4/hrms/payroll-dashboard` |
+| Payroll computation (payable days, benefits/deductions, assign branch, Run Payroll) | `/hrms/payroll/computation?month=SEP-2026` | `/v4/hrms/payroll-computation` |
+| Salary payment (Mark as Paid) | `/hrms/payroll/salary-payment` | `/v4/hrms/salary-payment` |
+| Monthly Pay / PF / Salary Register reports | `/hrms/reports/:report` | `/v4/reports/monthly-pay-report`, `/pf-report`, `/salary-register-report` |
+| Attendance dashboard | `/hrms/attendance` | `/v4/hrms/manage-attendance` |
+| Advanced Settings → HR (Basic, Leaves) | `/settings/advanced?tab=hr` | `/v4/business/advanced-settings` |
+
+**Engine** ([`payroll.ts`](src/pages/hrms/payroll.ts)) mirrors v4: components prorate by payable days ÷
+days in month (Fixed-Standard doesn't), PF = 12% of PF wages with optional "Limit to ₹1800", employer
+PF = employee PF (one column), ESI when gross ≤ ₹21,000. Statutory values live in one file,
+[`statutory.ts`](src/pages/hrms/statutory.ts) — v4 hardcodes ₹1,800 in the frontend and ₹15,000
+EPS/EDLI wages in the backend PF report. PT is a simplified per-state table; TDS a rough new-regime
+estimate.
+
+**Behaviour copied from v4 on purpose:** Run Payroll has no confirmation — it runs and lands on the
+Monthly Pay Report; re-running upserts per employee (Inserted / Updated / No changes); an employee
+needs a branch before they can be selected; salary revisions are month-granular.
+
+**Deliberate differences:** v4 re-derives the PF basis label from the HRA wage flag, so a structure
+saved as "12%-Basic" reloads as "12% gross excluding HRA" — here the basis is stored as chosen. v4
+accepts payable days above the days in the month (Demo Ledgers has 31 in September); here that
+shows a warning. "Include in PF wages" only applies to the 12%-Basic basis.
+
+**Seed** ([`hrms/data.ts`](src/pages/hrms/data.ts)): 13 employees chosen for the PF test cases — wages
+either side of ₹15k/₹25k, No Limit, joiners on 5/8/20 Sep, a NO-PF employee (newly covered from 17
+Sep), an exit on 10 Sep, a 58+ employee, the gross-excluding-HRA basis, one with no branch/salary.
+APR–SEP 2026 are run and paid on the old ceiling; OCT-2026 is the current month, not yet run.
+
+### PF wage-ceiling revision (₹15,000 → ₹25,000 from 17-Sep-2026)
+
+Built from `HANDOFF-pf-wage-ceiling.md`. The engine passes every test case in the handoff
+(`pf-checks/pfcases.ts`, next to the repo: `npx esbuild ../pf-checks/pfcases.ts --bundle --platform=node --outfile=../pf-checks/pfcases.js && node ../pf-checks/pfcases.js`).
+
+- **No hardcoded ceiling.** [`statutory.ts`](src/pages/hrms/statutory.ts) has effective-dated `PF_CEILINGS`; every cap,
+  EPS/EDLI wage and "Limit to PF ceiling (₹X)" label is derived from the date. Employer PF is split into EPS / EPF, with EDLI.
+- **One formula for every month** ([`payroll.ts`](src/pages/hrms/payroll.ts) `computePay`): PF wage per segment =
+  min(W × paid days ÷ D, C × covered days ÷ covered days in month). September has two segments (1–16, 17–30); other months one,
+  which reproduces v4. Full precision, rounded once.
+- **September computation page:** one PF ceiling choice for the month (Mid-month change, the default, or Old ceiling for the full month), payable days split by
+  half (from attendance LOP dates; a manual total is spread by days employed; halves editable and validated), tags for "PF from
+  17 Sep", "EPS from 17 Sep", "UAN missing", and a reminder banner while September stands on the old ceiling.
+- **September Run Payroll** asks one question: *Not paid yet / Paid as calculated here / Paid on the old ceiling*
+  (pre-selected from Salary Payment), with a one-line summary of how many employees' PF changes. Before/after is shown on
+  the page itself (as-paid PF and payout struck out under the new figures). After a correction the ceiling choice collapses
+  to a one-line status with a Change link.
+- **Product flows document:** [`docs/PF_Wage_Ceiling_Product_Flows_v1.0.docx`](docs/PF_Wage_Ceiling_Product_Flows_v1.0.docx)
+  — per screen: what changes, expected flow with screenshots, checks and banners, calculations. Decision log:
+  [`docs/DECISIONS-pf-wage-ceiling.md`](docs/DECISIONS-pf-wage-ceiling.md).
+- **Paid on the old basis** stores a difference per employee, settled in the first unpaid month (October): employee share as
+  "PF difference – Sep 2026", employer share as an employer line. Recovery is capped so net pay falls ≤ 10% below September's
+  paid net (excluding one-off benefits); the rest carries to the next month. Exited employees default to employer-pays.
+- **No separate revision page — questions are asked where payroll is run** ([`revision.ts`](src/pages/hrms/revision.ts)):
+  - *Coverage* (newly under PF / pension from 17 Sep) is a rule, not a choice: recorded by whichever runs first on the new
+    ceiling — a September re-run or the October run — with start date, PF wage on 17 Sep, and Salary Setup moved to
+    12%-Basic + Limit to PF ceiling from October. Missing UANs are flagged and left out of the ECR.
+  - The *October computation page* (first month on the new ceiling) carries the two one-time choices as toggles, shown only
+    while open, and the table previews them live: (1) if September still stands on the old ceiling — "Add to October"
+    (default; shows as "PF diff – Sep" in Deductions, September payslips stay as paid) or "Don't add" (with a link to re-run
+    September); (2) "Higher employer PF" — "CTC increases" (default) or "Keep CTC the same" (Special Allowance absorbs it,
+    solved exactly when it's PF wage; newly covered employees stay on increases). The CTC column shows old → new with a
+    per-row switch. Run Payroll stays one click and saves the choices.
+  - The *Payroll Dashboard* shows a read-only "PF wage ceiling revision" card: September · coverage · October CTC, each with
+    where it happened.
+- **Outputs:** September payslip shows PF per half; October shows the difference line; PF report has EPS / EPF / EDLI;
+  "PF difference (Sep 2026)" report is the source for the difference ECR.
+
 ## Design system restyle
 
 In progress. The LEDGERS design-system theme and shared components are in place everywhere,
