@@ -31,11 +31,12 @@ function BusinessSummary({ business, locked }: { business: Business; locked?: bo
       </div>
       <dl className="space-y-2.5 text-sm">
         <Row label="Business" value={business.name} />
-        <Row
-          label="Identifiers"
-          value={`PAN ${business.pan}${business.gstin ? ` · GSTIN ${business.gstin}` : ""}`}
-          verified
-        />
+        <Row label="PAN" value={business.pan} verified />
+        {/* GSTIN carries the tick only when GST is connected in LEDGERS (GST portal OTP = ownership proven).
+            Not connected is fine for onboarding: it's only needed for Level 2. */}
+        {business.gstin && (
+          <Row label="GSTIN" value={business.gstin} verified={business.gstConnected} note={business.gstConnected ? undefined : "Not verified"} />
+        )}
         {/* The business's own mobile and email (used for OTPs and notifications) — labelled plainly so
             it isn't confused with the sidebar's Contacts module (customers and suppliers). */}
         <Row
@@ -73,13 +74,14 @@ function BusinessSummary({ business, locked }: { business: Business; locked?: bo
 }
 
 /** Label above value; a verified value gets a small green tick right after it. */
-function Row({ label, value, verified }: { label: string; value: string; verified?: boolean }) {
+function Row({ label, value, verified, note }: { label: string; value: string; verified?: boolean; note?: string }) {
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-0.5 flex items-center gap-1.5 text-foreground">
         <span>{value}</span>
         {verified && <CheckCircle2 className="size-4 shrink-0 text-green-600" aria-label="Verified" />}
+        {note && <span className="text-xs text-muted-foreground">· {note}</span>}
       </div>
     </div>
   );
@@ -208,8 +210,11 @@ export function ConnectFlow({ business }: { business: Business }) {
     return items;
   }, [flow.consentChecked]);
 
-  const inProgress = flow.submitPhase !== "idle";
+  // "setting_up": the registration is with Bharat Connect and its response hasn't come back yet.
+  const awaiting = business.connectionState === "setting_up";
   const success = flow.submitPhase === "success";
+  const failed = flow.submitPhase === "error";
+  const inProgress = (flow.submitPhase !== "idle" && !failed) || awaiting;
 
   return (
     <div>
@@ -235,7 +240,7 @@ export function ConnectFlow({ business }: { business: Business }) {
             <button
               onClick={() => submitConnect(business.id)}
               disabled={missing.length > 0 || inProgress}
-              aria-label={success ? "Onboarded" : inProgress ? PHASE_LABEL[flow.submitPhase] : undefined}
+              aria-label={success ? "Onboarded" : inProgress ? (PHASE_LABEL[flow.submitPhase] ?? "Awaiting response") : undefined}
               className={`inline-flex min-w-56 items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium text-white transition-colors ${
                 success ? "bg-green-600" : "bg-primary hover:bg-primary/90"
               } ${inProgress ? "cursor-default" : "disabled:opacity-40"}`}
@@ -249,6 +254,8 @@ export function ConnectFlow({ business }: { business: Business }) {
                 "Onboard to Bharat Connect"
               )}
             </button>
+            {inProgress && !success && <span className="text-sm text-muted-foreground">Awaiting response from Bharat Connect</span>}
+            {failed && <span className="text-sm text-destructive">Couldn't onboard. Please try again.</span>}
             {missing.length > 0 && !inProgress && (
               <span className="text-sm text-amber-700">
                 {missing[0][0].toUpperCase() + missing[0].slice(1)} to continue.

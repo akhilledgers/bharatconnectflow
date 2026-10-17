@@ -160,6 +160,47 @@ export interface InvoiceLineItem {
   qty: number;
   gstPercent: number;
   hsnSac?: string;
+  /** Bills over Bharat Connect: the supplier's own item code (itemListsInvoice.itemCode, optional). */
+  itemCode?: string;
+  /** Bills over Bharat Connect: unit code as sent (e.g. "KGS"); optional in the API. */
+  unit?: string;
+  /** Bills over Bharat Connect: isService (required in the API). */
+  isService?: boolean;
+  /** Bills over Bharat Connect: the supplier left gstRate out (it's optional in the API). */
+  gstMissing?: boolean;
+  /** LEDGERS catalog item this line is booked against. Received bills get it on Accept. */
+  catalogId?: string;
+  /** Account type (the item's Purchase Expense Type, a chart-of-accounts ledger) this line is posted to. */
+  account?: string;
+}
+
+/** One side (Sales or Purchase) of a LEDGERS catalog item, as on the Create Catalog form. */
+export interface CatalogSide {
+  price: number;
+  taxInclusive: boolean;
+  description?: string;
+  expenseType?: string;
+  nonTaxable?: number;
+  sku?: string;
+}
+
+/** A LEDGERS catalog item (Catalog → Create Catalog). Required: name, units, GST rate, HSN/SAC. */
+export interface CatalogItem {
+  id: string;
+  type: "goods" | "services";
+  name: string;
+  unit: string;
+  gstRate: number;
+  hsn: string;
+  cessType?: "flat" | "percent";
+  cess?: number;
+  sales?: CatalogSide;
+  purchase?: CatalogSide;
+  status: "active" | "inactive";
+  createdBy: string;
+  createdAt: string;
+  /** Added automatically from a bill received over Bharat Connect. */
+  addedFromBill?: string;
 }
 
 export interface Invoice {
@@ -189,6 +230,18 @@ export interface Invoice {
   isEInvoice?: boolean;
   /** Receipts (sales) / payments (bills) recorded against this document. */
   receipts?: Receipt[];
+  /** Bills received over Bharat Connect: created as a LEDGERS purchase invoice (until then it's raw incoming data). */
+  booked?: boolean;
+  /** Our own bill number, given when the purchase invoice is created. */
+  billNo?: string;
+  /** Bills: the supplier's own invoice number (`supplierInvoiceNumber`, max 50). See lib/billNo `supplierInvoiceNo`. */
+  supplierInvoiceNo?: string;
+  /** Bills created from Bharat Connect: the LEDGERS vendor contact the bill is booked against. */
+  contactId?: string;
+  /** Deleted in LEDGERS (soft delete: kept for the record, shown under the Deleted filter, read-only). */
+  deletedAt?: string;
+  /** Reported in a filed GSTR-1: can't be deleted any more (a credit note corrects it). */
+  gstr1Filed?: boolean;
   /** LEDGERS-only expense category on bills (editable even on bills received over Bharat Connect). */
   category?: string;
 }

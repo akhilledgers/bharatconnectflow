@@ -22,11 +22,11 @@ import { STATUS_META } from "../../lib/status";
 import { cn } from "../../lib/cn";
 import { LedgersLogoFull } from "./LedgersLogoFull";
 
-type Child = string | { label: string; to: string };
+type Child = string | { label: string; to: string; end?: boolean };
 
 const NAV_ITEMS: { label: string; icon: typeof House; to?: string; children?: Child[]; chevron?: boolean }[] = [
   { label: "Contacts", icon: ContactRound, to: "/contacts" },
-  { label: "Catalog", icon: GalleryVerticalEnd },
+  { label: "Catalog", icon: GalleryVerticalEnd, to: "/catalog" },
   { label: "Inventory", icon: Package },
   {
     label: "Sales",
@@ -45,12 +45,22 @@ const NAV_ITEMS: { label: string; icon: typeof House; to?: string; children?: Ch
   { label: "Accounting", icon: BookOpen, chevron: true },
   { label: "Taxation", icon: Percent, chevron: true },
   { label: "Banking", icon: Landmark, to: "/banking" },
-  { label: "HRMS", icon: Layers, chevron: true },
+  {
+    label: "HRMS",
+    icon: Layers,
+    children: [
+      { label: "Employees", to: "/hrms/employees" },
+      { label: "Payroll", to: "/hrms/payroll", end: true },
+      { label: "Attendance", to: "/hrms/attendance" },
+      { label: "Salary Payment", to: "/hrms/payroll/salary-payment" },
+      { label: "Payroll Reports", to: "/hrms/reports/monthly-pay" },
+    ],
+  },
   { label: "Users & Roles", icon: Users },
   { label: "Dataport", icon: DatabaseZap, chevron: true },
 ];
 
-const SETTINGS_ITEMS = ["Basic Settings", "Advanced Settings", "Customization", "PG Settings"];
+const SETTINGS_ITEMS: Child[] = ["Basic Settings", { label: "Advanced Settings", to: "/settings/advanced" }, "Customization", "PG Settings"];
 
 // components.md → Sidebar.
 const ITEM =
@@ -65,22 +75,31 @@ export function Sidebar() {
   const incomplete = business.connectionState !== "connected";
   const location = useLocation();
 
-  const [openSection, setOpenSection] = useState<string | null>(() =>
-    location.pathname.startsWith("/sales") ? "Sales" : location.pathname.startsWith("/expenses") ? "Expenses" : null,
-  );
+  const sectionFor = (path: string) =>
+    path.startsWith("/sales")
+      ? "Sales"
+      : path.startsWith("/expenses")
+        ? "Expenses"
+        : path.startsWith("/hrms")
+          ? "HRMS"
+          : path.startsWith("/settings")
+            ? "Settings"
+            : null;
+  const [openSection, setOpenSection] = useState<string | null>(() => sectionFor(location.pathname));
+  const settingsOpen = openSection === "Settings";
 
   // Sidebar persists across route changes (it's outside the routed Outlet), so
   // the section has to re-sync on every navigation, not just once at mount.
   useEffect(() => {
-    if (location.pathname.startsWith("/sales")) setOpenSection("Sales");
-    else if (location.pathname.startsWith("/expenses")) setOpenSection("Expenses");
+    const section = sectionFor(location.pathname);
+    if (section) setOpenSection(section);
   }, [location.pathname]);
 
   return (
     <aside className="fixed inset-y-0 start-0 z-20 flex w-(--sidebar-width) flex-col border-e border-border bg-background">
       <div className="flex h-(--header-height) shrink-0 items-center justify-between gap-2.5 border-b border-border px-2.5">
         <div className="flex items-center ps-1.5">
-          <LedgersLogoFull height={22} />
+          <LedgersLogoFull />
         </div>
         <button className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-accent-foreground hover:bg-accent" title="Collapse sidebar">
           <PanelRightOpen className="size-4 opacity-60" />
@@ -122,7 +141,7 @@ export function Sidebar() {
                         {child}
                       </div>
                     ) : (
-                      <NavLink key={child.to} to={child.to} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
+                      <NavLink key={child.to} to={child.to} end={child.end} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
                         {child.label}
                       </NavLink>
                     ),
@@ -133,24 +152,38 @@ export function Sidebar() {
           );
         })}
 
-        <div className={cn(ITEM, "cursor-default")}>
+        {/* Settings opens and closes like the other sections; collapsed, its row keeps the setup dot. */}
+        <button
+          onClick={() => setOpenSection(settingsOpen ? null : "Settings")}
+          className={cn(ITEM, "cursor-pointer text-left")}
+          aria-expanded={settingsOpen}
+        >
           <Settings2 className={ICON} />
           <span className="flex-1">Settings</span>
-          <ChevronDown className={cn(CHEVRON, "-rotate-180")} />
-        </div>
+          {incomplete && !settingsOpen && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
+          <ChevronDown className={cn(CHEVRON, settingsOpen && "-rotate-180")} />
+        </button>
 
-        <div className="space-y-0.5 ps-4">
-          {SETTINGS_ITEMS.map((item) => (
-            <div key={item} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
-              {item}
-            </div>
-          ))}
+        {settingsOpen && (
+          <div className="space-y-0.5 ps-4">
+            {SETTINGS_ITEMS.map((item) =>
+              typeof item === "string" ? (
+                <div key={item} className={cn(SUB_ITEM, "cursor-default text-muted-foreground")}>
+                  {item}
+                </div>
+              ) : (
+                <NavLink key={item.to} to={item.to} className={({ isActive }) => cn(SUB_ITEM, isActive && "bg-accent font-medium")}>
+                  {item.label}
+                </NavLink>
+              ),
+            )}
 
-          <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
-            <span>Bharat Connect</span>
-            {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
-          </NavLink>
-        </div>
+            <NavLink to="/settings/bharatconnect" className={({ isActive }) => cn(SUB_ITEM, "justify-between", isActive && "bg-accent font-medium")}>
+              <span>Bharat Connect</span>
+              {incomplete && <span className={`size-1.5 rounded-full ${meta.dotClass}`} />}
+            </NavLink>
+          </div>
+        )}
       </nav>
 
       <div className="flex h-16 shrink-0 items-center gap-2 border-t border-border px-2.5">

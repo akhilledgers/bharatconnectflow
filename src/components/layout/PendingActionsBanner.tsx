@@ -5,7 +5,7 @@ import { BharatConnectMark } from "./BharatConnectMark";
 
 export function PendingActionsBanner({ kind, onReview }: { kind: "sales" | "purchase"; onReview: () => void }) {
   const business = useStore((s) => s.currentBusiness());
-  const invoices = useStore((s) => s.invoices);
+  const invoices = useStore((s) => s.invoices).filter((i) => !i.deletedAt);
   const snoozeInvoiceBanner = useStore((s) => s.snoozeInvoiceBanner);
 
   const snoozedUntil = kind === "sales" ? business.invoiceBannerSnoozedUntil : business.billsBannerSnoozedUntil;

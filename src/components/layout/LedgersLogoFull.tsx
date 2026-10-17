@@ -1,14 +1,14 @@
-import ledgersLogo from "../../assets/ledgers-logo.svg";
+/**
+ * The LEDGERS logo as the live app draws it (in.ledgers.cloud/v4 sidebar): the mark from LEDGERS' CDN at 24px
+ * and the word "LEDGERS" as text, xl and medium weight.
+ */
+const MARK_SRC = "https://img.ledgers.cloud/assets/favicon-lp.ico";
 
-/** The real LEDGERS logo (mark + wordmark). */
-export function LedgersLogoFull({ height = 26, className = "" }: { height?: number; className?: string }) {
+export function LedgersLogoFull({ className = "" }: { className?: string }) {
   return (
-    <img
-      src={ledgersLogo}
-      alt="LEDGERS"
-      height={height}
-      className={className}
-      style={{ height, width: "auto" }}
-    />
+    <span className={`flex items-center gap-2 ${className}`}>
+      <img src={MARK_SRC} alt="" className="size-6 shrink-0" />
+      <span className="text-xl font-medium text-foreground">LEDGERS</span>
+    </span>
   );
 }

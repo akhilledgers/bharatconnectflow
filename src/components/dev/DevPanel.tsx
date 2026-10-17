@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Landmark } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Landmark, ShoppingBag } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
+import { BC_SUPPLIERS, INCOMING_ITEM_OPTIONS, makePurchaseScenarios, type IncomingItems } from "../../mock/catalog";
 import { STATUS_META } from "../../lib/status";
 import { STOCK_HOLDING_ID, SHARMA_TRADERS_ID } from "../../mock/seed";
 import { BharatConnectMark } from "../layout/BharatConnectMark";
@@ -18,7 +20,7 @@ const STATES: ConnectionState[] = [
   "assisted_setup",
 ];
 
-type Section = "bharat-connect" | "banking";
+type Section = "bharat-connect" | "banking" | "purchase";
 
 // The panel unmounts on close; reopening returns to the last section used.
 let lastSection: Section | null = null;
@@ -66,7 +68,7 @@ export function DevPanel() {
     setSectionRaw(s);
   };
 
-  const title = section === "bharat-connect" ? "Bharat Connect" : section === "banking" ? "Banking" : "Dev panel";
+  const title = section === "bharat-connect" ? "Bharat Connect" : section === "banking" ? "Banking" : section === "purchase" ? "Purchase" : "Dev panel";
 
   return (
     <div
@@ -90,6 +92,7 @@ export function DevPanel() {
       {section === null && <SectionMenu onOpen={setSection} />}
       {section === "bharat-connect" && <BharatConnectOptions />}
       {section === "banking" && <BankingOptions />}
+      {section === "purchase" && <PurchaseOptions />}
     </div>
   );
 }
@@ -98,6 +101,7 @@ function SectionMenu({ onOpen }: { onOpen: (s: Section) => void }) {
   const business = useStore((s) => s.currentBusiness());
   const accounts = useBankingStore((s) => s.accounts);
   const connectedCount = accounts.filter((a) => a.active && a.connection === "connected").length;
+  const catalogCount = useStore((s) => s.catalog.length);
 
   const items: { key: Section; icon: ReactNode; label: string; summary: string }[] = [
     {
@@ -111,6 +115,12 @@ function SectionMenu({ onOpen }: { onOpen: (s: Section) => void }) {
       icon: <Landmark className="size-4 text-muted-foreground" />,
       label: "Banking",
       summary: connectedCount ? `${connectedCount} account${connectedCount === 1 ? "" : "s"} connected` : "No account connected",
+    },
+    {
+      key: "purchase",
+      icon: <ShoppingBag className="size-4 text-muted-foreground" />,
+      label: "Purchase",
+      summary: `Bill item scenarios · ${catalogCount} catalog items`,
     },
   ];
 
@@ -146,10 +156,10 @@ function BharatConnectOptions() {
   const invoices = useStore((s) => s.invoices);
   const simulateInvoiceConfirmation = useStore((s) => s.simulateInvoiceConfirmation);
   const simulateBuyerResponse = useStore((s) => s.simulateBuyerResponse);
-  const simulateSupplierResend = useStore((s) => s.simulateSupplierResend);
-  const returnedBills = invoices.filter((i) => i.kind === "purchase" && i.bcConfirmationStatus === "returned");
   const devProfileSaveOutcome = useStore((s) => s.devProfileSaveOutcome);
   const setDevProfileSaveOutcome = useStore((s) => s.setDevProfileSaveOutcome);
+  const devOnboardingOutcome = useStore((s) => s.devOnboardingOutcome);
+  const setDevOnboardingOutcome = useStore((s) => s.setDevOnboardingOutcome);
   const setGstConnected = useStore((s) => s.setGstConnected);
   const devSetBankState = useStore((s) => s.devSetBankState);
 
@@ -245,6 +255,43 @@ function BharatConnectOptions() {
         />
       </Group>
 
+      <Group
+        label="Onboarding response"
+        hint={
+          devOnboardingOutcome === "instant"
+            ? "Onboard to Bharat Connect confirms in a few seconds."
+            : devOnboardingOutcome === "delayed"
+              ? "Onboard stays on “Awaiting response” (Setting up). End it with Confirm activation or Reject."
+              : "Bharat Connect rejects the request: the form comes back with an error."
+        }
+      >
+        <Choice
+          value={devOnboardingOutcome}
+          options={[
+            ["instant", "Instant"],
+            ["delayed", "Delayed"],
+            ["fail", "Fails"],
+          ]}
+          onChange={setDevOnboardingOutcome}
+        />
+        {business.connectionState === "setting_up" && (
+          <div className="mt-2 flex gap-1.5">
+            <button
+              onClick={() => simulateWebhookConfirm(business.id)}
+              className="flex-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+            >
+              Confirm activation
+            </button>
+            <button
+              onClick={() => simulateWebhookReject(business.id)}
+              className="flex-1 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+            >
+              Reject
+            </button>
+          </div>
+        )}
+      </Group>
+
       <Group label="Simulate webhook">
         <div className="flex gap-1.5">
           <button
@@ -284,18 +331,6 @@ function BharatConnectOptions() {
         )}
       </Group>
 
-      {returnedBills.length > 0 && (
-        <Group label="Simulate supplier resend">
-          <div className="space-y-1.5">
-            {returnedBills.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
-                <span className="truncate text-xs text-foreground">{inv.id}</span>
-                <button onClick={() => simulateSupplierResend(inv.id, "Corrected as requested")} className="rounded-md border border-border text-foreground px-1.5 py-1 text-[11px] font-medium">Resend</button>
-              </div>
-            ))}
-          </div>
-        </Group>
-      )}
     </>
   );
 }
@@ -485,5 +520,187 @@ function BankingOptions() {
         </div>
       </Fold>
     </>
+  );
+}
+
+const SCENARIOS = makePurchaseScenarios();
+
+function PurchaseOptions() {
+  const invoices = useStore((s) => s.invoices);
+  const simulateSupplierResend = useStore((s) => s.simulateSupplierResend);
+  const simulateSupplierCancel = useStore((s) => s.simulateSupplierCancel);
+  const openBills = invoices.filter(
+    (i) => i.kind === "purchase" && i.bcSendStatus === "sent" && (i.bcConfirmationStatus === "pending" || i.bcConfirmationStatus === "returned"),
+  );
+  return (
+    <>
+    <ReceiveBill />
+    <div className="mb-4 border-t border-border" />
+    <PurchaseTab
+      openBills={openBills}
+      onEdit={(id) => simulateSupplierResend(id, "Corrected the rate")}
+      onCancel={(id) => simulateSupplierCancel(id, "Raised by mistake")}
+    />
+    </>
+  );
+}
+
+/** A supplier sends a bill from their own platform: pick who and what kind of items, then it lands in Bills. */
+function ReceiveBill() {
+  const navigate = useNavigate();
+  const business = useStore((s) => s.currentBusiness());
+  const forceConnectionState = useStore((s) => s.forceConnectionState);
+  const devReceiveBill = useStore((s) => s.devReceiveBill);
+  const [supplier, setSupplier] = useState(BC_SUPPLIERS[0].b2bId);
+  const [items, setItems] = useState<IncomingItems>("mixed");
+  const [note, setNote] = useState("");
+  return (
+    <Group label="Receive a bill" hint="Sent by the supplier on their platform. Lands in Bills as Awaiting Response.">
+      <div className="space-y-2">
+        <select value={supplier} onChange={(e) => setSupplier(e.target.value)} className={SELECT} aria-label="Supplier">
+          {BC_SUPPLIERS.map((x) => (
+            <option key={x.b2bId} value={x.b2bId}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+        <Choice value={items} options={INCOMING_ITEM_OPTIONS} onChange={setItems} />
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={256}
+          placeholder="Supplier's note (optional)"
+          className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground"
+        />
+        <button
+          onClick={() => {
+            if (business.connectionState !== "connected") forceConnectionState(business.id, "connected");
+            const id = devReceiveBill(supplier, items, note);
+            setNote("");
+            navigate(`/expenses/bills/${id}/create`);
+          }}
+          className={`w-full ${OPTION} ${ON}`}
+        >
+          Receive bill
+        </button>
+      </div>
+    </Group>
+  );
+}
+
+/** Purchase scenarios: each loads a bill from a Bharat Connect supplier (Awaiting Response) and opens it. */
+function PurchaseTab({
+  openBills,
+  onEdit,
+  onCancel,
+}: {
+  openBills: { id: string; counterpartyName: string }[];
+  onEdit: (id: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  const navigate = useNavigate();
+  const business = useStore((s) => s.currentBusiness());
+  const forceConnectionState = useStore((s) => s.forceConnectionState);
+  const devLoadPurchaseScenario = useStore((s) => s.devLoadPurchaseScenario);
+  const devResetPurchase = useStore((s) => s.devResetPurchase);
+  const catalog = useStore((s) => s.catalog);
+  const linkCount = useStore((s) => Object.keys(s.itemLinks).length);
+  const invoices = useStore((s) => s.invoices);
+  const added = catalog.filter((c) => c.addedFromBill);
+
+  const load = (key: string) => {
+    if (business.connectionState !== "connected") forceConnectionState(business.id, "connected");
+    const id = devLoadPurchaseScenario(key);
+    if (id) navigate(`/expenses/bills/${id}/create`);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Bill item scenarios</div>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Load opens a fresh bill (Awaiting Response). Lines that need a decision show Review next to the item name. Reject adds nothing to the catalog.
+        </p>
+        <div className="space-y-1.5">
+          {SCENARIOS.map((sc) => {
+            const live = invoices.find((i) => i.id === sc.bill.id);
+            return (
+              <div key={sc.key} className="rounded-md border border-border px-2 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-medium text-foreground">{sc.title}</span>
+                  <button
+                    onClick={() => load(sc.key)}
+                    className="shrink-0 cursor-pointer rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+                  >
+                    {live ? "Reload" : "Load"}
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{sc.expect}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {sc.bill.id} · {sc.bill.counterpartyName}
+                  {live && live.bcConfirmationStatus !== "pending" && <span className="text-foreground"> · {live.bcConfirmationStatus}</span>}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="border-t border-border pt-4">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Catalog</span>
+          <button onClick={() => navigate("/catalog")} className="cursor-pointer text-[11px] font-medium text-primary">
+            Open Catalog
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {catalog.length} items · {linkCount} saved supplier link{linkCount === 1 ? "" : "s"}
+        </p>
+        {added.length > 0 && (
+          <ul className="mt-1.5 space-y-1">
+            {added.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <button onClick={() => navigate(`/catalog/${c.id}`)} className="cursor-pointer truncate text-primary">
+                  {c.name}
+                </button>
+                <span className="shrink-0 text-muted-foreground">from {c.addedFromBill}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          onClick={devResetPurchase}
+          className="mt-2 w-full cursor-pointer rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+        >
+          Reset catalog and scenario bills
+        </button>
+      </div>
+
+      <div className="border-t border-border pt-4">
+        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Simulate supplier (incoming)</div>
+        <p className="mb-2 text-[11px] text-muted-foreground">The supplier, on their platform, edits or cancels a bill that's waiting for your response.</p>
+        {openBills.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">No bills waiting for a response.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {openBills.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
+                <span className="truncate text-xs text-foreground">
+                  {inv.id} <span className="text-muted-foreground">· {inv.counterpartyName}</span>
+                </span>
+                <span className="flex shrink-0 gap-1">
+                  <button onClick={() => onEdit(inv.id)} className="rounded-md border border-border px-1.5 py-1 text-[11px] font-medium text-foreground">
+                    Edit
+                  </button>
+                  <button onClick={() => onCancel(inv.id)} className="rounded-md border border-red-200 bg-red-50 px-1.5 py-1 text-[11px] font-medium text-red-700">
+                    Cancel
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

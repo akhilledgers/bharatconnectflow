@@ -21,8 +21,19 @@ export function NotesSection({ invoice, mode, onAdd }: { invoice: Invoice; conne
   if (mode === "bc") {
     if (notes.length === 0) return null;
     return (
-      <div className="space-y-2.5 border-t border-dashed border-border pt-4">
+      <div className="space-y-2.5 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0">
         <span className="text-xs font-semibold text-gray-900">Activity</span>
+        <NoteList notes={notes} />
+      </div>
+    );
+  }
+
+  // Deleted documents are read-only: earlier notes stay visible, no new ones.
+  if (invoice.deletedAt) {
+    if (notes.length === 0) return null;
+    return (
+      <div className="space-y-2">
+        <span className="text-xs font-semibold text-gray-900">Notes</span>
         <NoteList notes={notes} />
       </div>
     );
@@ -54,7 +65,7 @@ export function NotesSection({ invoice, mode, onAdd }: { invoice: Invoice; conne
 const VISIBLE = 2;
 
 /** Oldest first; only the latest two show until "Show more" is clicked. */
-function NoteList({ notes }: { notes: InvoiceNote[] }) {
+export function NoteList({ notes }: { notes: InvoiceNote[] }) {
   const [expanded, setExpanded] = useState(false);
   const hidden = Math.max(0, notes.length - VISIBLE);
   const shown = expanded ? notes : notes.slice(hidden);
@@ -77,7 +88,7 @@ function NoteList({ notes }: { notes: InvoiceNote[] }) {
           </div>
           <div className="flex justify-between pl-[18px] text-[11px] text-muted-foreground">
             <span>{n.at}</span>
-            {n.kind === "internal" && <span>Only you</span>}
+            {n.kind === "internal" && <span>Private</span>}
           </div>
           {n.text && <p className="mt-0.5 pl-[18px] text-foreground">{n.text}</p>}
         </li>

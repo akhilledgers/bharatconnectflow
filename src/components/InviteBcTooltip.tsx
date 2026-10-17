@@ -47,7 +47,7 @@ export function InviteBcTooltip({
             onClick={() => inviteToBharatConnect(counterpartyName)}
             className="w-full rounded-md bg-primary px-2 py-1.5 text-[11px] font-medium text-white hover:bg-primary/90"
           >
-            Invite to Bharat Connect
+            Invite
           </button>
         </div>
       )}

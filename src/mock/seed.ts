@@ -88,7 +88,7 @@ export function makeSeedBusinesses(): Record<string, Business> {
       bankAccounts: [],
       identifierPath: "gstin",
       connectionState: "needs_attention",
-      ownershipVerified: true,
+      ownershipVerified: false,
       gstConnected: false, // new to LEDGERS: GST not connected yet
       bharatConnectIds: [
         {
@@ -255,6 +255,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "LP-40",
+      gstr1Filed: true,
       kind: "sales",
       counterpartyName: "Bharat Retail Pvt Ltd",
       counterpartyEmail: "accounts@bharatretail.in",
@@ -301,6 +302,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2030",
+      billNo: "2026-30",
       kind: "purchase",
       counterpartyName: "Manoj Kumar Yadav",
       counterpartyGstin: "07ABCPY9668B1Z7",
@@ -314,6 +316,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2029",
+      billNo: "2026-29",
       kind: "purchase",
       counterpartyName: "Manoj Kumar Yadav",
       counterpartyGstin: "07ABCPY9668B1Z7",
@@ -327,6 +330,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2028",
+      billNo: "2026-28",
       kind: "purchase",
       counterpartyName: "Ganesh Packaging Co",
       counterpartyGstin: "27ABCPG1234K1Z1",
@@ -373,6 +377,7 @@ export function makeSeedInvoices(): Invoice[] {
     },
     {
       id: "BILL-2025",
+      billNo: "2026-25",
       kind: "purchase",
       counterpartyName: "Sri Lakshmi Enterprises",
       counterpartyGstin: "29AASFL9988M1Z3",
@@ -607,6 +612,16 @@ export function makeSeedContacts(): LedgerContact[] {
       gstin: "27AASHT1234L1ZQ",
       region: "INDIA",
       b2bId: null,
+    },
+    {
+      // Saved without a GSTIN: a bill from Verve over Bharat Connect suggests this contact by name.
+      id: "ct-9",
+      salutation: "M/S",
+      name: "Verve Financial Services",
+      type: "supplier",
+      businessName: "Verve Financial Services",
+      email: "accounts@vervefin.in",
+      region: "INDIA",
     },
   ];
 }

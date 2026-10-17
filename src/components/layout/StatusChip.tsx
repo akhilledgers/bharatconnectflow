@@ -61,7 +61,7 @@ function popoverContent(business: Business): { title: string; body: string; acti
 
 export function StatusChip() {
   const business = useStore((s) => s.currentBusiness());
-  const invoices = useStore((s) => s.invoices);
+  const invoices = useStore((s) => s.invoices).filter((i) => !i.deletedAt);
   const linkExistingId = useStore((s) => s.linkExistingId);
   const pushToast = useStore((s) => s.pushToast);
   const [open, setOpen] = useState(false);

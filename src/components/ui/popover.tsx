@@ -15,7 +15,7 @@ export function Callout({
   actions,
   className,
 }: {
-  tone?: "neutral" | "primary" | "destructive" | "success";
+  tone?: "neutral" | "primary" | "destructive" | "success" | "warning";
   icon?: ReactNode;
   title?: ReactNode;
   children?: ReactNode;
@@ -27,6 +27,7 @@ export function Callout({
     primary: "border-blue-500/25 bg-blue-50/70",
     destructive: "border-red-600/25 bg-red-50/80",
     success: "border-emerald-600/35 bg-emerald-50/90",
+    warning: "border-amber-500/35 bg-amber-50/80",
   }[tone];
   return (
     <div className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xs shadow-black/5", toneCls, className)}>
