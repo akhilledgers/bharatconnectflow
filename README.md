@@ -794,12 +794,11 @@ Built from `HANDOFF-pf-wage-ceiling.md`. The engine passes every test case in th
   - *Coverage* (newly under PF / pension from 17 Sep) is a rule, not a choice: recorded by whichever runs first on the new
     ceiling — a September re-run or the October run — with start date, PF wage on 17 Sep, and Salary Setup moved to
     12%-Basic + Limit to PF ceiling from October. Missing UANs are flagged and left out of the ECR.
-  - The *October computation page* (first month on the new ceiling) carries the two one-time choices as toggles, shown only
-    while open, and the table previews them live: (1) if September still stands on the old ceiling — "Add to October"
-    (default; shows as "PF diff – Sep" in Deductions, September payslips stay as paid) or "Don't add" (with a link to re-run
-    September); (2) "Higher employer PF" — "CTC increases" (default) or "Keep CTC the same" (Special Allowance absorbs it,
-    solved exactly when it's PF wage; newly covered employees stay on increases). The CTC column shows old → new with a
-    per-row switch. Run Payroll stays one click and saves the choices.
+  - The *October computation page* (first month on the new ceiling) carries one one-time choice, shown only while
+    September still stands on the old ceiling, and the table previews it live: "Add to October" (default; shows as
+    "PF diff – Sep" in Deductions, September payslips stay as paid) or "Don't add" (with a link to re-run September).
+    Higher employer PF **always increases CTC** — the CTC column shows the new CTC with the old one struck out. (A "Keep CTC
+    the same" option was built and removed on 23-10-2026 to keep the implementation simple.) Run Payroll stays one click.
   - The *Payroll Dashboard* shows a read-only "PF wage ceiling revision" card: September · coverage · October CTC, each with
     where it happened.
 - **Outputs:** September payslip shows PF per half; October shows the difference line; PF report has EPS / EPF / EDLI;

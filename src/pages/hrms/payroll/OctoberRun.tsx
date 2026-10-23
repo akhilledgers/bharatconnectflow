@@ -4,73 +4,48 @@ import { ToggleGroup } from "../../../components/ui/tabs";
 import { REVISION_MONTH } from "../payroll";
 import { num } from "../months";
 
-// October 2026 — the first month on the new ceiling. Like September, the one-time choices sit on the
-// computation page and the table updates as you change them; Run Payroll saves them. Shown only while
-// something is still open.
+// October 2026 — the first month on the new ceiling. While September still stands on the old ceiling, the
+// one-time choice of adding its difference sits on the computation page and the table updates as it
+// changes; Run Payroll saves it. Higher employer PF always increases CTC — the CTC column shows the old one.
 
 export function OctoberPlanCard({ rows }: { rows: ReviewRow[] }) {
   const navigate = useNavigate();
   const state = useHrmsStore();
   const { octPlan, setOctPlan } = state;
-  const sepPending = octoberSepPending(state);
-  const ctcRows = rows.filter((r) => r.ctcPending);
-  if (!sepPending && ctcRows.length === 0) return null;
+  if (!octoberSepPending(state)) return null;
 
   const diffTotal = rows.reduce(
     (t, r) => t + (r.record?.deductions.filter((d) => d.name === DIFF_LABEL).reduce((x, d) => x + d.amount, 0) ?? 0) + (r.record?.recoveryHeldBack ?? 0),
     0,
   );
-  const kept = ctcRows.filter((r) => r.ctcChoice === "keep").length;
 
   return (
     <div className="mb-5 divide-y divide-border rounded-xl border border-border bg-card shadow-xs shadow-black/5">
-      {sepPending && (
-        <Row
-          title="September difference"
-          control={
-            <ToggleGroup<"add" | "skip">
-              value={octPlan.sepDifference}
-              onChange={(v) => setOctPlan({ sepDifference: v })}
-              items={[
-                { value: "add", label: "Add to October" },
-                { value: "skip", label: "Don't add" },
-              ]}
-            />
-          }
-          note={
-            octPlan.sepDifference === "add" ? (
-              <>₹{num(diffTotal)} PF for 17–30 Sep, shown in Deductions.</>
-            ) : (
-              <>
-                September stays on the old ceiling.{" "}
-                <button className="cursor-pointer text-primary hover:underline" onClick={() => navigate(`/hrms/payroll/computation?month=${REVISION_MONTH}`)}>
-                  Re-run September instead
-                </button>
-              </>
-            )
-          }
-        />
-      )}
-      {ctcRows.length > 0 && (
-        <Row
-          title="Higher employer PF"
-          control={
-            <ToggleGroup<"increase" | "keep">
-              value={octPlan.ctc}
-              onChange={(v) => setOctPlan({ ctc: v, ctcOverrides: {} })}
-              items={[
-                { value: "increase", label: "CTC increases" },
-                { value: "keep", label: "Keep CTC the same" },
-              ]}
-            />
-          }
-          note={
+      <Row
+        title="September difference"
+        control={
+          <ToggleGroup<"add" | "skip">
+            value={octPlan.sepDifference}
+            onChange={(v) => setOctPlan({ sepDifference: v })}
+            items={[
+              { value: "add", label: "Add to October" },
+              { value: "skip", label: "Don't add" },
+            ]}
+          />
+        }
+        note={
+          octPlan.sepDifference === "add" ? (
+            <>₹{num(diffTotal)} PF for 17–30 Sep, shown in Deductions.</>
+          ) : (
             <>
-              {ctcRows.length} employees{kept && kept < ctcRows.length ? ` · ${kept} keep CTC` : ""} — see the CTC column.
+              September stays on the old ceiling.{" "}
+              <button className="cursor-pointer text-primary hover:underline" onClick={() => navigate(`/hrms/payroll/computation?month=${REVISION_MONTH}`)}>
+                Re-run September instead
+              </button>
             </>
-          }
-        />
-      )}
+          )
+        }
+      />
       <div className="px-4 py-2 text-[11px] text-muted-foreground">One-time, for the new PF ceiling. Saved when you run October payroll.</div>
     </div>
   );

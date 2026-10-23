@@ -298,33 +298,6 @@ export function computePay({
   };
 }
 
-/**
- * "Keep CTC the same": shrink one component so CTC at the new ceiling equals `targetCtc`.
- * If the component is PF wage, cutting it lowers PF too (circular), so start from the closed form —
- * uncapped A = (T − G − 12%·W) ÷ 1.12, capped A = T − G − cap — then step ₹1 until CTC is exactly T
- * (or the largest value not above it, when rounding makes T unreachable). Returns null when A < 0.
- */
-export function keepCtcStructure<T extends SalaryStructure>(s: T, targetCtc: number, absorbKey: string, month: MonthKey): T | null {
-  const comp = s.components.find((c) => c.key === absorbKey);
-  if (!comp) return null;
-  const others = { ...s, components: s.components.filter((c) => c.key !== absorbKey) };
-  const G = structureGross(others);
-  const withA = (a: number): T => ({ ...s, components: s.components.map((c) => (c.key === absorbKey ? { ...c, amount: a } : c)) });
-  let a: number;
-  if (!inPfWage(s, comp) || s.pfBasis === "none") a = targetCtc - G - setupPf(others, month);
-  else {
-    const W = monthlyPfWage(others);
-    const uncapped = (targetCtc - G - PF_RATE * W) / (1 + PF_RATE);
-    a = s.pfLimit === "limit" && PF_RATE * (W + uncapped) > pfCapOn(monthEnd(month)) ? targetCtc - G - pfCapOn(monthEnd(month)) : uncapped;
-  }
-  a = Math.floor(a);
-  for (let i = 0; i < 100 && a > 0 && setupCtc(withA(a), month) > targetCtc; i++) a--;
-  for (let i = 0; i < 100 && setupCtc(withA(a + 1), month) <= targetCtc; i++) a++;
-  if (a < 0) return null;
-  const out = withA(a);
-  return { ...out, gross: structureGross(out) };
-}
-
 /** Has anything that's paid, deducted or deposited changed between two records? (Ignores breakdown-only fields.) */
 export function samePay(a: PayRecord, b: PayRecord): boolean {
   const key = (r: PayRecord) =>

@@ -18,15 +18,13 @@ export function RevisionCard() {
   const correction = useHrmsStore((s) => s.sepCorrection);
   const employees = useHrmsStore((s) => s.employees);
   const salaries = useHrmsStore((s) => s.salaries);
-  const decisions = useHrmsStore((s) => s.ctcDecisions);
+  const octoberRun = useHrmsStore((s) => s.runs[FIRST_FULL_MONTH]);
 
   const sep = septemberStatus(sepRun, correction);
   const coverage = coverageRows(employees, salaries);
   const recorded = coverage.filter((c) => c.recorded);
   const noUan = coverage.filter((c) => !c.employee.uan);
-  const ctcPending = ctcRows(employees, salaries).filter((r) => !decisions[r.employee.id]);
-  const decided = Object.values(decisions);
-  const kept = decided.filter((d) => d === "keep").length;
+  const ctcUp = ctcRows(employees, salaries).length;
 
   const downloadCoverage = () => {
     const lines = [
@@ -99,14 +97,14 @@ export function RevisionCard() {
           }
         />
         <Line
-          done={ctcPending.length === 0 && decided.length > 0}
+          done={ctcUp > 0 && !!octoberRun}
           title="October CTC"
           text={
-            ctcPending.length
-              ? `Employer PF goes up for ${ctcPending.length} employee(s) — choose on the ${FIRST_FULL_MONTH} payroll page.`
-              : decided.length
-                ? `Decided: ${decided.length - kept} on “CTC increases”${kept ? `, ${kept} kept the same CTC` : ""}.`
-                : "No change in employer PF."
+            ctcUp === 0
+              ? "No change in employer PF."
+              : octoberRun
+                ? `CTC increased for ${ctcUp} employee(s) from ${FIRST_FULL_MONTH} with the higher employer PF.`
+                : `Employer PF goes up for ${ctcUp} employee(s) — their CTC increases from ${FIRST_FULL_MONTH}.`
           }
         />
       </div>

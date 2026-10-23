@@ -104,7 +104,7 @@ export interface SalaryStructure {
   pfLimit: PfLimit;
   esiEnabled: boolean;
   createdOn: string;
-  /** Why the revision exists, when the system made it (e.g. "PF ceiling — CTC kept"). */
+  /** Why the revision exists, when the system made it (e.g. "PF ceiling — brought under PF"). */
   reason?: string;
 }
 

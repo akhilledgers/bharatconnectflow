@@ -314,18 +314,10 @@ export function PayrollComputationPage() {
                         <td className={`${tdCls} whitespace-nowrap text-sm`}>{inr(rec.grossEarned)}</td>
                         <td className={`${tdCls} whitespace-nowrap text-sm`}>
                           {inr(rec.ctc)}
-                          {r.ctcPending && r.ctcBefore !== undefined && rec.ctc !== r.ctcBefore && (
-                            <div className="text-[10px] text-muted-foreground line-through">{inr(r.ctcBefore)}</div>
-                          )}
-                          {r.ctcPending && (
-                            <button
-                              className="block cursor-pointer text-[10px] text-primary hover:underline"
-                              onClick={() =>
-                                state.setOctPlan({ ctcOverrides: { ...state.octPlan.ctcOverrides, [e.id]: r.ctcChoice === "keep" ? "increase" : "keep" } })
-                              }
-                            >
-                              {r.ctcChoice === "keep" ? "Let CTC increase" : "Keep CTC same"}
-                            </button>
+                          {r.ctcBefore !== undefined && rec.ctc !== r.ctcBefore && (
+                            <div className="text-[10px] text-muted-foreground line-through" title="CTC on the old PF ceiling">
+                              {inr(r.ctcBefore)}
+                            </div>
                           )}
                         </td>
                         <td className={`${tdCls} whitespace-nowrap text-sm font-medium`}>

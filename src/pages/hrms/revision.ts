@@ -2,15 +2,12 @@ import type { Employee, MonthKey, PayrollRun, SalaryStructure } from "./types";
 import {
   REVISION_MONTH,
   coveredStructure,
-  inPfWage,
   isNewlyCovered,
   joinsEps,
-  keepCtcStructure,
   monthlyPfWage,
   salaryFor,
   setupCtc,
   setupPf,
-  structureGross,
 } from "./payroll";
 import { addMonths } from "./months";
 import { PF_REVISION } from "./statutory";
@@ -73,7 +70,7 @@ export interface CtcRow {
   pfAfter: number;
 }
 
-/** Employees whose CTC rises from October because employer PF rises. No Limit employees never appear. */
+/** Employees whose CTC rises from October because employer PF rises (it always increases CTC). No Limit employees never appear. */
 export function ctcRows(employees: Employee[], salaries: SalaryStructure[]): CtcRow[] {
   return employees.flatMap((e) => {
     if (e.status !== "active") return [];
@@ -86,28 +83,4 @@ export function ctcRows(employees: Employee[], salaries: SalaryStructure[]): Ctc
     if (ctcAfter <= ctcBefore) return [];
     return [{ employee: e, base, newlyCovered, ctcBefore, ctcAfter, pfBefore: setupPf(s, PRE_REVISION_MONTH), pfAfter: setupPf(base, FIRST_FULL_MONTH) }];
   });
-}
-
-/** The allowance "Keep CTC the same" shrinks: one outside PF wages (not HRA) if any, else Special Allowance. */
-export function absorbComponent(s: SalaryStructure): string | undefined {
-  return (s.components.find((c) => c.key !== "hra" && !inPfWage(s, c)) ?? s.components.find((c) => c.key === "special") ?? s.components[0])?.key;
-}
-
-export interface CtcPreview {
-  gross: number;
-  ctc: number;
-  /** Full-month take-home change vs the same salary at the old ceiling (before PT / TDS). */
-  takeHome: number;
-  /** "Keep CTC" isn't possible — not enough in the allowance. */
-  impossible: boolean;
-}
-
-export function ctcPreview(r: CtcRow, choice: "increase" | "keep"): CtcPreview {
-  const oldNet = structureGross(r.base) - r.pfBefore;
-  const increase = { gross: structureGross(r.base), ctc: r.ctcAfter, takeHome: structureGross(r.base) - r.pfAfter - oldNet, impossible: false };
-  if (choice === "increase") return increase;
-  const key = absorbComponent(r.base);
-  const k = key ? keepCtcStructure(r.base, r.ctcBefore, key, FIRST_FULL_MONTH) : null;
-  if (!k) return { ...increase, impossible: true };
-  return { gross: structureGross(k), ctc: setupCtc(k, FIRST_FULL_MONTH), takeHome: structureGross(k) - setupPf(k, FIRST_FULL_MONTH) - oldNet, impossible: false };
 }

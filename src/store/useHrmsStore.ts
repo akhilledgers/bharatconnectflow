@@ -40,18 +40,16 @@ import {
   employedInMonth,
   isNewlyCovered,
   joinsEps,
-  keepCtcStructure,
   monthlyPfWage,
   pfSegments,
   salaryFor,
   samePay,
-  setupCtc,
   splitPayable,
 } from "../pages/hrms/payroll";
 import { defaultPayableDays, payableBySegment } from "../pages/hrms/attendance";
 import { TODAY, addMonths, compareMonths, monthEnd } from "../pages/hrms/months";
 import { NET_PAY_FLOOR_DROP, PF_REVISION } from "../pages/hrms/statutory";
-import { FIRST_FULL_MONTH, absorbComponent, ctcPreview, ctcRows, septemberStatus, type CtcRow } from "../pages/hrms/revision";
+import { FIRST_FULL_MONTH, ctcRows, septemberStatus } from "../pages/hrms/revision";
 
 // HRMS prototype's own mock world (employees, salary structures, payroll runs, HR settings),
 // kept apart from the Bharat Connect store the same way Banking keeps useBankingStore.
@@ -85,17 +83,13 @@ interface Data {
   sepReminderDismissed: boolean;
   /** How September was brought onto the new ceiling: re-run, or its difference added to October. */
   sepCorrection: { method: "rerun" | "october"; on: string } | null;
-  /** October CTC decision per employee, saved by the first October run. */
-  ctcDecisions: Record<string, "increase" | "keep">;
-  /** October choices set on the computation page and previewed live until the run saves them. */
+  /** October choice set on the computation page and previewed live until the run saves it. */
   octPlan: OctoberPlan;
 }
 
 export interface OctoberPlan {
   /** September left on the old ceiling: add its difference to October, or not (correct September instead). */
   sepDifference: "add" | "skip";
-  ctc: "increase" | "keep";
-  ctcOverrides: Record<string, "increase" | "keep">;
 }
 
 export interface RunResult {
@@ -108,12 +102,6 @@ export interface SeptemberRunOptions {
   paidAnswer: PaidAnswer;
   /** Who bears the employee share of the difference, per employee (paid on the old basis only). */
   payers: Record<string, "employee" | "employer">;
-}
-
-export interface CtcChoice {
-  employeeId: string;
-  decision: "increase" | "keep";
-  absorbKey?: string;
 }
 
 interface HrmsState extends Data {
@@ -131,9 +119,8 @@ interface HrmsState extends Data {
   /** September left as paid on the old ceiling: settle its mid-month difference in `month` instead of re-running it. */
   addSeptemberToMonth: (month: MonthKey, payers: Record<string, "employee" | "employer">) => void;
   setOctPlan: (patch: Partial<OctoberPlan>) => void;
-  /** Save the October plan (September difference, CTC choices) — done by the first October run. */
+  /** Save the October plan (September difference) — done by the first October run. */
   applyOctPlan: () => void;
-  applyCtcChoices: (choices: CtcChoice[]) => void;
   updateHrSettings: (patch: Partial<HrSettings>) => void;
   saveLeavePolicy: (p: LeavePolicy) => void;
   setLeaveApplicationStatus: (id: string, status: LeaveApplication["status"]) => void;
@@ -153,11 +140,8 @@ export interface ReviewRow {
   joinsEps: boolean;
   /** Outstanding September difference still to be recovered after this month. */
   carryForward?: number;
-  /** First month on the new ceiling: CTC at the old ceiling, when employer PF rises for this employee. */
+  /** First month on the new ceiling: CTC at the old ceiling, when employer PF (and so CTC) rises for this employee. */
   ctcBefore?: number;
-  ctcChoice?: "increase" | "keep";
-  /** The CTC choice is still a plan (not yet saved by a run). */
-  ctcPending?: boolean;
 }
 
 /** Payable days for an employee in a month: the hand-entered figure if any, else from attendance. */
@@ -195,14 +179,7 @@ export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasi
       // Exited employees still appear in the month they left (employedInMonth checks the exit date).
       .filter((e) => employedInMonth(e, month) && (e.status === "active" || !!e.dateOfExit))
       .map((employee) => {
-        const ctcRow = ctcByEmployee.get(employee.id);
-        const ctcPending = !!ctcRow && !s.ctcDecisions[employee.id];
-        const ctcChoice = ctcRow ? (s.ctcDecisions[employee.id] ?? octoberCtcChoice(s, ctcRow)) : undefined;
-        let salary = salaryFor(s.salaries, employee.id, month);
-        if (ctcRow && ctcPending && ctcChoice === "keep") {
-          const key = absorbComponent(ctcRow.base);
-          salary = (key && keepCtcStructure(ctcRow.base, ctcRow.ctcBefore, key, month)) || salary;
-        }
+        const salary = salaryFor(s.salaries, employee.id, month);
         const branch = s.branches.find((b) => b.id === employee.branchId);
         const revisionSalary = salaryFor(s.salaries, employee.id, REVISION_MONTH);
         const coverage = { newlyCovered: isNewlyCovered(employee, revisionSalary), joinsEps: joinsEps(employee, revisionSalary) };
@@ -214,9 +191,7 @@ export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasi
           payableFromAttendance: s.payableOverrides[month]?.[employee.id] === undefined && !s.payableHalves[month]?.[employee.id],
           newlyCovered: coverage.newlyCovered && compareMonths(month, REVISION_MONTH) >= 0 && basis !== "old",
           joinsEps: coverage.joinsEps && compareMonths(month, REVISION_MONTH) >= 0 && basis !== "old",
-          ctcBefore: ctcRow?.ctcBefore,
-          ctcChoice,
-          ctcPending,
+          ctcBefore: ctcByEmployee.get(employee.id)?.ctcBefore,
         };
         if (!salary) return base;
 
@@ -277,14 +252,6 @@ export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasi
 /** September still stands on the old ceiling (not re-run, difference not yet added to a later month). */
 export function octoberSepPending(s: Data): boolean {
   return septemberStatus(s.runs[REVISION_MONTH], s.sepCorrection) === "old";
-}
-
-/** CTC option for an employee in the October plan: their own switch, else the page-wide one (newly covered stay on increase). */
-export function octoberCtcChoice(s: Data, r: CtcRow): "increase" | "keep" {
-  const choice = s.octPlan.ctcOverrides[r.employee.id] ?? (r.newlyCovered ? "increase" : s.octPlan.ctc);
-  // Not enough in the allowance to absorb it → stays on "CTC increases".
-  if (choice === "keep" && ctcPreview(r, "keep").impossible) return "increase";
-  return choice;
 }
 
 /** September's mid-month difference for everyone in its run, to settle in `month`. Exited employees: employer pays. */
@@ -394,8 +361,7 @@ function seedData(): Data {
     pfDifferences: [],
     sepReminderDismissed: false,
     sepCorrection: null,
-    ctcDecisions: {},
-    octPlan: { sepDifference: "add", ctc: "increase", ctcOverrides: {} },
+    octPlan: { sepDifference: "add" },
   };
   for (const month of SEED_RUN_MONTHS) {
     // Every seeded month — September included — was run before the revision, on the old ceiling.
@@ -536,33 +502,7 @@ export const useHrmsStore = create<HrmsState>((set, get) => ({
   applyOctPlan: () => {
     const s = get();
     if (octoberSepPending(s) && s.octPlan.sepDifference === "add") get().addSeptemberToMonth(FIRST_FULL_MONTH, {});
-    const pending = ctcRows(s.employees, s.salaries).filter((r) => !s.ctcDecisions[r.employee.id]);
-    if (pending.length)
-      get().applyCtcChoices(pending.map((r) => ({ employeeId: r.employee.id, decision: octoberCtcChoice(s, r), absorbKey: absorbComponent(r.base) })));
   },
-
-  applyCtcChoices: (choices) =>
-    set((s) => {
-      const salaries = [...s.salaries];
-      const ctcDecisions = { ...s.ctcDecisions };
-      for (const c of choices) {
-        ctcDecisions[c.employeeId] = c.decision;
-        if (c.decision !== "keep" || !c.absorbKey) continue;
-        const found = salaryFor(salaries, c.employeeId, "OCT-2026");
-        const emp = s.employees.find((e) => e.id === c.employeeId);
-        if (!found || !emp) continue;
-        const target = ctcBeforeRevision(found);
-        // A newly covered employee is costed on 12%-Basic + Limit to PF ceiling.
-        const current = coveredStructure(found, isNewlyCovered(emp, salaryFor(s.salaries, emp.id, REVISION_MONTH)));
-        const revised = keepCtcStructure(current, target, c.absorbKey, "OCT-2026");
-        if (!revised) continue;
-        const i = salaries.findIndex((x) => x.employeeId === c.employeeId && x.effectiveFrom === "OCT-2026");
-        const next = { ...revised, id: nextId("s"), effectiveFrom: "OCT-2026", createdOn: TODAY, reason: "PF ceiling — CTC kept the same" };
-        if (i >= 0) salaries[i] = next;
-        else salaries.push(next);
-      }
-      return { salaries, ctcDecisions };
-    }),
 
   updateHrSettings: (patch) => set((s) => ({ hrSettings: { ...s.hrSettings, ...patch } })),
 
@@ -577,8 +517,3 @@ export const useHrmsStore = create<HrmsState>((set, get) => ({
 
   resetHrms: () => set(seedData()),
 }));
-
-/** CTC the employee had before the revision (old ceiling) — what "Keep CTC the same" holds. */
-export function ctcBeforeRevision(s: SalaryStructure): number {
-  return setupCtc(s, addMonths(REVISION_MONTH, -1));
-}

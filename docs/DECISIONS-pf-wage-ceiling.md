@@ -41,9 +41,10 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
 |---|---|
 | No separate PF revision page; one-time choices sit on the October computation page and preview live in the table | Revision page was "still very complicated"; Stany wanted CTC changes visible on the payroll page, not in a crowded pop-up |
 | September difference: Add to October (default) / Don't add — shown only while September stands on the old ceiling | |
-| Higher employer PF: CTC increases (default) / Keep CTC the same, page-wide with per-employee switch; newly covered stay on increases | Stany: CTC absorb vs extra deduction affects all employees |
+| ~~Higher employer PF: CTC increases (default) / Keep CTC the same, page-wide with per-employee switch~~ — **superseded 23-10-2026: CTC always increases** (see below) | Stany: CTC absorb vs extra deduction affects all employees |
 | Coverage (newly under PF / EPS) is a rule, recorded by whichever run first uses the new ceiling | "Record coverage automatically" clarified with Stany |
-| TDS/PT/ESI recalculated from October when Keep CTC lowers gross | Stany asked about implications on other deductions like TDS |
+| TDS/PT/ESI recalculated from October when Keep CTC lowers gross (no longer applies — gross never changes) | Stany asked about implications on other deductions like TDS |
+| **23-10-2026: "Keep CTC the same" removed.** Higher employer PF always increases CTC; gross and fixed salary stay as they are. Removed the toggle, the per-row switch, the keep-CTC solver and the "PF ceiling — CTC kept the same" revision. October card now shows only the September difference choice; dashboard reads "CTC increased for n employee(s)". | Stany: simplify implementation. Matches the HR email of 23 Oct (CTC increases ₹1,200; no change to fixed or gross salary) |
 
 ## Salary Setup
 
@@ -64,6 +65,15 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
 
 - 17-10-2026: work lives on a new branch `pf-wage-ceiling` of `akhilledgers/bharatconnectflow`; main and the other branches
   stay untouched, no PR or merge until Stany decides. Workspace moved to Documents\Claude Folder.
+- 17-10-2026: Stany asked to merge into main. Done as a fast-forward (main e079121 → c9bf9e4), no force push; existing
+  main content kept — only README.md, src/App.tsx and src/components/layout/Sidebar.tsx were touched (additions; Sidebar
+  restructured to add the HRMS menu and the Advanced Settings link). The pf-wage-ceiling branch is still on GitHub.
+
+- 23-10-2026: Google Doc version (https://docs.google.com/document/d/1edMUYz8isopIHWaP0MTC41YogC_Dh_UCrNiPDft44Fc) updated
+  to v1.1 for the Keep-CTC removal: removed text struck through in red, new text in green, version row added. New
+  screenshots for figures 16–18, 20 and 25–28 are in `doc-shots/out/` (v1.0 copies in `doc-shots/out/v1.0/`) and were
+  placed in the Google Doc through Claude in Chrome (the Docs API only inserts images from a public URL). Figures 5 and 19
+  keep their old images under struck-through captions, since those flows no longer exist.
 
 ## Open questions
 
