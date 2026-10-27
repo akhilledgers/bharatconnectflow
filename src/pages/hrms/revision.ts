@@ -51,10 +51,9 @@ export function coverageRows(employees: Employee[], salaries: SalaryStructure[])
   });
 }
 
-export type SeptemberStatus = "not_run" | "old" | "rerun" | "in_october";
+export type SeptemberStatus = "not_run" | "old" | "rerun";
 
-export function septemberStatus(run: PayrollRun | undefined, correction: { method: "rerun" | "october" } | null): SeptemberStatus {
-  if (correction?.method === "october") return "in_october";
+export function septemberStatus(run: PayrollRun | undefined, _correction?: { method: "rerun" } | null): SeptemberStatus {
   if (!run) return "not_run";
   return (run.sepBasis ?? "old") === "old" ? "old" : "rerun";
 }

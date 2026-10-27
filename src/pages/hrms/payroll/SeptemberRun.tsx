@@ -36,15 +36,13 @@ export function SeptemberBasisCard() {
   const [changing, setChanging] = useState(false);
 
   // Once September is corrected the choice is made — show what happened, with a way to change it.
-  if ((status === "rerun" || status === "in_october") && !changing)
+  if (status === "rerun" && !changing)
     return (
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-xs shadow-black/5">
         <CheckCircle2 className="size-4 text-green-600" />
         <span className="font-semibold text-foreground">September PF ceiling</span>
         <span className="text-muted-foreground">
-          {status === "rerun"
-            ? `Corrected on mid-month basis on ${fmtDate(run!.runOn)}.${hasDiffs ? " Difference goes to October." : ""}`
-            : "Kept as paid; the difference was added to October."}
+          {`Corrected on mid-month basis on ${fmtDate(run!.runOn)}.${hasDiffs ? " Difference goes to October." : ""}`}
         </span>
         <Button variant="link" size="sm" onClick={() => setChanging(true)}>
           Change
@@ -93,15 +91,14 @@ export function SeptemberReminder({ onDismiss, onOpen }: { onDismiss: () => void
         </>
       }
     >
-      The ceiling became ₹25,000 from 17 Sep 2026. Re-run September to correct it, or add the difference when you run October payroll.
+      The ceiling became ₹25,000 from 17 Sep 2026. Re-run September to correct it. If salaries were already paid, answer "Yes, on the old ceiling" and the difference is recovered in October.
     </Callout>
   );
 }
 
 const PAID_OPTIONS: { value: PaidAnswer; title: string; sub: string }[] = [
-  { value: "not_paid", title: "Not paid yet", sub: "Pay on these figures." },
-  { value: "paid_as_here", title: "Paid as calculated here", sub: "Update records only." },
-  { value: "paid_old", title: "Paid on the old ceiling", sub: "Recover the difference in October." },
+  { value: "no_difference", title: "No", sub: "Not paid yet, or paid as shown here." },
+  { value: "paid_old", title: "Yes, on the old ceiling", sub: "Recover the difference in October." },
 ];
 
 /**
@@ -114,7 +111,7 @@ export function SeptemberRunDialog({ employeeIds, onClose }: { employeeIds: stri
   const { runPayroll } = state;
   const [rows] = useState(() => septemberImpact(state, employeeIds));
   const runOnOld = (state.runs[REVISION_MONTH]?.sepBasis ?? "old") === "old";
-  const [answer, setAnswer] = useState<PaidAnswer>(rows.some((r) => r.paid && r.wasRun) ? (runOnOld ? "paid_old" : "paid_as_here") : "not_paid");
+  const [answer, setAnswer] = useState<PaidAnswer>(rows.some((r) => r.paid && r.wasRun) && runOnOld ? "paid_old" : "no_difference");
 
   const changed = rows.filter((r) => r.after.employeePf !== r.before.employeePf);
   const pfUp = changed.reduce((t, r) => t + r.after.employeePf - r.before.employeePf, 0);
@@ -162,7 +159,7 @@ export function SeptemberRunDialog({ employeeIds, onClose }: { employeeIds: stri
       }
     >
       <div className="space-y-2">
-        <div className="text-sm font-medium">Were September salaries already paid?</div>
+        <div className="text-sm font-medium">Were September salaries already paid on the old ceiling?</div>
         {PAID_OPTIONS.map((o) => (
           <label
             key={o.value}

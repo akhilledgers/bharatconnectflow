@@ -154,8 +154,8 @@ export interface PayRecord {
 
 /** How September 2026 PF is worked out (asked in the September run / re-run). */
 export type SepBasis = "mid_month" | "old";
-/** "Already paid?" in the September run. */
-export type PaidAnswer = "not_paid" | "paid_as_here" | "paid_old";
+/** "Already paid on the old ceiling?" in the September run. "no_difference" = not paid yet, or paid as now calculated. */
+export type PaidAnswer = "no_difference" | "paid_old";
 
 export interface PfSegment {
   label: string; // "1–16 Sep"

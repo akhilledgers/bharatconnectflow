@@ -29,7 +29,8 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
 | Decision | Why |
 |---|---|
 | Ceiling choice: **Mid-month change** (default) or **Old ceiling, full month** | Stany: drop "New ceiling, full month" — "I don't see any company wanting to do that" |
-| Run Payroll asks one question: Not paid yet / Paid as calculated here / Paid on the old ceiling | Earlier 2-step impact dialog was "too complicated" |
+| ~~Run Payroll asks one question: Not paid yet / Paid as calculated here / Paid on the old ceiling~~ — **superseded 27-10-2026** (below) | Earlier 2-step impact dialog was "too complicated" |
+| **27-10-2026:** first two answers merged. Question is now "Were September salaries already paid on the old ceiling?" — **No** (not paid yet, or paid as shown here) / **Yes, on the old ceiling** (recover the difference in October). On No, an existing payment entry takes the new payout; unpaid employees stay pending for Salary Payment | Stany: both gave the same figures and no difference; they differed only in payment status, which Salary Payment already handles. Raised while answering the developer's (Priya Tech) proposal to replace the October card with a "Rerun September" alert |
 | "Paid on the old ceiling" keeps the paid record and creates a difference settled in October | Stany asked what happens if September was already paid on the old ceiling (chose option 2) |
 | Compare against **as-paid** figures (struck out), not the last computed run | Switching to old ceiling looked like a payout increase — Stany flagged it |
 | After correction the choice collapses to a one-line status with Change | Reduce noise once done |
@@ -46,6 +47,8 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
 | TDS/PT/ESI recalculated from October when Keep CTC lowers gross (no longer applies — gross never changes) | Stany asked about implications on other deductions like TDS |
 | **23-10-2026: "Keep CTC the same" removed.** Higher employer PF always increases CTC; gross and fixed salary stay as they are. Removed the toggle, the per-row switch, the keep-CTC solver and the "PF ceiling — CTC kept the same" revision. October card now shows only the September difference choice; dashboard reads "CTC increased for n employee(s)". | Stany: simplify implementation. Matches the HR email of 23 Oct (CTC increases ₹1,200; no change to fixed or gross salary) |
 
+| **27-10-2026: "Add to October / Don't add" replaced by a Re-run September alert** (title "September payroll was calculated on the old ₹15,000 PF ceiling", buttons Not now · Re-run September). The September difference is created only by re-running September and answering "Yes, on the old ceiling"; a re-run after October has run sends it to the first month not yet run. Removed `octPlan`, `applyOctPlan`, `addSeptemberToMonth` and the "in_october" September status | Developer (Priya Tech) proposed it: the difference can only be computed from the September page. Accepted with the conditions sent back: re-run keeps the paid record, creates employee + employer parts, keeps payable days, alert hides once September is re-run |
+
 ## Salary Setup
 
 | Decision | Why |
@@ -60,6 +63,11 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
   https://claude.ai/code/artifact/47f3b3c1-563e-4dd3-af47-9c199fa79239
 - 16-10-2026: Word version in the spec house format (A4 landscape, Roboto 12, Title 24 / H1 20 blue 1F4E79 / H2 18 /
   H3 16, Version History, Index) → `bharatconnectflow/docs/PF_Wage_Ceiling_Product_Flows_v1.0.docx`, built by `docx/build.js`.
+
+- 27-10-2026: UAT Error Report and General Fixes rewritten for readers with no background (Stany: "assume they need to
+  be given full context"). Added: about/how to read, background on the ceiling change, terms table, what the release
+  should do, how to reproduce (UI + API flags), and for each C/G item what it means, where to see it, why it matters.
+  Rule kept for all future external docs.
 
 ## Repository
 
@@ -79,3 +87,8 @@ Newest entries at the bottom. Each entry: what was decided, why, and what it cha
 
 - When September was paid on the mid-month basis but its ECR was filed on ₹15,000 ("Paid as calculated here"), should a
   difference ECR still be offered?
+
+- 27-10-2026: Google Doc updated to v1.2 and renamed PF_Wage_Ceiling_Product_Flows_v1.2 (same link). v1.1 struck-out text and
+  figures 5, 18, 19, 28 removed; v1.1 green text turned back to default black; v1.2 changes in green (merged September answer,
+  Re-run September alert, About this document with background / terms / demo employees). Figures renumbered 1–24; Index
+  refreshed. New screenshots: Fig 7 (banner), 12 (run dialog), 15 (alert), 22–24 (dashboard); v1.1 copies in doc-shots/out/v1.1/.

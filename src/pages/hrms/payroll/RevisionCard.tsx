@@ -16,6 +16,7 @@ export function RevisionCard() {
   const navigate = useNavigate();
   const sepRun = useHrmsStore((s) => s.runs[REVISION_MONTH]);
   const correction = useHrmsStore((s) => s.sepCorrection);
+  const hasDiffs = useHrmsStore((s) => s.pfDifferences.length > 0);
   const employees = useHrmsStore((s) => s.employees);
   const salaries = useHrmsStore((s) => s.salaries);
   const octoberRun = useHrmsStore((s) => s.runs[FIRST_FULL_MONTH]);
@@ -59,16 +60,14 @@ export function RevisionCard() {
       </div>
       <div className="divide-y divide-border">
         <Line
-          done={sep === "rerun" || sep === "in_october"}
+          done={sep === "rerun"}
           title="September"
           text={
             sep === "rerun"
-              ? "Re-run on the new ceiling."
-              : sep === "in_october"
-                ? `Paid on the old ceiling; the difference was added to ${FIRST_FULL_MONTH}.`
-                : sep === "not_run"
-                  ? "Not run yet."
-                  : `Paid on the old ceiling. Re-run September, or add the difference on the ${FIRST_FULL_MONTH} payroll page.`
+              ? `Re-run on the new ceiling.${hasDiffs ? ` The difference goes to ${FIRST_FULL_MONTH}.` : ""}`
+              : sep === "not_run"
+                ? "Not run yet."
+                : `Paid on the old ceiling. Re-run September; if salaries were already paid, the difference is recovered in ${FIRST_FULL_MONTH}.`
           }
           action={
             sep === "old" && (

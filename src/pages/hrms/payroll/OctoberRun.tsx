@@ -1,62 +1,40 @@
 import { useNavigate } from "react-router-dom";
-import { DIFF_LABEL, octoberSepPending, useHrmsStore, type ReviewRow } from "../../../store/useHrmsStore";
-import { ToggleGroup } from "../../../components/ui/tabs";
+import { AlertTriangle, ArrowRight } from "lucide-react";
+import { octoberSepPending, useHrmsStore } from "../../../store/useHrmsStore";
+import { Button } from "../../../components/ui/button";
+import { Callout } from "../../../components/ui/popover";
 import { REVISION_MONTH } from "../payroll";
-import { num } from "../months";
 
-// October 2026 — the first month on the new ceiling. While September still stands on the old ceiling, the
-// one-time choice of adding its difference sits on the computation page and the table updates as it
-// changes; Run Payroll saves it. Higher employer PF always increases CTC — the CTC column shows the old one.
+// October 2026 — the first month on the new ceiling. The September difference is only ever worked out by
+// re-running September (answer "Yes, on the old ceiling" if it was already paid), so while September still
+// stands on the old ceiling October shows an alert that leads there. A difference created after October has
+// run goes to the first month not yet run. Higher employer PF always increases CTC — the CTC column shows the old one.
 
-export function OctoberPlanCard({ rows }: { rows: ReviewRow[] }) {
+export function OctoberRerunAlert() {
   const navigate = useNavigate();
   const state = useHrmsStore();
-  const { octPlan, setOctPlan } = state;
-  if (!octoberSepPending(state)) return null;
-
-  const diffTotal = rows.reduce(
-    (t, r) => t + (r.record?.deductions.filter((d) => d.name === DIFF_LABEL).reduce((x, d) => x + d.amount, 0) ?? 0) + (r.record?.recoveryHeldBack ?? 0),
-    0,
-  );
+  if (!octoberSepPending(state) || state.octAlertDismissed) return null;
 
   return (
-    <div className="mb-5 divide-y divide-border rounded-xl border border-border bg-card shadow-xs shadow-black/5">
-      <Row
-        title="September difference"
-        control={
-          <ToggleGroup<"add" | "skip">
-            value={octPlan.sepDifference}
-            onChange={(v) => setOctPlan({ sepDifference: v })}
-            items={[
-              { value: "add", label: "Add to October" },
-              { value: "skip", label: "Don't add" },
-            ]}
-          />
+    <div className="mb-5">
+      <Callout
+        tone="warning"
+        icon={<AlertTriangle className="size-5 text-amber-600" />}
+        title="September payroll was calculated on the old ₹15,000 PF ceiling"
+        actions={
+          <>
+            <Button size="sm" variant="ghost" onClick={state.dismissOctAlert}>
+              Not now
+            </Button>
+            <Button size="sm" variant="primary" onClick={() => navigate(`/hrms/payroll/computation?month=${REVISION_MONTH}`)}>
+              Re-run September <ArrowRight />
+            </Button>
+          </>
         }
-        note={
-          octPlan.sepDifference === "add" ? (
-            <>₹{num(diffTotal)} PF for 17–30 Sep, shown in Deductions.</>
-          ) : (
-            <>
-              September stays on the old ceiling.{" "}
-              <button className="cursor-pointer text-primary hover:underline" onClick={() => navigate(`/hrms/payroll/computation?month=${REVISION_MONTH}`)}>
-                Re-run September instead
-              </button>
-            </>
-          )
-        }
-      />
-      <div className="px-4 py-2 text-[11px] text-muted-foreground">One-time, for the new PF ceiling. Saved when you run October payroll.</div>
-    </div>
-  );
-}
-
-function Row({ title, control, note }: { title: string; control: React.ReactNode; note: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-      <div className="w-44 text-sm font-semibold text-foreground">{title}</div>
-      {control}
-      <div className="text-xs text-muted-foreground">{note}</div>
+      >
+        The new ₹25,000 ceiling applies from 17 Sep 2026. To work out the PF difference for 17–30 Sep and recover it in October, re-run September
+        and answer "Yes, on the old ceiling" if salaries were already paid.
+      </Callout>
     </div>
   );
 }

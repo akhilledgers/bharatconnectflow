@@ -5,7 +5,7 @@ import { Plus, Search, SquarePen, Trash2 } from "lucide-react";
 import { DIFF_LABEL, reviewMonth, useHrmsStore, type ReviewRow } from "../../../store/useHrmsStore";
 import { REVISION_MONTH, samePay } from "../payroll";
 import { SeptemberBasisCard, SeptemberRunDialog } from "./SeptemberRun";
-import { OctoberPlanCard } from "./OctoberRun";
+import { OctoberRerunAlert } from "./OctoberRun";
 import { FIRST_FULL_MONTH } from "../revision";
 import { Button } from "../../../components/ui/button";
 import { Badge } from "../../../components/ui/badge";
@@ -92,8 +92,6 @@ export function PayrollComputationPage() {
 
   const doRun = () => {
     if (isSeptember) return setSepRunOpen(true);
-    // The October plan (September difference, CTC) is saved by the run — no extra questions.
-    if (isFirstFull) state.applyOctPlan();
     const res = runPayroll(month, selected);
     toast.success("Payroll computed successfully", { description: `Inserted ${res.inserted} · Updated ${res.updated} · No changes ${res.unchanged}` });
     navigate(`/hrms/reports/monthly-pay?month=${month}`);
@@ -131,7 +129,7 @@ export function PayrollComputationPage() {
       </div>
 
       {isSeptember && <SeptemberBasisCard />}
-      {isFirstFull && <OctoberPlanCard rows={rows} />}
+      {isFirstFull && <OctoberRerunAlert />}
 
       <div className={panelCls}>
         <div className="flex min-h-14 flex-wrap items-center justify-between gap-2.5 border-b border-border px-5 py-3">

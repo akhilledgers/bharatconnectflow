@@ -81,15 +81,10 @@ interface Data {
   sepBasis: SepBasis;
   pfDifferences: PfDifference[];
   sepReminderDismissed: boolean;
-  /** How September was brought onto the new ceiling: re-run, or its difference added to October. */
-  sepCorrection: { method: "rerun" | "october"; on: string } | null;
-  /** October choice set on the computation page and previewed live until the run saves it. */
-  octPlan: OctoberPlan;
-}
-
-export interface OctoberPlan {
-  /** September left on the old ceiling: add its difference to October, or not (correct September instead). */
-  sepDifference: "add" | "skip";
+  /** September brought onto the new ceiling by a re-run (the only way; any difference is created by that run). */
+  sepCorrection: { method: "rerun"; on: string } | null;
+  /** "Not now" on the October re-run alert. */
+  octAlertDismissed: boolean;
 }
 
 export interface RunResult {
@@ -116,11 +111,7 @@ interface HrmsState extends Data {
   dismissSepReminder: () => void;
   runPayroll: (month: MonthKey, employeeIds: string[], sep?: SeptemberRunOptions) => RunResult;
   markPaid: (month: MonthKey, employeeIds: string[], mode: string, date: string) => void;
-  /** September left as paid on the old ceiling: settle its mid-month difference in `month` instead of re-running it. */
-  addSeptemberToMonth: (month: MonthKey, payers: Record<string, "employee" | "employer">) => void;
-  setOctPlan: (patch: Partial<OctoberPlan>) => void;
-  /** Save the October plan (September difference) — done by the first October run. */
-  applyOctPlan: () => void;
+  dismissOctAlert: () => void;
   updateHrSettings: (patch: Partial<HrSettings>) => void;
   saveLeavePolicy: (p: LeavePolicy) => void;
   setLeaveApplicationStatus: (id: string, status: LeaveApplication["status"]) => void;
@@ -170,9 +161,7 @@ function recoveredBefore(s: Data, employeeId: string, month: MonthKey): number {
 /** Live computation for a month — what the Payroll Computation page shows (hrms/payroll/review). */
 export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasis } = {}): ReviewRow[] {
   const basis = month === REVISION_MONTH ? (opts.sepBasis ?? s.sepBasis) : undefined;
-  // First month on the new ceiling: preview the October plan (not yet saved) so the table shows what Run will do.
   const firstFull = month === FIRST_FULL_MONTH;
-  const planDiffs = firstFull && octoberSepPending(s) && s.octPlan.sepDifference === "add" ? septemberDiffs(s, month) : [];
   const ctcByEmployee = new Map(firstFull ? ctcRows(s.employees, s.salaries).map((r) => [r.employee.id, r]) : []);
   return (
     s.employees
@@ -211,10 +200,7 @@ export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasi
           });
 
         // September difference settled in a later month.
-        const diff =
-          compareMonths(month, REVISION_MONTH) > 0
-            ? (planDiffs.find((d) => d.employeeId === employee.id) ?? s.pfDifferences.find((d) => d.employeeId === employee.id))
-            : undefined;
+        const diff = compareMonths(month, REVISION_MONTH) > 0 ? s.pfDifferences.find((d) => d.employeeId === employee.id) : undefined;
         const deductions = [...(one?.deductions ?? [])];
         const employerAdjustments: OneTimeItem[] = [];
         if (diff && month === diff.recoverFrom) {
@@ -249,17 +235,9 @@ export function reviewMonth(s: Data, month: MonthKey, opts: { sepBasis?: SepBasi
   );
 }
 
-/** September still stands on the old ceiling (not re-run, difference not yet added to a later month). */
+/** September still stands on the old ceiling (not re-run on the mid-month basis). */
 export function octoberSepPending(s: Data): boolean {
   return septemberStatus(s.runs[REVISION_MONTH], s.sepCorrection) === "old";
-}
-
-/** September's mid-month difference for everyone in its run, to settle in `month`. Exited employees: employer pays. */
-function septemberDiffs(s: Data, month: MonthKey, payers: Record<string, PfDifference["payer"]> = {}): PfDifference[] {
-  const ids = Object.keys(s.runs[REVISION_MONTH]?.records ?? {});
-  return septemberImpact(s, ids, "mid_month")
-    .map((r) => differenceFor(r.employee.id, r.before, r.after, payers[r.employee.id] ?? (r.employee.dateOfExit ? "employer" : "employee"), month))
-    .filter((d): d is PfDifference => !!d);
 }
 
 /** Per-employee before / after for the September run's impact step. */
@@ -361,7 +339,7 @@ function seedData(): Data {
     pfDifferences: [],
     sepReminderDismissed: false,
     sepCorrection: null,
-    octPlan: { sepDifference: "add" },
+    octAlertDismissed: false,
   };
   for (const month of SEED_RUN_MONTHS) {
     // Every seeded month — September included — was run before the revision, on the old ceiling.
@@ -446,9 +424,10 @@ export const useHrmsStore = create<HrmsState>((set, get) => ({
 
       if (month === REVISION_MONTH && sep) {
         pfDifferences = pfDifferences.filter((d) => d.employeeId !== id);
-        if (sep.paidAnswer === "paid_as_here") {
-          // Salaries were paid exactly as now calculated: records only, nothing carried forward.
-          payments[id] = { employeeId: id, paidAmount: r.record!.payout, paidOn: payments[id]?.paidOn ?? TODAY, mode: payments[id]?.mode ?? "Bank Transfer" };
+        if (sep.paidAnswer === "no_difference") {
+          // Not paid yet (payment stays pending for Salary Payment), or paid as now calculated: the
+          // existing payment follows the new payout. Nothing carried forward either way.
+          if (payments[id]) payments[id] = { ...payments[id], paidAmount: r.record!.payout };
         } else if (sep.paidAnswer === "paid_old") {
           const before = impact!.get(id)!.before;
           const d = differenceFor(id, before, r.record!, sep.payers[id] ?? "employee", firstUnpaidMonthAfter(s, id, month));
@@ -484,25 +463,7 @@ export const useHrmsStore = create<HrmsState>((set, get) => ({
       return { runs: { ...s.runs, [month]: { ...run, payments } } };
     }),
 
-  addSeptemberToMonth: (month, payers) =>
-    set((s) => {
-      // September stays as paid; the mid-month difference for everyone in it is settled in `month`.
-      const ids = Object.keys(s.runs[REVISION_MONTH]?.records ?? {});
-      const keep = s.pfDifferences.filter((d) => !ids.includes(d.employeeId));
-      const diffs = septemberDiffs(s, month, payers);
-      return {
-        pfDifferences: [...keep, ...diffs],
-        sepCorrection: { method: "october", on: TODAY },
-        ...recordCoverage(s, ids),
-      };
-    }),
-
-  setOctPlan: (patch) => set((s) => ({ octPlan: { ...s.octPlan, ...patch } })),
-
-  applyOctPlan: () => {
-    const s = get();
-    if (octoberSepPending(s) && s.octPlan.sepDifference === "add") get().addSeptemberToMonth(FIRST_FULL_MONTH, {});
-  },
+  dismissOctAlert: () => set({ octAlertDismissed: true }),
 
   updateHrSettings: (patch) => set((s) => ({ hrSettings: { ...s.hrSettings, ...patch } })),
 
