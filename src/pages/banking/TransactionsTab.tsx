@@ -9,63 +9,31 @@ import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
-import { BankIcon } from "./BankLogo";
-import { ALL_ACCOUNTS, CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
-import { LEDGERS, describeLine, narrationKey, reconFor, type BankLine, type BookEntry, type Match, type MatchKind, type Party } from "./ledgerData";
+import { ALL_ACCOUNTS, fmtINR, syncedLabel, type CompanyAccount } from "./data";
+import { CASH_ALL, CASH_PARENT } from "./cash";
+import { accountName as sharedAccountName, groupOf } from "./data";
+import { AccountIcon } from "./BankLogo";
+import { LEDGERS, describeLine, narrationKey, nextRef, reconFor, type BankLine, type BookEntry, type Match, type MatchKind, type Party } from "./ledgerData";
 import { RECONCILED_TO, bankBalanceOf, shortDate } from "./overviewData";
 import { OVERLAY } from "./shared";
 import { FilterChips } from "./FilterChips";
 import { StatCard } from "./StatCard";
 import { UploadStatementDialog } from "./UploadStatementDialog";
 import { useEscape } from "./useEscape";
+import { PERIODS, periodRange, type Period } from "./periods";
 
 /** Which side of the reconciliation is listed. */
 type Side = "bank" | "books";
 /** Bank side: Suggested by AI · Unmatched · Matched. Books side: Suggested by AI · Not in bank · Matched. */
 type Filter = "all" | "confirm" | "unmatched" | "notinbank" | "matched";
-type Period = "this-month" | "last-month" | "last-3" | "fy" | "custom";
-
-const PERIODS: { value: Period; label: string }[] = [
-  { value: "this-month", label: "This month" },
-  { value: "last-month", label: "Last month" },
-  { value: "last-3", label: "Last 3 months" },
-  { value: "fy", label: "This financial year" },
-  { value: "custom", label: "Custom range" },
-];
 
 const toast = (m: string, tone: "success" | "error" = "success") => useStore.getState().pushToast(m, tone);
-const accountName = (a: CompanyAccount) => `${a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank} ${last4(a.number)}`;
+const accountName = sharedAccountName;
 const toDate = (dmy: string) => {
   const [d, m, y] = dmy.split("-").map(Number);
   return new Date(y, m - 1, d);
 };
 const fmtDay = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
-/** [from, to] for a period, as dates (inclusive). */
-function periodRange(p: Period, custom: { from: string; to: string }): [Date, Date] {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const today = new Date(y, m, now.getDate());
-  switch (p) {
-    case "this-month":
-      return [new Date(y, m, 1), today];
-    case "last-month":
-      return [new Date(y, m - 1, 1), new Date(y, m, 0)];
-    case "last-3":
-      return [new Date(y, m - 2, 1), today];
-    case "fy":
-      return [new Date(m >= 3 ? y : y - 1, 3, 1), today];
-    case "custom":
-      return [custom.from ? new Date(custom.from) : new Date(2000, 0, 1), custom.to ? new Date(custom.to) : today];
-  }
-}
-
-/** The next free voucher number in a series, e.g. REC 2026-71. */
-function nextRef(entries: BookEntry[], prefix: "REC" | "VOU") {
-  const nums = entries.map((e) => new RegExp(`^${prefix} 2026-(\\d+)$`).exec(e.ref)?.[1]).filter(Boolean).map(Number);
-  return `${prefix} 2026-${Math.max(70, ...nums) + 1}`;
-}
 
 /** Who paid or was paid: the engine's reading of the narration, or the matched party. */
 const lineParty = (l: BankLine) => l.party ?? l.match?.party ?? describeLine(l);
@@ -95,8 +63,11 @@ export function TransactionsTab({
   onConnect: (accountId: string) => void;
 }) {
   const accounts = useBankingStore((s) => s.accounts).filter((a) => a.active);
+  const cashAccounts = useBankingStore((s) => s.cashAccounts).filter((a) => a.active);
   const lines = useBankingStore((s) => s.bankLines);
   const entries = useBankingStore((s) => s.bookEntries);
+  // Cash receipts and payments share the voucher series with bank ones.
+  const cashEntries = useBankingStore((s) => s.cashEntries);
   const parties = useBankingStore((s) => s.parties);
   const mode = useBankingStore((s) => s.scenario.balance);
   const store = useBankingStore.getState;
@@ -121,6 +92,7 @@ export function TransactionsTab({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moveMenu, setMoveMenu] = useState<{ id: string; right: number; top?: number; bottom?: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const [from, to] = periodRange(period, custom);
   const inPeriod = (dmy: string) => {
@@ -271,6 +243,20 @@ export function TransactionsTab({
                     </button>
                   );
                 })}
+                {/* Cash has no statement: picking it opens its cash book. */}
+                <div className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Cash</div>
+                {[{ id: CASH_ALL, name: CASH_PARENT }, ...cashAccounts].map((c) => (
+                  <button
+                    key={c.id}
+                    className={cn(menuItemCls, c.id !== CASH_ALL && "ps-6")}
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      onAccountChange(c.id);
+                    }}
+                  >
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                ))}
               </div>
             </>
           )}
@@ -301,9 +287,9 @@ export function TransactionsTab({
                   {syncing ? "Syncing…" : "Sync now"}
                 </Button>
               </>
-            ) : account.bankKey && account.connection === "pending" ? (
+            ) : account.bankKey && (account.connection === "pending" || account.connection === "requested") ? (
               <>
-                <Badge variant="warning">Awaiting approval</Badge>
+                {account.connection === "pending" ? <Badge variant="warning">Awaiting approval</Badge> : <Badge variant="secondary">Activation requested</Badge>}
                 <Button onClick={() => onConnect(account.id)}>
                   <RefreshCw />
                   Check status
@@ -332,6 +318,12 @@ export function TransactionsTab({
                 {syncing ? "Syncing…" : `Sync all (${connected.length})`}
               </Button>
             )
+          )}
+          {accounts.length > 0 && (
+            <Button onClick={() => setAdding(true)}>
+              <Plus />
+              Add entry
+            </Button>
           )}
           <div className="relative">
             <Button variant={account && !account.bankKey ? "primary" : "outline"} onClick={() => (account ? upload(account) : setUploadOpen(!uploadOpen))}>
@@ -381,7 +373,12 @@ export function TransactionsTab({
             />
             <StatCard label="In your books" value={fmtINR(booksOf(rows[0]))} tone="purple" sub="Bank Book · as of today" />
             {!bank ? (
-              <StatCard label="Difference" value="Can't compare yet" tone="muted" sub="Needs bank data" />
+              <StatCard
+                label="Difference"
+                value="—"
+                tone="muted"
+                sub={account.bankKey ? "Connect the account to compare" : "Upload a statement to compare"}
+              />
             ) : recon!.reconciled ? (
               <StatCard label="Difference" value="Reconciled" tone="good" sub="Books match the bank" />
             ) : (
@@ -675,7 +672,7 @@ export function TransactionsTab({
           parties={parties}
           // Open entries, plus whatever the line is matched to now (so a change can keep or swap it).
           openEntries={entries.filter((e) => e.accountId === resolving.accountId && (!e.lineId || e.lineId === resolving.id) && Math.sign(e.amount) === Math.sign(resolving.amount))}
-          nextRef={{ receipt: nextRef(entries, "REC"), payment: nextRef(entries, "VOU") }}
+          nextRef={{ receipt: nextRef([...entries, ...cashEntries], "REC"), payment: nextRef([...entries, ...cashEntries], "VOU") }}
           onClose={() => setResolving(null)}
           onAccept={() => {
             accept([resolving.id]);
@@ -691,6 +688,30 @@ export function TransactionsTab({
             setResolving(null);
             toast(remember ? `Matched · the AI will now recognise ${remember.key} as ${match.party}` : "Matched");
           }}
+        />
+      )}
+      {adding && (
+        <MatchPanel
+          line={{ id: "new", accountId: account?.id ?? accounts[0].id, date: "", narration: "", amount: 0, status: "needs" }}
+          accountLabel={account ? accountName(account) : ""}
+          parties={parties}
+          openEntries={[]}
+          nextRef={{ receipt: nextRef([...entries, ...cashEntries], "REC"), payment: nextRef([...entries, ...cashEntries], "VOU") }}
+          draft={{
+            accounts: account ? [] : accounts.map((a) => ({ id: a.id, label: accountName(a) + (a.nickname ? ` · ${a.nickname}` : "") })),
+            onAdd: (id, date, amount, match, opts) => {
+              store().addEntry(id, date, amount, match, opts);
+              setAdding(false);
+              // It's in the books now and waits for the bank: show it there.
+              setSide("books");
+              setFilter("notinbank");
+              toast(`Entry added to ${accountName(byId.get(id)!)}`);
+            },
+          }}
+          onClose={() => setAdding(false)}
+          onAccept={() => {}}
+          onReject={() => {}}
+          onDone={() => {}}
         />
       )}
       {uploading && <UploadStatementDialog account={uploading} onClose={() => setUploading(null)} />}
@@ -738,13 +759,7 @@ function AccountMark({ account }: { account: CompanyAccount | null }) {
         <Layers className="size-4" />
       </span>
     );
-  return account.bankKey ? (
-    <BankIcon bank={account.bankKey} size={32} />
-  ) : (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-      <Landmark className="size-4" />
-    </span>
-  );
+  return <AccountIcon account={account} size={32} />;
 }
 
 /** One list row: who/what (and its match) on the left, amount and action on the right. Stacks below lg. */
@@ -858,7 +873,7 @@ function Step({ n, title, grow, children }: { n: number; title: string; grow?: b
   );
 }
 
-type Settle = { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[] };
+type Settle = { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[]; transferTo?: string };
 
 function SettleSection({
   title,
@@ -1051,20 +1066,26 @@ function SettlePicker({
  * contact, or none), what it settles (open invoices/bills, entries already in the books, or a new receipt or
  * payment), and teaching the engine for next time. Opens from a click anywhere on the row.
  */
-function MatchPanel({
-  line,
+export function MatchPanel({
+  line: given,
   accountLabel,
   balance,
   parties,
   openEntries,
   nextRef,
+  draft,
   onClose,
   onAccept,
   onReject,
-  onDone,
+  onDone: done,
 }: {
   line: BankLine;
   accountLabel: string;
+  /**
+   * Add entry: the same panel with no bank line. In / Out, amount and date replace the line at the top;
+   * the account can be picked when more than one is offered. `onDone` gets them back.
+   */
+  draft?: { accounts: { id: string; label: string }[]; onAdd: (accountId: string, date: string, amount: number, match: Match, opts: Settle) => void };
   balance?: number;
   parties: Party[];
   /** Book entries on this account with no bank line yet (same direction), plus the ones linked to this line. */
@@ -1079,10 +1100,36 @@ function MatchPanel({
   onDone: (match: Match, opts: Settle, remember?: { partyId: string; key: string }) => void;
 }) {
   useEscape(onClose);
-  const inflow = line.amount > 0;
+  // Add entry: what the bank line would have said, typed in.
+  const [dir, setDir] = useState<1 | -1>(-1);
+  const [amountText, setAmountText] = useState("");
+  const [day, setDay] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const [draftAccount, setDraftAccount] = useState(given.accountId);
+  const line: BankLine = draft
+    ? { ...given, accountId: draftAccount, amount: dir * (Number(amountText) || 0), date: day.split("-").reverse().join("-") }
+    : given;
+  const inflow = draft ? dir > 0 : line.amount > 0;
   const total = Math.abs(line.amount);
   const key = narrationKey(line);
+  // A transfer goes to one of the company's own accounts: another bank account, or cash.
+  const ownBanks = useBankingStore((s) => s.accounts).filter((a) => a.active && a.id !== line.accountId);
+  const cashAccounts = useBankingStore((s) => s.cashAccounts).filter((a) => a.active && a.id !== line.accountId);
+  // Directors' / owners' own accounts: money they put into (or take from) the company's bank.
+  const people = useBankingStore((s) => s.otherAccounts).filter((a) => a.person);
+  const isCashLine = !draft && ["Cash withdrawal", "Cash deposit"].includes(describeLine(line));
+  const defaultCash = cashAccounts.find((a) => a.isDefault) ?? cashAccounts[0];
   const narr = line.narration.toUpperCase();
+  // A gateway payout names the gateway; a card bill payment carries the card's last 4 digits.
+  const transferTo =
+    isCashLine && defaultCash
+      ? defaultCash.id
+      : describeLine(line) === "Gateway payout"
+        ? ownBanks.find((a) => groupOf(a) === "gateway" && narr.includes(a.bank.toUpperCase()))?.id
+        : describeLine(line) === "Card bill payment"
+          ? ownBanks.find((a) => groupOf(a) === "card" && a.number && narr.includes(a.number.slice(-4)))?.id
+          : undefined;
+  // Lines the bank itself makes (charges, interest, tax) have no contact: they open on the account head.
+  const headGuess = ({ "Bank charge": "Bank charges", "Interest credit": "Interest income", "Interest charge": "Interest paid", "Tax payment": "GST payable" } as Record<string, string>)[describeLine(line)];
   const m = line.match;
   const linked = openEntries.filter((e) => e.lineId === line.id);
   const linkedParties = [...new Set(linked.map((e) => e.party))];
@@ -1101,6 +1148,7 @@ function MatchPanel({
     const named = m ? parties.find((p) => p.name === m.party) : undefined;
     if (named) return named.id;
     if (m && (m.kind === "Expense" || m.kind === "Journal" || m.kind === "Transfer")) return "none";
+    if (transferTo || headGuess) return "none";
     return suggested.length === 1 ? suggested[0].id : null;
   })();
 
@@ -1123,9 +1171,16 @@ function MatchPanel({
   const [picked, setPicked] = useState<string[]>(() => (initialWho === "multi" ? linked.map((e) => e.id) : pickFor(parties.find((p) => p.id === initialWho))));
   // Nothing to link → a new receipt/payment for the full amount (number generated, booked on account).
   const [isNew, setIsNew] = useState(() => picked.length === 0);
-  const [kind, setKind] = useState<MatchKind>(m && initialWho === "none" ? m.kind : inflow ? "Journal" : "Expense");
-  const guessLedger = { "Bank charge": "Bank charges", "Interest credit": "Interest income", "Tax payment": "GST payable" }[describeLine(line)] ?? "";
-  const [ledger, setLedger] = useState(m && initialWho === "none" ? (m.ledger ?? guessLedger) : guessLedger);
+  const [kind, setKind] = useState<MatchKind>(m && initialWho === "none" ? m.kind : transferTo ? "Transfer" : inflow ? "Journal" : "Expense");
+  const guessLedger = headGuess ?? transferTo ?? "";
+  // For a transfer, `ledger` holds the other account's id (a bank account or a cash account).
+  const [ledger, setLedger] = useState(m && initialWho === "none" ? (m.cashAccountId ?? m.otherAccountId ?? m.ledger ?? guessLedger) : guessLedger);
+  const ownName = (id: string) => {
+    const c = cashAccounts.find((a) => a.id === id);
+    if (c) return c.name;
+    const b = ownBanks.find((a) => a.id === id);
+    return b ? sharedAccountName(b) : (people.find((a) => a.id === id)?.name ?? id);
+  };
   const [remember, setRemember] = useState(true);
   const [fullNarration, setFullNarration] = useState(false);
   const touch = () => setDirty(true);
@@ -1176,10 +1231,19 @@ function MatchPanel({
   const newRef = inflow ? nextRef.receipt : nextRef.payment;
 
   const canSave =
-    who === "none" ? ledger !== "" : who === "multi" ? pickedEntries.length > 0 && left === 0 : !!party && (isNew || (picked.length > 0 && (pickedEntries.length === 0 || left === 0)));
+    (!draft || total > 0) &&
+    (who === "none" ? ledger !== "" : who === "multi" ? pickedEntries.length > 0 && left === 0 : !!party && (isNew || (picked.length > 0 && (pickedEntries.length === 0 || left === 0))));
 
   const submit = () => {
-    if (who === "none") return onDone({ kind, party: describeLine(line), ledger }, {});
+    const onDone: typeof done = draft ? (match, opts) => draft.onAdd(line.accountId, line.date, line.amount, match, opts) : done;
+    if (who === "none" && kind === "Transfer") {
+      // Add entry posts both sides itself; a bank line's cash side goes through the match.
+      if (draft) return onDone({ kind, party: ownName(ledger), ledger: "Transfer between accounts" }, { transferTo: ledger });
+      const cash = cashAccounts.find((a) => a.id === ledger);
+      if (people.some((a) => a.id === ledger)) return onDone({ kind, party: ownName(ledger), ledger: ownName(ledger), otherAccountId: ledger }, {});
+      return onDone(cash ? { kind, party: cash.name, ledger: `${CASH_PARENT} › ${cash.name}`, cashAccountId: cash.id } : { kind, party: ownName(ledger), ledger: "Transfer between accounts" }, {});
+    }
+    if (who === "none") return onDone({ kind, party: draft ? ledger : describeLine(line), ledger }, {});
     if (who === "multi") return onDone(m!, { entryIds: pickedEntries.map((e) => e.id), party: line.party });
     const p = party!;
     const rem = remember && key && !p.keys.includes(key.value) ? { partyId: p.id, key: key.value } : undefined;
@@ -1210,10 +1274,62 @@ function MatchPanel({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Bank transaction"
+        aria-label={draft ? "Add entry" : "Bank transaction"}
         className="fixed bottom-5 end-5 top-5 z-50 flex w-[500px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
       >
-        {/* The transaction is the header: who, when, how much, and the narration on one line. */}
+        {draft ? (
+          /* No bank line: the user says which way, how much and when; the steps below are the same. */
+          <div className="shrink-0 border-b border-border px-6 pb-4 pt-4">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1 text-base font-semibold">Add entry</div>
+              <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close" className="-me-2">
+                <X />
+              </Button>
+            </div>
+            <div className="mt-3 grid grid-cols-[auto_1fr_1fr] gap-2.5">
+              <div role="radiogroup" aria-label="Direction" className="flex h-9 rounded-md border border-input p-0.5">
+                {([
+                  [1, "In"],
+                  [-1, "Out"],
+                ] as const).map(([d, label]) => (
+                  <button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={dir === d}
+                    onClick={() => {
+                      if (d === dir) return;
+                      // Invoices for money in, bills for money out: a pick doesn't carry across.
+                      setDir(d);
+                      setPicked([]);
+                      setIsNew(true);
+                      if (kind === "Expense" && d > 0) setKind("Journal");
+                    }}
+                    className={cn("cursor-pointer rounded px-3 text-2sm font-medium", dir === d ? "bg-[var(--color-primary-soft)] text-[var(--color-primary-accent)]" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-2sm text-muted-foreground">₹</span>
+                <Input autoFocus aria-label="Amount" inputMode="decimal" placeholder="Amount" value={amountText} onChange={(e) => setAmountText(e.target.value.replace(/[^\d.]/g, ""))} className="ps-7 tabular-nums" />
+              </div>
+              <Input type="date" aria-label="Date" value={day} onChange={(e) => setDay(e.target.value)} />
+            </div>
+            {draft.accounts.length > 1 ? (
+              <Select aria-label="Account" value={draftAccount} onChange={(e) => setDraftAccount(e.target.value)} wrapperClassName="mt-2.5">
+                {draft.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <div className="mt-2 text-xs text-muted-foreground">{accountLabel}</div>
+            )}
+          </div>
+        ) : (
         <div className="shrink-0 border-b border-border px-6 pb-3 pt-4">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -1237,6 +1353,7 @@ function MatchPanel({
             {line.narration}
           </button>
         </div>
+        )}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
 
           {/* What the AI found / current state */}
@@ -1286,7 +1403,7 @@ function MatchPanel({
               <div className="flex flex-col gap-2.5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contact, GSTIN, phone, UPI ID" className="ps-9" />
+                  <Input autoFocus={!draft} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contact, GSTIN, phone, UPI ID" className="ps-9" />
                 </div>
                 {results.length > 0 ? (
                   <div className="flex flex-col rounded-md border border-border">
@@ -1312,7 +1429,7 @@ function MatchPanel({
                   )
                 )}
                 <button type="button" onClick={() => choose("none")} className="cursor-pointer self-start text-xs font-medium text-primary hover:underline">
-                  No contact: bank charge, interest, tax, transfer…
+                  {draft ? "No contact: expense, journal, transfer…" : "No contact: bank charge, interest, tax, transfer…"}
                 </button>
               </div>
             )}
@@ -1326,26 +1443,69 @@ function MatchPanel({
                   value={kind}
                   onChange={(e) => {
                     touch();
-                    setKind(e.target.value as MatchKind);
+                    const next = e.target.value as MatchKind;
+                    // Transfers pick an account, the others an account head: the choice doesn't carry across.
+                    if ((next === "Transfer") !== (kind === "Transfer")) setLedger(next === "Transfer" && transferTo ? transferTo : "");
+                    setKind(next);
                   }}
                 >
                   {(["Expense", "Journal", "Transfer"] as MatchKind[]).map((k) => (
                     <option key={k}>{k}</option>
                   ))}
                 </Select>
-                <Select
-                  aria-label="Account head"
-                  value={ledger}
-                  onChange={(e) => {
-                    touch();
-                    setLedger(e.target.value);
-                  }}
-                >
-                  <option value="">Account head…</option>
-                  {LEDGERS.map((l) => (
-                    <option key={l}>{l}</option>
-                  ))}
-                </Select>
+                {kind === "Transfer" ? (
+                  <Select
+                    aria-label={inflow ? "From account" : "To account"}
+                    value={ledger}
+                    onChange={(e) => {
+                      touch();
+                      setLedger(e.target.value);
+                    }}
+                  >
+                    <option value="">{inflow ? "From account…" : "To account…"}</option>
+                    {cashAccounts.length > 0 && (
+                      <optgroup label={CASH_PARENT}>
+                        {cashAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {people.length > 0 && (
+                      <optgroup label="Directors and owners">
+                        {people.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {ownBanks.length > 0 && (
+                      <optgroup label="Bank accounts">
+                        {ownBanks.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {ownName(a.id)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </Select>
+                ) : (
+                  <Select
+                    aria-label="Account head"
+                    value={ledger}
+                    onChange={(e) => {
+                      touch();
+                      setLedger(e.target.value);
+                    }}
+                  >
+                    <option value="">Account head…</option>
+                    {LEDGERS.map((l) => (
+                      <option key={l}>{l}</option>
+                    ))}
+                  </Select>
+                )}
               </div>
             </Step>
           )}
@@ -1408,7 +1568,7 @@ function MatchPanel({
             </Button>
           ) : (
             <Button variant="primary" disabled={!canSave || (line.status !== "needs" && line.status !== "suggested" && !dirty)} onClick={submit}>
-              {line.status === "needs" ? "Match" : "Save match"}
+              {draft ? "Add entry" : line.status === "needs" ? "Match" : "Save match"}
             </Button>
           )}
         </div>

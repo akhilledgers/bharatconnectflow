@@ -1,4 +1,5 @@
 import type { PayableDoc } from "../banking/PayDocs";
+import type { DocPayment } from "../../store/useBankingStore";
 
 /** An expense voucher as LEDGERS lists it: who was paid, how much, and whether it's been paid. */
 export interface ExpenseVoucher {
@@ -14,8 +15,11 @@ export interface ExpenseVoucher {
 
 export const voucherTotal = (v: ExpenseVoucher) => v.items.reduce((s, i) => s + i.amount, 0);
 
-export function voucherDoc(v: ExpenseVoucher): PayableDoc {
-  return { number: v.number, party: v.party, date: v.date, due: v.paidBy ? 0 : voucherTotal(v) };
+/** What's been settled on a voucher by payments recorded on it (paid, plus TDS / discount). */
+export const voucherSettled = (v: ExpenseVoucher, payments: DocPayment[]) => payments.filter((p) => p.doc === v.number).reduce((s, p) => s + p.amount + p.held, 0);
+
+export function voucherDoc(v: ExpenseVoucher, payments: DocPayment[] = []): PayableDoc {
+  return { number: v.number, party: v.party, date: v.date, due: v.paidBy ? 0 : Math.max(0, voucherTotal(v) - voucherSettled(v, payments)) };
 }
 
 export const EXPENSE_VOUCHERS: ExpenseVoucher[] = [

@@ -12,3 +12,8 @@ export function LedgersLogoFull({ className = "" }: { className?: string }) {
     </span>
   );
 }
+
+/** Just the mark, 20px: the collapsed sidebar's logo. */
+export function LedgersMark() {
+  return <img src={MARK_SRC} alt="LEDGERS" className="size-5 shrink-0" />;
+}

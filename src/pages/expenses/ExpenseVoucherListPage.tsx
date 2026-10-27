@@ -19,13 +19,16 @@ export function ExpenseVoucherListPage() {
   const navigate = useNavigate();
   const payDocs = usePayDocs();
   const payouts = useBankingStore((s) => s.payouts);
+  // Payments recorded on a voucher by hand (paid from cash, a card, a director…).
+  const recorded = useBankingStore((s) => s.docPayments);
+  const docOf = (v: ExpenseVoucher) => voucherDoc(v, recorded);
   const [selected, setSelected] = useState<string[]>([]);
   const [menu, setMenu] = useState<string | null>(null);
 
   const rows = EXPENSE_VOUCHERS;
   const inPayment = (v: ExpenseVoucher) => payouts.some((p) => p.docs?.includes(v.number) && ["awaiting", "processing", "paid"].includes(p.status));
   const selectedRows = rows.filter((v) => selected.includes(v.number));
-  const toPay = selectedRows.filter((v) => !v.paidBy && !inPayment(v));
+  const toPay = selectedRows.filter((v) => docOf(v).due > 0 && !inPayment(v));
   const allSelected = rows.every((v) => selected.includes(v.number));
   const toggle = (n: string) => setSelected((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
 
@@ -69,12 +72,12 @@ export function ExpenseVoucherListPage() {
                   disabled={!toPay.length}
                   title={toPay.length ? undefined : "These are already paid"}
                   onClick={() => {
-                    payDocs.pay(toPay.map(voucherDoc));
+                    payDocs.pay(toPay.map(docOf));
                     setSelected([]);
                   }}
                 >
                   <IndianRupee />
-                  {toPay.length ? `Pay ${inr(toPay.reduce((s, v) => s + voucherTotal(v), 0))}` : "Pay"}
+                  {toPay.length ? `Pay ${inr(toPay.reduce((s, v) => s + docOf(v).due, 0))}` : "Pay"}
                 </Button>
               )}
             </div>
@@ -115,7 +118,9 @@ export function ExpenseVoucherListPage() {
                 selected={selected.includes(v.number)}
                 onSelect={() => toggle(v.number)}
                 onView={() => navigate(`${BASE}/${v.number}`)}
-                onPay={payDocs.canPay && !v.paidBy ? () => payDocs.pay([voucherDoc(v)]) : undefined}
+                due={docOf(v).due}
+                paidFrom={recorded.filter((p) => p.doc === v.number).at(-1)?.accountLabel}
+                onPay={payDocs.canPay && docOf(v).due > 0 ? () => payDocs.pay([docOf(v)]) : undefined}
                 menuOpen={menu === v.number}
                 onMenu={(open) => setMenu(open ? v.number : null)}
               />
@@ -136,11 +141,17 @@ function VoucherRow({
   selected,
   onSelect,
   onView,
+  due,
+  paidFrom,
   onPay,
   menuOpen,
   onMenu,
 }: {
   voucher: ExpenseVoucher;
+  /** Still owed, after payments recorded on it. */
+  due: number;
+  /** Where the last payment recorded on it came from. */
+  paidFrom?: string;
   selected: boolean;
   onSelect: () => void;
   onView: () => void;
@@ -150,7 +161,8 @@ function VoucherRow({
 }) {
   const payment = useDocPayment(v.number);
   const paidHere = useDocPaid(v.number);
-  const paid = !!v.paidBy || paidHere;
+  const paid = !!v.paidBy || paidHere || due <= 0;
+  const part = !paid && due < voucherTotal(v);
   const canPay = onPay && !payment && !paid;
   const item = (Icon: typeof Eye, label: string, run?: () => void) => (
     <button
@@ -181,9 +193,9 @@ function VoucherRow({
         </button>
       </td>
       <td className={`${tdCls} text-xs tabular-nums`}>{inr(voucherTotal(v))}</td>
-      <td className={`${tdCls} text-xs text-muted-foreground`}>{v.paidBy ?? (payment ? "Bank" : "—")}</td>
+      <td className={`${tdCls} text-xs text-muted-foreground`}>{v.paidBy ?? (payment ? "Bank" : (paidFrom ?? "—"))}</td>
       <td className={tdCls}>
-        <Badge variant={paid ? "success" : "destructive"}>{paid ? "Paid" : "Not Paid"}</Badge>
+        <Badge variant={paid ? "success" : part ? "warning" : "destructive"}>{paid ? "Paid" : part ? "Part Paid" : "Not Paid"}</Badge>
         {payment && !paid && <div className="mt-1 text-xs text-muted-foreground">{paymentLabel(payment)}</div>}
       </td>
       <td className={tdCls}>

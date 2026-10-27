@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { BadgeCheck, CloudDownload, FileText, History, Landmark, MoreHorizontal, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Upload, X } from "lucide-react";
+import { Fragment, useState, type ReactNode } from "react";
+import { BadgeCheck, CloudDownload, FileText, Gauge, History, MoreHorizontal, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -10,10 +10,13 @@ import { CircularSpinner } from "../../components/layout/CircularSpinner";
 import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
-import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, fmtINR, last4, syncedLabel, type CompanyAccount } from "./data";
+import { AccountIcon } from "./BankLogo";
+import { CONNECTED_BANKING, GROUP_LABEL, GROUP_ORDER, accountName, creditUse, fmtINR, groupOf, isCredit, syncedLabel, type CompanyAccount } from "./data";
+import { LimitDialog } from "./LimitDialog";
+import { approvalPlace } from "./bankConnectors";
 import type { StatementImport } from "./ledgerData";
 import { bankBalanceOf, daysSince } from "./overviewData";
+import { CashAccountsCard } from "./CashAccountsCard";
 import { FilterChips } from "./FilterChips";
 import { OVERLAY } from "./shared";
 import { UploadStatementDialog } from "./UploadStatementDialog";
@@ -21,7 +24,7 @@ import { SyncBadge } from "./SyncBadge";
 import { useEscape } from "./useEscape";
 
 const toast = (message: string, tone: "success" | "error" = "success") => useStore.getState().pushToast(message, tone);
-const shortName = (a: CompanyAccount) => `${a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank} ${last4(a.number)}`;
+const shortName = accountName;
 const STALE_DAYS = 7;
 
 /**
@@ -32,10 +35,13 @@ export function AccountsTab({
   onConnect,
   onOpenTransactions,
   onAdd,
+  onAddCash,
 }: {
   onConnect: (accountId: string) => void;
+  /** A bank account's transactions, or a cash account's cash book. */
   onOpenTransactions: (accountId: string) => void;
   onAdd: () => void;
+  onAddCash: () => void;
 }) {
   const accounts = useBankingStore((s) => s.accounts);
   const imports = useBankingStore((s) => s.imports);
@@ -60,6 +66,7 @@ export function AccountsTab({
   };
 
   const [uploading, setUploading] = useState<CompanyAccount | null>(null);
+  const [limitFor, setLimitFor] = useState<CompanyAccount | null>(null);
   const upload = (a: CompanyAccount) => setUploading(a);
 
   const row = (a: CompanyAccount) => {
@@ -81,12 +88,13 @@ export function AccountsTab({
     else if (failed) note = <span className="text-[var(--color-destructive-accent)]">Import failed · {failed.reason}</span>;
     else if (a.bankKey && a.connection === "connected") note = `Synced ${a.syncedMinutesAgo ? syncedLabel(a.syncedMinutesAgo) : "just now"}`;
     else if (a.bankKey && a.connection === "expired") note = syncedLabel(a.syncedMinutesAgo ?? 0);
-    else if (a.bankKey && a.connection === "pending") note = `in ${CONNECTED_BANKING[a.bankKey].short} net banking`;
+    else if (a.bankKey && a.connection === "pending") note = `in ${approvalPlace(a.bankKey)}`;
+    else if (a.bankKey && a.connection === "requested") note = `with ${CONNECTED_BANKING[a.bankKey].short}`;
     else if (age !== undefined && age > STALE_DAYS) note = <span className="text-[var(--color-warning-accent)]">{age} days old</span>;
 
     // At most one next step, most urgent first. Healthy accounts get none.
     const isVerifying = verifying.includes(a.id);
-    const action: ReactNode = !a.active ? null : a.bankKey && a.connection === "pending" ? (
+    const action: ReactNode = !a.active ? null : a.bankKey && (a.connection === "pending" || a.connection === "requested") ? (
       <Button size="sm" onClick={() => onConnect(a.id)}>
         <RefreshCw />
         Check status
@@ -116,19 +124,20 @@ export function AccountsTab({
         <Upload />
         Upload
       </Button>
+    ) : isCredit(a) && !a.limit ? (
+      <Button size="sm" onClick={() => setLimitFor(a)}>
+        <Gauge />
+        Set limit
+      </Button>
     ) : null;
+    const group = groupOf(a);
+    const credit = isCredit(a) && bank ? creditUse(a, bank.amount) : null;
 
     return (
       <tr key={a.id} className={cn(trCls, !a.active && "text-muted-foreground")}>
         <td className={tdCls}>
           <div className="flex min-w-0 items-center gap-3">
-            {a.bankKey ? (
-              <BankIcon bank={a.bankKey} size={32} />
-            ) : (
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                <Landmark className="size-4" />
-              </span>
-            )}
+            <AccountIcon account={a} size={32} />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate font-medium">
@@ -138,13 +147,23 @@ export function AccountsTab({
                 {a.primary && <Badge variant="info">Primary</Badge>}
               </div>
               <div className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                {group !== "bank" ? (
+                  <span>
+                    {a.type}
+                    {a.limit ? ` · Limit ${fmtINR(a.limit)}` : ""}
+                  </span>
+                ) : (
+                <>
                 {a.type} · {a.ifsc}
+                {a.limit ? <span> · Limit {fmtINR(a.limit)}</span> : null}
                 {a.verified ? (
                   <span className="inline-flex items-center gap-0.5 text-[var(--color-success-accent)]">
                     · <BadgeCheck className="size-3.5" /> Verified
                   </span>
                 ) : (
                   <span> · Not verified</span>
+                )}
+                </>
                 )}
               </div>
             </div>
@@ -158,6 +177,16 @@ export function AccountsTab({
         </td>
         <td className={cn(tdCls, "text-right tabular-nums")}>
           {bank ? <span className={cn(bank.source === "stale" && "text-[var(--color-warning-accent)]")}>{fmtINR(bank.amount)}</span> : <span className="text-muted-foreground">—</span>}
+          {/* Borrowing: what is left of the limit, or that no limit is set. A gateway: its balance is waiting for payout. */}
+          {credit &&
+            (credit.limit === undefined ? (
+              <div className="text-xs text-muted-foreground">Limit not set</div>
+            ) : credit.over ? (
+              <div className="text-xs text-destructive">Over limit by {fmtINR(-credit.available!)}</div>
+            ) : (
+              <div className={cn("text-xs", credit.near ? "text-[var(--color-warning-accent)]" : "text-muted-foreground")}>{fmtINR(credit.available!)} available</div>
+            ))}
+          {group === "gateway" && bank && bank.amount > 0 && <div className="text-xs text-muted-foreground">Awaiting payout</div>}
         </td>
         <td className={cn(tdCls, "text-right")}>
           <div className="flex items-center justify-end gap-1.5">
@@ -192,7 +221,7 @@ export function AccountsTab({
               id="accounts-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search bank, nickname, IFSC…"
+              placeholder="Search bank, cash, IFSC…"
               className="h-8.5 w-full rounded-md border border-input bg-background ps-9 pe-3 text-2sm shadow-xs shadow-black/5 placeholder:text-muted-foreground/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30"
             />
           </div>
@@ -229,7 +258,23 @@ export function AccountsTab({
               </tr>
             </thead>
             <tbody>
-              {list.map(row)}
+              {GROUP_ORDER.map((g) => {
+                const rows = list.filter((a) => groupOf(a) === g);
+                if (!rows.length) return null;
+                const grouped = new Set(list.map(groupOf)).size > 1;
+                return (
+                  <Fragment key={g}>
+                    {grouped && (
+                      <tr>
+                        <td colSpan={4} className="border-t border-border bg-muted/40 px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {GROUP_LABEL[g]}
+                        </td>
+                      </tr>
+                    )}
+                    {rows.map(row)}
+                  </Fragment>
+                );
+              })}
               {list.length === 0 && (
                 <tr>
                   <td colSpan={4} className={cn(tdCls, "py-10 text-center text-muted-foreground")}>
@@ -241,6 +286,9 @@ export function AccountsTab({
           </table>
         </div>
       </Card>
+
+      <CashAccountsCard show={show} query={query} onAdd={onAddCash} onOpenCashBook={onOpenTransactions} />
+      {limitFor && <LimitDialog account={limitFor} onClose={() => setLimitFor(null)} />}
 
       {menu && menuAccount && (
         <>
@@ -257,6 +305,7 @@ export function AccountsTab({
               },
               menuAccount.active && { label: "Upload statement", run: () => upload(menuAccount) },
               { label: "Statement history", run: () => setHistory(menuAccount.id) },
+              menuAccount.active && isCredit(menuAccount) && { label: menuAccount.limit ? "Change limit" : "Set limit", run: () => setLimitFor(menuAccount) },
               menuAccount.active && !menuAccount.verified && { label: "Verify account", run: () => verify(menuAccount) },
               menuAccount.active && !menuAccount.primary && { label: "Set as primary", run: () => useBankingStore.getState().setPrimary(menuAccount.id) },
               {

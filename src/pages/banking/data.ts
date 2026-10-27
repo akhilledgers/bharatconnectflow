@@ -79,6 +79,8 @@ export interface BankingScenario {
   verify: "random" | "pass" | "fail";
   /** How the bank's API answers a Register Connected Banking request. */
   register: "success" | "fail";
+  /** Whether the bank has activated a Connected Banking request when the app checks (banks that activate first, e.g. ICICI). */
+  bankActivation: "activated" | "pending";
   /** Whether the customer has approved LEDGERS in their net banking when the app checks (banks that ask for it). */
   bankApproval: "approved" | "pending";
   /** Whether the checker has approved newly added beneficiaries in net banking when the app checks. */
@@ -89,7 +91,7 @@ export interface BankingScenario {
   overviewLayout: "split" | "stacked";
 }
 
-export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankApproval: "approved", beneficiaryApproval: "approved", statementFile: "readable", overviewLayout: "split" };
+export const DEFAULT_SCENARIO: BankingScenario = { balance: "normal", verify: "random", register: "success", bankActivation: "activated", bankApproval: "approved", beneficiaryApproval: "approved", statementFile: "readable", overviewLayout: "split" };
 
 /** Banks LEDGERS has a Connected Banking integration with. */
 export const CONNECTED_BANKING = Object.fromEntries(
@@ -102,8 +104,11 @@ export const BULK_BANKS_LABEL = Object.values(CONNECTED_BANKING)
   .map((b) => b.short)
   .join(" and ");
 
-/** none → (details verified) pending, waiting for approval in net banking → connected; connected can expire. */
-export type BankConnection = "none" | "pending" | "connected" | "expired";
+/**
+ * none → (request sent) requested, while the bank activates it (banks with bankActivation, e.g. ICICI)
+ * → pending, waiting for the customer's approval in net / corporate banking → connected; connected can expire.
+ */
+export type BankConnection = "none" | "requested" | "pending" | "connected" | "expired";
 
 /** One of the company's own bank accounts (Banking → Accounts). */
 export interface CompanyAccount {
@@ -114,7 +119,13 @@ export interface CompanyAccount {
   number: string;
   ifsc: string;
   nickname: string;
-  type: "Current" | "Savings" | "Cash credit (CC)" | "Overdraft (OD)";
+  /**
+   * Bank types (Current, Savings, OD, CC) plus the other places money sits: a credit card, a payment gateway's
+   * settlement balance, a wallet. All of them use statements and Transactions the same way; see groupOf().
+   */
+  type: "Current" | "Savings" | "Cash credit (CC)" | "Overdraft (OD)" | "Credit card" | "Payment gateway" | "Wallet";
+  /** OD, CC and credit cards: the sanctioned / credit limit, when the user gave one. Without it there are no limit alerts. */
+  limit?: number;
   primary: boolean;
   active: boolean;
   /** Ownership confirmed by the penny-less verification API (or by connecting). */
@@ -147,11 +158,45 @@ export function initialAccounts(): CompanyAccount[] {
     { ...base, id: "p6", bank: "Federal Bank", bankKey: null, number: "12340100006942", ifsc: "FDRL0001234", type: "Savings", verified: true, statement: { date: "20-09-2026", balance: 48210.55 } },
     { ...base, id: "p7", bank: "Ahmedabad Mercantile Co-operative Bank", bankKey: null, number: "7376726387623", ifsc: "AMCB0000003", booksBalance: 18250 },
     { ...base, id: "p8", bank: "Citibank", bankKey: null, number: "78783983894894", ifsc: "CITI0000003", active: false, verified: true },
+    // Borrowing: an OD with a limit (two-thirds used), a CC with no limit given.
+    { ...base, id: "p9", bank: "Kotak Mahindra Bank", bankKey: null, number: "510020007781", ifsc: "KKBK0000958", type: "Overdraft (OD)", nickname: "Working capital", verified: true, limit: 500000, statement: { date: "15-10-2026", balance: -340000 } },
+    { ...base, id: "p10", bank: "State Bank of India", bankKey: null, number: "39011005520", ifsc: "SBIN0001234", type: "Cash credit (CC)", verified: true, statement: { date: "14-10-2026", balance: -120000 } },
+    // A credit card past 90% of its limit, a payment gateway with a payout pending, a wallet.
+    { ...base, id: "p11", bank: "HDFC Bank", bankKey: null, number: "4421", ifsc: "", type: "Credit card", nickname: "Corporate card", verified: true, limit: 200000, statement: { date: "12-10-2026", balance: -182500 } },
+    { ...base, id: "p12", bank: "Razorpay", bankKey: null, number: "", ifsc: "", type: "Payment gateway", verified: true, statement: { date: "19-10-2026", balance: 18600 } },
+    { ...base, id: "p13", bank: "Amazon Pay", bankKey: null, number: "", ifsc: "", type: "Wallet", verified: true, nickname: "Office purchases", statement: { date: "10-10-2026", balance: 3200 } },
   ];
 }
 
 /** Banking → Transactions: every account at once. */
 export const ALL_ACCOUNTS = "all";
+
+/** Where an account sits in lists: bank accounts (incl. OD/CC), credit cards, payment gateways, wallets. */
+export type AccountGroup = "bank" | "card" | "gateway" | "wallet";
+export const groupOf = (a: Pick<CompanyAccount, "type">): AccountGroup =>
+  a.type === "Credit card" ? "card" : a.type === "Payment gateway" ? "gateway" : a.type === "Wallet" ? "wallet" : "bank";
+export const GROUP_LABEL: Record<AccountGroup, string> = { bank: "Bank accounts", card: "Credit cards", gateway: "Payment gateways", wallet: "Wallets" };
+export const GROUP_ORDER: AccountGroup[] = ["bank", "card", "gateway", "wallet"];
+/** Money the business has: what "Cash in bank" totals. */
+export const isDeposit = (a: Pick<CompanyAccount, "type">) => a.type === "Current" || a.type === "Savings";
+/** Money borrowed: OD, CC and credit cards, where the balance is what's used and a limit may apply. */
+export const isCredit = (a: Pick<CompanyAccount, "type">) => a.type === "Overdraft (OD)" || a.type === "Cash credit (CC)" || a.type === "Credit card";
+
+/** How an account is named everywhere: "Axis ••9012", "HDFC Bank card ••4421", "Razorpay". */
+export function accountName(a: Pick<CompanyAccount, "type" | "bank" | "bankKey" | "number">) {
+  const g = groupOf(a);
+  if (g === "gateway" || g === "wallet") return a.bank;
+  const name = a.bankKey ? CONNECTED_BANKING[a.bankKey].short : a.bank;
+  return g === "card" ? `${name} card ${last4(a.number)}` : `${name} ${last4(a.number)}`;
+}
+
+/** OD / CC / card: what's used (a negative balance) and, with a limit, what's left and whether it's near or over. */
+export function creditUse(a: Pick<CompanyAccount, "limit">, balance: number) {
+  const used = Math.max(0, -balance);
+  if (!a.limit) return { used };
+  const available = a.limit - used;
+  return { used, limit: a.limit, available, share: used / a.limit, over: available < 0, near: available >= 0 && used / a.limit >= 0.9 };
+}
 
 export function last4(number: string) {
   return "••" + number.slice(-4);
@@ -305,7 +350,9 @@ export function maskAccount(accountNumber: string) {
 }
 
 export function fmtINR(n: number) {
-  return "₹" + (Number.isFinite(n) ? n : 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const v = Number.isFinite(n) ? n : 0;
+  // The sign goes before the rupee symbol: −₹1,250.00, not ₹-1,250.00.
+  return (v < 0 ? "−₹" : "₹") + Math.abs(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function bankKeyFromName(name: string): BankKey | null {

@@ -7,8 +7,10 @@ import { cn } from "../../lib/cn";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
 import { BankIcon } from "./BankLogo";
-import { CONNECTED_BANKING, FY_START, digitsOnly, last4, type CompanyAccount } from "./data";
+import { CONNECTED_BANKING, FY_START, IFSC_BANKS, digitsOnly, groupOf, isCredit, last4, type BankKey, type CompanyAccount } from "./data";
 import { lookupIfsc, type IfscResult } from "./ifscLookup";
+import { CashAccountForm } from "./CashAccountForm";
+import { OtherAccountForm } from "./OtherAccountForm";
 import { OVERLAY } from "./shared";
 import { useEscape } from "./useEscape";
 
@@ -28,11 +30,32 @@ const signedAmount = (v: string) => {
   return (neg ? "-" : "") + v.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
 };
 const ACCOUNT_TYPES: CompanyAccount["type"][] = ["Current", "Savings", "Cash credit (CC)", "Overdraft (OD)"];
+const OTHER_TYPES = ["Credit card", "Payment gateway", "Wallet"] as const;
+/** The Account type option that switches the drawer to a cash account. */
+const CASH = "cash";
 
-/** Banking → Accounts → Add bank account: account number (twice), IFSC, then type and opening balance. */
-export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => void; onConnect: (accountId: string) => void }) {
+/**
+ * Banking → Add account: the type first (bank or cash), then its fields. A bank account: account number (twice),
+ * IFSC, then type and opening balance. A cash account: a sub-account under Cash in hand (CashAccountForm).
+ */
+export function AddAccountDrawer({
+  type: initialType,
+  bank,
+  onClose,
+  onConnect,
+}: {
+  /** Opened from a cash button: Cash is picked; otherwise Current. Either can be changed in Account type. */
+  type?: "bank" | "cash";
+  /** Started from a bank (Connect a Bank Account): its IFSC prefix is filled in. */
+  bank?: BankKey;
+  onClose: () => void;
+  onConnect: (accountId: string) => void;
+}) {
+  const [kind, setKind] = useState<"bank" | "cash" | "other">(initialType ?? "bank");
+  // OD / CC: the sanctioned limit, optional. With it, Banking shows what's available and warns near the limit.
+  const [limit, setLimit] = useState("");
   const hasPrimary = useBankingStore((s) => s.accounts.some((a) => a.active && a.primary));
-  const [ifsc, setIfsc] = useState("");
+  const [ifsc, setIfsc] = useState(() => (bank ? (Object.keys(IFSC_BANKS).find((p) => IFSC_BANKS[p].bankKey === bank) ?? "") : ""));
   const [number, setNumber] = useState("");
   const [confirm, setConfirm] = useState("");
   const [nickname, setNickname] = useState("");
@@ -80,6 +103,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
       primary,
       bank: info?.bank,
       opening: { amount: opening!, date: toDMY(openingDate) },
+      limit: isCredit({ type }) && limit ? Number(limit) : undefined,
     });
     const verified = verify ? await store.verifyOwnAccount(account.id) : false;
     if (verify && !verified)
@@ -93,17 +117,53 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
     onClose();
   };
 
+  // The account type comes first and decides the fields: a bank type (Current by default), a card, gateway or
+  // wallet, or Cash.
+  const typePicker = (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="add-type" className="text-xs font-medium">
+        Account type
+      </label>
+      <Select
+        id="add-type"
+        value={kind === "cash" ? CASH : type}
+        onChange={(e) => {
+          if (e.target.value === CASH) return setKind("cash");
+          const next = e.target.value as CompanyAccount["type"];
+          setType(next);
+          setKind(groupOf({ type: next }) === "bank" ? "bank" : "other");
+        }}
+      >
+        <optgroup label="Bank">
+          {ACCOUNT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Other">
+          {OTHER_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+          <option value={CASH}>Cash account</option>
+        </optgroup>
+      </Select>
+    </div>
+  );
+
   return (
     <>
       <div className={OVERLAY} onClick={phase === "saving" ? undefined : onClose} />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Add bank account"
+        aria-label="Add account"
         className="fixed bottom-5 end-5 top-5 z-50 flex w-[440px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-[drawer-in_.4s_cubic-bezier(.4,0,.2,1)]"
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="text-base font-semibold">Add bank account</div>
+          <div className="text-base font-semibold">Add account</div>
           <Button variant="ghost" size="icon-sm" onClick={onClose} disabled={phase === "saving"} aria-label="Close">
             <X />
           </Button>
@@ -132,9 +192,16 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
               </Button>
             </div>
           </div>
+        ) : kind === "cash" ? (
+          <CashAccountForm top={typePicker} onClose={onClose} />
+        ) : kind === "other" ? (
+          <OtherAccountForm key={type} type={type as (typeof OTHER_TYPES)[number]} top={typePicker} onClose={onClose} />
         ) : (
           <>
             <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+              {typePicker}
+              {kind === "bank" && (
+              <>
               <div className={cn("grid gap-3", showConfirm && "grid-cols-2")}>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <label htmlFor="add-number" className="text-xs font-medium">
@@ -245,18 +312,21 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                 <Input id="add-nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="e.g. Payroll, Vendor payments" />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="add-type" className="text-xs font-medium">
-                  Account type
-                </label>
-                <Select id="add-type" value={type} onChange={(e) => setType(e.target.value as CompanyAccount["type"])}>
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {isCredit({ type }) && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="add-limit" className="text-xs font-medium">
+                    Sanctioned limit (₹) <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <Input
+                    id="add-limit"
+                    value={limit}
+                    onChange={(e) => setLimit(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+                    inputMode="decimal"
+                    placeholder="e.g. 500000"
+                    className="tabular-nums"
+                  />
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 border-t border-border pt-4">
                 <div className="text-sm font-medium">Opening balance</div>
@@ -301,8 +371,11 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                   <span>Set as primary account</span>
                 </label>
               </div>
+              </>
+              )}
             </div>
 
+            {kind === "bank" && (
             <div className="flex justify-end gap-2.5 border-t border-border px-6 py-4">
               <Button onClick={onClose} disabled={phase === "saving"}>
                 Cancel
@@ -317,6 +390,7 @@ export function AddBankAccountDrawer({ onClose, onConnect }: { onClose: () => vo
                 )}
               </Button>
             </div>
+            )}
           </>
         )}
       </div>

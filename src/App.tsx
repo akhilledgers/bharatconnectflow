@@ -25,6 +25,7 @@ import { PayrollComputationPage } from "./pages/hrms/payroll/PayrollComputationP
 import { SalaryPaymentPage } from "./pages/hrms/payroll/SalaryPaymentPage";
 import { PayrollReportsPage } from "./pages/hrms/reports/PayrollReportsPage";
 import { AdvancedSettingsPage } from "./pages/settings/advanced/AdvancedSettingsPage";
+import { SoonPage } from "./pages/SoonPage";
 
 export default function App() {
   return (
@@ -65,6 +66,8 @@ export default function App() {
           <Route path="/hrms/tax-declaration" element={<TaxDeclarationPage />} />
           <Route path="/hrms/reports/:report" element={<PayrollReportsPage />} />
           <Route path="/settings/advanced" element={<AdvancedSettingsPage />} />
+          {/* Menu pages not built here (see components/layout/navItems.ts). */}
+          <Route path="/soon/*" element={<SoonPage />} />
         </Route>
       </Routes>
     </HashRouter>

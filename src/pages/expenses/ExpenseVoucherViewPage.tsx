@@ -5,7 +5,8 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { useStore } from "../../store/useStore";
 import { useBankingStore } from "../../store/useBankingStore";
-import { useDocPaid } from "../banking/PayDocs";
+import { useDocPaid, useDocPayment } from "../banking/PayDocs";
+import { RecordMoney } from "../banking/RecordMoney";
 import { PayDocButton, PayDocStatus } from "../banking/PayDocSection";
 import { amountInWords } from "../invoices/invoiceDoc";
 import { money } from "../invoices/kindConfig";
@@ -25,6 +26,10 @@ export function ExpenseVoucherViewPage() {
   const navigate = useNavigate();
   const v = EXPENSE_VOUCHERS.find((x) => x.number === id);
   const paidHere = useDocPaid(id ?? "");
+  const payment = useDocPayment(id ?? "");
+  const business = useStore((s) => s.currentBusiness());
+  const allRecorded = useBankingStore((s) => s.docPayments);
+  const recorded = allRecorded.filter((p) => p.doc === id);
 
   if (!v) {
     return (
@@ -38,7 +43,9 @@ export function ExpenseVoucherViewPage() {
   }
 
   const total = voucherTotal(v);
-  const paid = !!v.paidBy || paidHere;
+  const doc = voucherDoc(v, allRecorded);
+  const paid = !!v.paidBy || paidHere || doc.due <= 0;
+  const part = !paid && recorded.length > 0;
 
   return (
     <div className="space-y-6">
@@ -66,21 +73,54 @@ export function ExpenseVoucherViewPage() {
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_420px]">
         <div className="relative overflow-hidden rounded-lg border border-border bg-white shadow-xs shadow-black/5">
-          <PrintedVoucher voucher={v} paid={paid} />
+          <PrintedVoucher voucher={v} paid={paid} paidFrom={recorded.at(-1)?.accountLabel} />
         </div>
 
         <Card>
           <div className="flex items-center justify-between rounded-t-xl px-4 py-4" style={{ backgroundColor: paid ? "#EBFAF2" : "rgb(255, 238, 243)" }}>
             <h2 className="text-base font-semibold text-gray-800">
-              INR {money2(total)} {paid ? "Paid" : "Due"}
+              INR {money2(paid ? total : doc.due)} {paid ? "Paid" : "Due"}
             </h2>
             <div className="flex items-center gap-2">
-              <PayDocButton key={v.number} doc={voucherDoc(v)} payable={!v.paidBy} />
-              <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : "bg-red-500"}`}>{paid ? "Paid" : "Not Paid"}</span>
+              <PayDocButton key={v.number} doc={doc} payable={!v.paidBy} />
+              <span className={`rounded-md px-3 py-1 text-xs text-white ${paid ? "bg-green-600" : part ? "bg-amber-500" : "bg-red-500"}`}>{paid ? "Paid" : part ? "Part Paid" : "Not Paid"}</span>
             </div>
           </div>
           <div className="space-y-5 p-4">
-            <PayDocStatus doc={voucherDoc(v)} />
+            <PayDocStatus doc={doc} />
+            {/* Payments recorded here: where each came from. */}
+            {recorded.map((p) => (
+              <div key={p.ref} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5 text-xs">
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">
+                    {p.ref} · INR {money(p.amount)}
+                  </div>
+                  <div className="truncate text-muted-foreground">
+                    Paid from {p.accountLabel} on {p.date}
+                    {p.held > 0 && ` · INR ${money(p.held)} TDS / discount`}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {/* Paid outside LEDGERS (cash, a card, a director's own money): record it with where it came from. */}
+            {!paid && !payment && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Paid outside LEDGERS? Record it</div>
+                <RecordMoney
+                  key={recorded.length}
+                  direction="out"
+                  due={doc.due}
+                  party={v.party}
+                  doc={`expense voucher ${v.number}`}
+                  businessType={business.businessType}
+                  onRecorded={(r) => {
+                    const held = (r.tds ?? 0) + r.deductions.reduce((s, d) => s + d.amount, 0);
+                    useBankingStore.getState().recordDocPayment({ doc: v.number, ref: r.ref, date: r.date, amount: r.amount, held, accountLabel: r.accountLabel });
+                    useStore.getState().pushToast(`Payment of INR ${r.amount.toLocaleString("en-IN")} recorded on ${v.number}`);
+                  }}
+                />
+              </div>
+            )}
             <VoucherNotes key={`notes-${v.number}`} voucher={v} />
           </div>
         </Card>
@@ -89,7 +129,7 @@ export function ExpenseVoucherViewPage() {
   );
 }
 
-function PrintedVoucher({ voucher: v, paid }: { voucher: ExpenseVoucher; paid: boolean }) {
+function PrintedVoucher({ voucher: v, paid, paidFrom }: { voucher: ExpenseVoucher; paid: boolean; paidFrom?: string }) {
   const business = useStore((s) => s.currentBusiness());
   const contact = useBankingStore((s) => s.contacts.find((c) => c.name === v.party));
   const addr = business.registeredAddress;
@@ -132,6 +172,7 @@ function PrintedVoucher({ voucher: v, paid }: { voucher: ExpenseVoucher; paid: b
           <h5 className="text-[11pt] font-bold">Expense Account</h5>
           <p>{v.category}</p>
           {v.paidBy && <p className="text-gray-500">Paid by {v.paidBy === "Bank" ? "bank transfer" : v.paidBy.toLowerCase()}</p>}
+          {!v.paidBy && paidFrom && <p className="text-gray-500">Paid from {paidFrom}</p>}
         </div>
       </div>
 

@@ -1,11 +1,25 @@
-import { Sparkles } from "lucide-react";
+import { PanelLeftOpen, Sparkles } from "lucide-react";
+import { useStore } from "../../store/useStore";
 import { StatusChip } from "./StatusChip";
 
 // components.md → Top bar: centered "Ask AI or Search...", soft pill, divider, avatar.
+// With the sidebar collapsed, its expand button sits at the start of the bar (as in live LEDGERS).
 export function TopBar() {
+  const collapsed = useStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
   return (
-    <header className="fixed end-0 start-(--sidebar-width) top-0 z-10 h-(--header-height) border-b border-border bg-background">
+    <header className="fixed end-0 start-(--sidebar-width) top-0 z-10 h-(--header-height) border-b border-border bg-background transition-[left] duration-200">
       <div className="container-fluid flex h-full items-center">
+        {collapsed && (
+          <button
+            onClick={toggleSidebar}
+            className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-accent-foreground hover:bg-accent"
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+          >
+            <PanelLeftOpen className="size-4 opacity-60" />
+          </button>
+        )}
         <div className="mx-auto flex max-w-2xl flex-1 px-4">
           <div className="relative w-full">
             <Sparkles className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

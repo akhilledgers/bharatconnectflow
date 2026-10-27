@@ -254,6 +254,10 @@ export interface Receipt {
   depositTo: string;
   reference?: string;
   tds?: number;
+  /** Other amounts the customer held back that still settle the invoice: a discount, charges they deducted. */
+  deductions?: { kind: "Discount" | "Charges"; head?: string; amount: number }[];
+  /** Banking / chart-of-accounts id of the account it was received in. */
+  receivedIn?: string;
 }
 
 export type ContactType = "customer" | "supplier";

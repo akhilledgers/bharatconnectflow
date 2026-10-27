@@ -32,10 +32,16 @@ export interface BankConnector {
   /** A line above the fields, when the bank's IDs need explaining. */
   intro?: string;
   /**
-   * Banks that make the customer approve LEDGERS inside their net banking before the connection goes live.
-   * Without this, a connection is live as soon as the bank verifies the details.
+   * The bank activates the request on its side first (ICICI): the connection waits in "requested" until it does,
+   * and only then can the customer approve LEDGERS (netBankingApproval).
    */
-  netBankingApproval?: { url: string; steps: string[] };
+  bankActivation?: boolean;
+  /**
+   * Banks that make the customer approve LEDGERS inside their net banking before the connection goes live.
+   * `place` is what the customer calls it ("net banking" when left out). Without this, a connection is live as
+   * soon as the bank verifies the details.
+   */
+  netBankingApproval?: { url: string; place?: string; steps: string[] };
   /**
    * The bank only pays people on the customer's beneficiary list (per customer ID). LEDGERS fetches the list on
    * connect and adds payees through the API: a single user confirms with an OTP; under maker & checker the
@@ -85,6 +91,13 @@ export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
     ],
     single: [],
     makerChecker: [],
+    // The request goes to ICICI, ICICI activates it, then the customer approves LEDGERS in corporate banking.
+    bankActivation: true,
+    netBankingApproval: {
+      url: "https://www.icici.bank.in/",
+      place: "corporate banking",
+      steps: ["Log in to ICICI corporate banking", "Open Connected Banking", "Approve the request from LEDGERS"],
+    },
   },
   // Placeholder until Axis's API fields are confirmed.
   axis: {
@@ -102,8 +115,14 @@ export const BANK_CONNECTORS: Record<BankKey, BankConnector> = {
   },
 };
 
+/** Where the customer approves LEDGERS, e.g. "IndusInd net banking" or "ICICI corporate banking". */
+export function approvalPlace(key: BankKey) {
+  const c = BANK_CONNECTORS[key];
+  return `${c.short} ${c.netBankingApproval?.place ?? "net banking"}`;
+}
+
 /** How payments are approved, as the customer chooses it in the Connect dialog. */
 export const APPROVAL_CHOICES = [
-  { value: "single", title: "Single user", body: "The same person makes and approves payments." },
-  { value: "maker-checker", title: "Maker & checker", body: "One person makes a payment, another approves it." },
+  { value: "single", title: "Single user", body: "You make and approve payments" },
+  { value: "maker-checker", title: "Maker & checker", body: "One makes, another approves" },
 ] as const;

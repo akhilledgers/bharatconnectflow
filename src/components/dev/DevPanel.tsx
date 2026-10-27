@@ -405,7 +405,18 @@ function BankingOptions() {
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] text-muted-foreground">Approved in net banking (IndusInd), when checked</div>
+          <div className="text-[11px] text-muted-foreground">Bank activated the request (ICICI), when checked</div>
+          <Choice
+            value={scenario.bankActivation}
+            options={[
+              ["activated", "Activated"],
+              ["pending", "Not yet"],
+            ]}
+            onChange={(bankActivation) => setScenario({ bankActivation })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground">Approved in net / corporate banking (IndusInd, ICICI), when checked</div>
           <Choice
             value={scenario.bankApproval}
             options={[
@@ -471,7 +482,7 @@ function BankingOptions() {
                     }}
                     className={SELECT}
                   >
-                    {([["connected", "Live"], ["pending", "Approval"], ["expired", "Expired"], ["none", "Off"]] as const).map(([v, label]) => (
+                    {([["connected", "Live"], ["requested", "Requested"], ["pending", "Approval"], ["expired", "Expired"], ["none", "Off"]] as const).map(([v, label]) => (
                       <option key={v} value={v}>
                         {label}
                       </option>

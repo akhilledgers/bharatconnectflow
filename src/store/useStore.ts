@@ -14,6 +14,7 @@ import type { BuyerResponse, CatalogItem, Invoice, InvoiceNote, Receipt } from "
 import { BC_SUPPLIERS, makeIncomingBill, makeSeedCatalog, makeSeedItemLinks, makePurchaseScenarios, type IncomingItems } from "../mock/catalog";
 import { linkKey, type LineResolution } from "../lib/itemMatch";
 import { nextBillNo } from "../lib/billNo";
+import { receiptValue } from "../lib/receipts";
 
 /** "07-10-2026, 11:20" — the stamp shown on Notes entries. */
 function noteStamp(): string {
@@ -67,6 +68,8 @@ interface StoreState {
   /** Bill line → catalog item links remembered per supplier (see lib/itemMatch). */
   itemLinks: Record<string, string>;
   devPanelOpen: boolean;
+  /** Sidebar shrunk to an icon rail (remembered in this browser). */
+  sidebarCollapsed: boolean;
   /** Dev panel: arms how the profile page's next save resolves (null = succeeds normally). */
   devProfileSaveOutcome: "reject" | "conflict" | null;
   /**
@@ -80,6 +83,7 @@ interface StoreState {
   currentBusiness: () => Business;
   switchBusiness: (id: string) => void;
   toggleDevPanel: (open?: boolean) => void;
+  toggleSidebar: () => void;
   setDevProfileSaveOutcome: (outcome: "reject" | "conflict" | null) => void;
   setDevOnboardingOutcome: (outcome: "instant" | "delayed" | "fail") => void;
   pushToast: (message: string, tone?: "success" | "error") => void;
@@ -150,7 +154,7 @@ interface StoreState {
   /** vendorId: the LEDGERS contact the bill is booked against; it gets the supplier's GSTIN / B2B ID if missing. */
   createPurchaseFromBc: (invoiceId: string, remark: string, lines: LineResolution[], vendorId?: string) => Promise<void>;
   addInvoiceNote: (invoiceId: string, text: string, shareOnSend: boolean) => void;
-  recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id">) => Promise<void>;
+  recordReceipt: (invoiceId: string, receipt: Omit<Receipt, "id"> & { id?: string }) => Promise<void>;
   updateInvoice: (invoiceId: string, patch: Partial<Invoice>) => Promise<void>;
   resendInvoice: (invoiceId: string, changeNote: string) => Promise<void>;
   cancelInvoice: (invoiceId: string, reason: string) => Promise<void>;
@@ -186,6 +190,15 @@ interface StoreState {
 }
 
 const nextCatalogId = (catalog: CatalogItem[]) => String(Math.max(...catalog.map((c) => Number(c.id))) + 1);
+
+const SIDEBAR_KEY = "ledgers.sidebarCollapsed";
+function readSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export const useStore = create<StoreState>((set, get) => {
   /** Bharat Connect confirmed: create the B2B ID (if there isn't one yet) and mark the business connected. */
@@ -233,6 +246,7 @@ export const useStore = create<StoreState>((set, get) => {
   catalog: makeSeedCatalog(),
   itemLinks: makeSeedItemLinks(),
   devPanelOpen: false,
+  sidebarCollapsed: readSidebarCollapsed(),
   devProfileSaveOutcome: null,
   devOnboardingOutcome: "instant",
   connectFlow: {},
@@ -244,6 +258,17 @@ export const useStore = create<StoreState>((set, get) => {
 
   toggleDevPanel: (open) =>
     set((s) => ({ devPanelOpen: open ?? !s.devPanelOpen })),
+
+  toggleSidebar: () =>
+    set((s) => {
+      const sidebarCollapsed = !s.sidebarCollapsed;
+      try {
+        localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed ? "1" : "0");
+      } catch {
+        // Storage blocked: the choice just doesn't survive a reload.
+      }
+      return { sidebarCollapsed };
+    }),
 
   setDevProfileSaveOutcome: (outcome) => set({ devProfileSaveOutcome: outcome }),
   setDevOnboardingOutcome: (outcome) => set({ devOnboardingOutcome: outcome }),
@@ -867,16 +892,16 @@ export const useStore = create<StoreState>((set, get) => {
       invoices: s.invoices.map((i) => {
         if (i.id !== invoiceId) return i;
         const prefix = i.kind === "sales" ? "RCPT" : "PV";
-        const receipts = [...(i.receipts ?? []), { ...receipt, id: `${prefix}-${Math.floor(Math.random() * 900 + 100)}` }];
-        // TDS deducted by the customer counts towards settling the invoice.
-        const received = receipts.reduce((sum, r) => sum + r.amount + (r.tds ?? 0), 0);
+        const receipts = [...(i.receipts ?? []), { ...receipt, id: receipt.id ?? `${prefix}-${Math.floor(Math.random() * 900 + 100)}` }];
+        // TDS, discounts and charges the customer deducted count towards settling the invoice.
+        const received = receipts.reduce((sum, r) => sum + receiptValue(r), 0);
         settled = received >= i.amount - 0.005;
         return { ...i, receipts, status: settled ? ("paid" as const) : ("partly_paid" as const) };
       }),
     }));
     const inv = get().invoices.find((i) => i.id === invoiceId);
     get().pushToast(
-      `${inv?.kind === "sales" ? "Receipt" : "Payment"} of INR ${receipt.amount.toLocaleString("en-IN")} recorded. ${invoiceId} is now ${settled ? "fully paid" : "partly paid"}.`,
+      `${inv?.kind === "sales" ? "Receipt" : "Payment"} of INR ${receipt.amount.toLocaleString("en-IN")} recorded. ${inv?.billNo ?? invoiceId} is now ${settled ? "fully paid" : "partly paid"}.`,
     );
   },
 

@@ -24,6 +24,8 @@ import { useDocPaid } from "../banking/PayDocs";
 import { PayDocButton, PayDocStatus } from "../banking/PayDocSection";
 import { billDoc, billNumber, isPayableBill } from "./payBill";
 import { amountInWords, bankFromIfsc, longDate, stateFromGstin } from "./invoiceDoc";
+import { QuickReceipt } from "./QuickReceipt";
+import { receiptValue } from "../../lib/receipts";
 
 // Copied from LEDGERS' live View Invoice (in.ledgers.cloud/v4/invoice/view-invoice): a text-sm header with
 // Create ▾ and icon actions; the printed invoice (LEDGERS' "Formal" template) on the left and LEDGERS' card
@@ -177,6 +179,13 @@ export function InvoiceViewPage({ kind }: { kind: "sales" | "purchase" }) {
             <DueHeader invoice={invoice} />
             <div className="space-y-5 p-4">
               {kind === "purchase" && <PayDocStatus doc={billDoc(invoice)} />}
+              {/* As on live LEDGERS: record a receipt (or a bill payment made outside LEDGERS) right here. */}
+              {!invoice.deletedAt && (sales ? invoice.status !== "paid" : isPayableBill(invoice)) && (
+                <>
+                  <QuickReceipt key={`${invoice.id}-${invoice.receipts?.length ?? 0}`} invoice={invoice} businessType={business.businessType} />
+                  <hr className="border-dashed" />
+                </>
+              )}
               <ReconciliationSection invoice={invoice} kind={kind} />
               {!invoice.deletedAt && (
                 <>
@@ -508,7 +517,7 @@ function TotalRow({ label, value }: { label: string; value: number }) {
 // ---------- Right card ----------
 
 function DueHeader({ invoice }: { invoice: Invoice }) {
-  const received = (invoice.receipts ?? []).reduce((s, r) => s + r.amount + (r.tds ?? 0), 0);
+  const received = (invoice.receipts ?? []).reduce((s, r) => s + receiptValue(r), 0);
   const due = Math.max(0, invoice.amount - received);
   const paid = useDocPaid(billNumber(invoice)) || invoice.status === "paid";
   if (invoice.deletedAt) {
@@ -535,9 +544,16 @@ function DueHeader({ invoice }: { invoice: Invoice }) {
 }
 
 function reconciliationRows(invoice: Invoice, kind: "sales" | "purchase") {
-  if (invoice.receipts?.length) return invoice.receipts.map((r) => ({ id: `# ${r.id}`, date: r.date, amount: r.amount }));
+  if (invoice.receipts?.length)
+    return invoice.receipts.map((r) => ({
+      id: `# ${r.id}`,
+      date: r.date,
+      amount: r.amount,
+      // What the customer held back, under the amount: "TDS 2,000 · Packing charges 8,000".
+      held: [...(r.tds ? [`TDS ${money(r.tds)}`] : []), ...(r.deductions ?? []).map((d) => `${d.head ?? d.kind} ${money(d.amount)}`)].join(" · "),
+    }));
   // Seeded paid documents have no receipt records; show the one that settled them.
-  return invoice.status === "paid" ? [{ id: kind === "sales" ? "# 2026-65" : "# PV-12", date: invoice.date, amount: invoice.amount }] : [];
+  return invoice.status === "paid" ? [{ id: kind === "sales" ? "# 2026-65" : "# PV-12", date: invoice.date, amount: invoice.amount, held: "" }] : [];
 }
 
 function ReconciliationSection({ invoice, kind }: { invoice: Invoice; kind: "sales" | "purchase" }) {
@@ -572,7 +588,10 @@ function ReconciliationSection({ invoice, kind }: { invoice: Invoice; kind: "sal
                     </label>
                   </td>
                   <td className="py-3 pl-0 text-xs font-semibold text-slate-800">{longDate(r.date)}</td>
-                  <td className="py-3 pl-0 text-right text-xs font-semibold text-slate-800">INR {money(r.amount)}</td>
+                  <td className="py-3 pl-0 text-right text-xs font-semibold text-slate-800">
+                    INR {money(r.amount)}
+                    {r.held && <div className="font-normal text-slate-400">{r.held}</div>}
+                  </td>
                 </tr>
               ))
             )}

@@ -5,12 +5,15 @@ import {
   bankFromIfsc,
   bankKeyFromName,
   IFSC_BANKS,
+  accountName,
+  groupOf,
   initialContacts,
   initialEmployees,
   maskAccount,
   payFromAccounts,
   type ApprovalMode,
   type BankAccount,
+  type BankConnection,
   type Bill,
   type BankingScenario,
   type CompanyAccount,
@@ -18,6 +21,9 @@ import {
   type PayeeContact,
 } from "../pages/banking/data";
 import { setupData, type BankingSetup, type MoneyFlow } from "../pages/banking/setups";
+import { CASH_PARENT, isCashId, type CashAccount, type CashEntry } from "../pages/banking/cash";
+import { OTHER_HEADS, isOtherId, personLedger, type OtherAccount, type OtherEntry } from "../pages/banking/otherAccounts";
+import type { BusinessType } from "../types";
 import {
   entryForLine,
   initialParties,
@@ -52,6 +58,8 @@ export interface NewCompanyAccountInput {
   /** Bank name from the IFSC directory, when the lookup found it. */
   bank?: string;
   opening?: CompanyAccount["opening"];
+  /** OD, CC, credit card: the limit, when given. */
+  limit?: number;
 }
 
 interface BankingState {
@@ -95,8 +103,11 @@ interface BankingState {
    * On success the account goes live (and its approval mode is recorded); outcome follows the dev panel.
    */
   registerBank: (accountId: string, approval?: ApprovalMode) => Promise<boolean>;
-  /** For a connection waiting on net-banking approval: ask the bank whether it's been approved (goes live if so). */
-  checkConnection: (accountId: string) => Promise<boolean>;
+  /**
+   * For a connection that's waiting: ask the bank where it stands. A requested connection moves on once the bank
+   * has activated it; one waiting on the customer's approval goes live once approved. Resolves to the new state.
+   */
+  checkConnection: (accountId: string) => Promise<BankConnection>;
   /** Single user: the OTP for adding these payees is confirmed and they're active straight away. */
   addBeneficiariesWithOtp: (accountId: string, payees: { key: string; code: string }[]) => Promise<void>;
   /** Maker & checker: the payees are added and wait for the checker to approve in net banking. */
@@ -123,9 +134,36 @@ interface BankingState {
    * invoices/bills by the allocated amounts). Replaces whatever the line was matched to before.
    */
   resolveLine: (lineId: string, match: Match, opts?: { entryIds?: string[]; party?: string; settle?: { itemId: string; amount: number }[] }) => void;
+  /**
+   * Record an entry by hand, without a bank line: a receipt, payment, expense, journal or transfer on a bank
+   * or cash account. A transfer also posts the other side on the account it names.
+   */
+  addEntry: (
+    accountId: string,
+    date: string,
+    amount: number,
+    match: Match,
+    opts?: { settle?: { itemId: string; amount: number }[]; transferTo?: string; note?: string },
+  ) => void;
   /** Teach the engine that a UPI ID / narration name belongs to a contact. */
   rememberKey: (partyId: string, key: string) => void;
   moveEntry: (entryId: string, accountId: string) => void;
+
+  // ---- cash (Cash in hand and its sub-accounts; balances from the books) ----
+  cashAccounts: CashAccount[];
+  cashEntries: CashEntry[];
+  addCashAccount: (input: { name: string; branch?: string; opening: CashAccount["opening"] }) => CashAccount;
+  updateCashAccount: (id: string, patch: Partial<CashAccount>) => void;
+
+  // ---- other accounts (chart-of-accounts heads and people's own accounts; not reconciled) ----
+  otherAccounts: OtherAccount[];
+  otherEntries: OtherEntry[];
+  /** A director's / proprietor's own account, filed under the head the business type calls for. */
+  addPersonAccount: (name: string, businessType: BusinessType) => OtherAccount;
+
+  /** Payments recorded by hand on documents kept outside the invoices store (expense vouchers). */
+  docPayments: DocPayment[];
+  recordDocPayment: (p: DocPayment) => void;
 
   // ---- payouts ----
   addPayout: (p: Omit<Payout, "id" | "ref" | "initiatedAt" | "initiatedBy">) => Payout;
@@ -135,6 +173,17 @@ interface BankingState {
   approveAwaiting: () => void;
   /** Dev panel: the next payout with the bank fails. */
   failProcessing: () => void;
+}
+
+/** A payment recorded on a document by hand: which document, the voucher, and the account it was paid from. */
+export interface DocPayment {
+  doc: string;
+  ref: string;
+  date: string;
+  amount: number;
+  /** Settled without being paid: TDS deducted, a discount received. */
+  held: number;
+  accountLabel: string;
 }
 
 let payoutSeq = 1042;
@@ -148,24 +197,29 @@ const daysAgo = (dmy: string) => {
   return Math.max(0, Math.floor((Date.now() - new Date(y, m - 1, d).getTime()) / 86_400_000));
 };
 const nowLabel = () => "Today, " + new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+/** "Axis ••9012": how a cash book names the bank account on the other side of a transfer. */
+const bankLabel = (a?: CompanyAccount) => (a ? accountName(a) : "Bank");
 
 export const useBankingStore = create<BankingState>((set, get) => ({
   scenario: DEFAULT_SCENARIO,
   contacts: initialContacts(),
   employees: initialEmployees(),
-  ...setupData("mixed"),
+  ...setupData("showcase"),
+  otherAccounts: [...OTHER_HEADS],
+  otherEntries: [],
+  docPayments: [],
   parties: initialParties(),
   beneficiaries: { p3: syncedBeneficiaries() },
-  setup: "mixed",
+  setup: "showcase",
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   resetData: () => {
     synced.clear();
-    set({ contacts: initialContacts(), employees: initialEmployees(), parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, ...setupData(get().setup) });
+    set({ contacts: initialContacts(), employees: initialEmployees(), parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, otherAccounts: [...OTHER_HEADS], otherEntries: [], docPayments: [], ...setupData(get().setup) });
   },
   applySetup: (setup) => {
     synced.clear();
-    set({ setup, parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, ...setupData(setup) });
+    set({ setup, parties: initialParties(), beneficiaries: { p3: syncedBeneficiaries() }, otherAccounts: [...OTHER_HEADS], otherEntries: [], docPayments: [], ...setupData(setup) });
   },
 
   verifyAccount: () =>
@@ -219,10 +273,12 @@ export const useBankingStore = create<BankingState>((set, get) => ({
       setTimeout(() => {
         if (get().scenario.register === "fail") return resolve(false);
         const key = get().accounts.find((a) => a.id === accountId)?.bankKey;
-        // Banks that need approval in net banking wait in "pending" until the customer approves there.
-        const needsApproval = !!(key && BANK_CONNECTORS[key].netBankingApproval);
+        const bank = key ? BANK_CONNECTORS[key] : undefined;
         get().updateAccount(accountId, { verified: true, ...(approval ? { approval } : {}) });
-        if (needsApproval) get().updateAccount(accountId, { connection: "pending" });
+        // Banks that activate the request first wait in "requested"; banks that need the customer's approval in
+        // net banking wait in "pending" until the customer approves there.
+        if (bank?.bankActivation) get().updateAccount(accountId, { connection: "requested" });
+        else if (bank?.netBankingApproval) get().updateAccount(accountId, { connection: "pending" });
         else goLive(accountId);
         resolve(true);
       }, 1500);
@@ -252,9 +308,21 @@ export const useBankingStore = create<BankingState>((set, get) => ({
   checkConnection: (accountId) =>
     new Promise((resolve) => {
       setTimeout(() => {
-        if (get().scenario.bankApproval !== "approved") return resolve(false);
+        const account = get().accounts.find((a) => a.id === accountId)!;
+        const { scenario } = get();
+        if (account.connection === "requested") {
+          if (scenario.bankActivation !== "activated") return resolve("requested");
+          // Activated by the bank: next, the customer approves LEDGERS (or it's live if the bank doesn't ask).
+          if (!BANK_CONNECTORS[account.bankKey!].netBankingApproval) {
+            goLive(accountId);
+            return resolve("connected");
+          }
+          get().updateAccount(accountId, { connection: "pending" });
+          return resolve("pending");
+        }
+        if (scenario.bankApproval !== "approved") return resolve(account.connection);
         goLive(accountId);
-        resolve(true);
+        resolve("connected");
       }, 1200);
     }),
 
@@ -264,20 +332,23 @@ export const useBankingStore = create<BankingState>((set, get) => ({
     return ok;
   },
 
-  addCompanyAccount: ({ ifsc, number, nickname, type, primary, bank, opening }) => {
+  addCompanyAccount: ({ ifsc, number, nickname, type, primary, bank, opening, limit }) => {
     const known = IFSC_BANKS[ifsc.slice(0, 4)];
+    // Cards, gateways and wallets aren't bank accounts: no Connected Banking, nothing to verify.
+    const isBank = groupOf({ type }) === "bank";
     const account: CompanyAccount = {
       id: `p${Date.now()}`,
       opening,
+      limit,
       bank: bank ?? known?.bank ?? bankFromIfsc(ifsc),
-      bankKey: known?.bankKey ?? (bank ? bankKeyFromName(bank) : null),
+      bankKey: isBank ? (known?.bankKey ?? (bank ? bankKeyFromName(bank) : null)) : null,
       number,
       ifsc,
       nickname,
       type,
       primary: false,
       active: true,
-      verified: false,
+      verified: !isBank,
       connection: "none",
       approval: "single",
     };
@@ -355,8 +426,27 @@ export const useBankingStore = create<BankingState>((set, get) => ({
         bookEntries: s.bookEntries.map((e) =>
           e.lineId && ids.includes(e.lineId) ? { ...e, lineId: undefined, daysOpen: daysAgo(e.date), note: "Unlinked from a bank transaction" } : e,
         ),
+        // The cash (or other account's) side of a transfer goes with the match.
+        cashEntries: s.cashEntries.filter((e) => !e.lineId || !ids.includes(e.lineId)),
+        otherEntries: s.otherEntries.filter((e) => !e.lineId || !ids.includes(e.lineId)),
       };
     }),
+
+  addCashAccount: ({ name, branch, opening }) => {
+    const account: CashAccount = { id: `cash:${Date.now()}`, name, branch: branch || undefined, active: true, opening };
+    set((s) => ({ cashAccounts: [...s.cashAccounts, account] }));
+    return account;
+  },
+
+  updateCashAccount: (id, patch) => set((s) => ({ cashAccounts: s.cashAccounts.map((a) => (a.id === id ? { ...a, ...patch } : a)) })),
+
+  recordDocPayment: (p) => set((s) => ({ docPayments: [...s.docPayments, p] })),
+
+  addPersonAccount: (name, businessType) => {
+    const account: OtherAccount = { id: `oa:p${Date.now()}`, ...personLedger(name.trim(), businessType) };
+    set((s) => ({ otherAccounts: [...s.otherAccounts, account] }));
+    return account;
+  },
 
   resolveLine: (lineId, match, opts = {}) => {
     const prev = get().bankLines.find((l) => l.id === lineId);
@@ -375,9 +465,68 @@ export const useBankingStore = create<BankingState>((set, get) => ({
         parties: settle.size
           ? s.parties.map((p) => ({ ...p, items: p.items.map((i) => (settle.has(i.id) ? { ...i, due: Math.round((i.due - settle.get(i.id)!) * 100) / 100 } : i)).filter((i) => i.due > 0) }))
           : s.parties,
+        // A transfer with cash (ATM withdrawal, cash deposit): the other side lands in that cash account's book.
+        cashEntries: match.cashAccountId
+          ? [
+              ...s.cashEntries,
+              {
+                id: `ce-${lineId}`,
+                accountId: match.cashAccountId,
+                date: line.date,
+                ref: match.ref ?? `CON ${lineId.toUpperCase()}`,
+                kind: "Transfer" as const,
+                party: bankLabel(s.accounts.find((a) => a.id === line.accountId)),
+                amount: -line.amount,
+                lineId,
+              },
+            ]
+          : s.cashEntries,
+        // Money moved to or from a person's account (a director putting it into the bank): their side.
+        otherEntries: match.otherAccountId
+          ? [
+              ...s.otherEntries,
+              { id: `oe-${lineId}`, accountId: match.otherAccountId, date: line.date, ref: match.ref ?? `CON ${lineId.toUpperCase()}`, party: bankLabel(s.accounts.find((a) => a.id === line.accountId)), amount: -line.amount, lineId },
+            ]
+          : s.otherEntries,
       };
     });
   },
+
+  addEntry: (accountId, date, amount, match, opts = {}) =>
+    set((s) => {
+      const seq = Date.now();
+      const nameOf = (id: string) =>
+        isCashId(id) ? (s.cashAccounts.find((a) => a.id === id)?.name ?? CASH_PARENT) : isOtherId(id) ? (s.otherAccounts.find((a) => a.id === id)?.name ?? "") : bankLabel(s.accounts.find((a) => a.id === id));
+      const prefix = match.kind === "Transfer" ? "CON" : match.kind === "Expense" ? "EXP" : "JV";
+      // Expenses, journals and contras get the next number in their own series, like receipts and payments do.
+      const used = [...s.bookEntries, ...s.cashEntries].map((e) => Number(e.ref.match(new RegExp(`^${prefix} 2026-(\\d+)$`))?.[1] ?? 0));
+      const ref = match.ref ?? `${prefix} 2026-${Math.max(0, ...used) + 1}`;
+      const cash: CashEntry[] = [];
+      const book: BookEntry[] = [];
+      const other: OtherEntry[] = [];
+      const post = (id: string, value: number, party: string, side: string) => {
+        if (isOtherId(id)) other.push({ id: `oe-m${seq}${side}`, accountId: id, date, ref, party, amount: value });
+        else if (isCashId(id)) {
+          const kind: CashEntry["kind"] =
+            match.kind === "Transfer" ? "Transfer" : match.kind === "Expense" ? "Expense" : value > 0 ? "Receipt" : "Payment";
+          cash.push({ id: `ce-m${seq}${side}`, accountId: id, date, ref, kind, party, amount: value });
+        } else {
+          const kind: BookEntry["kind"] = match.kind === "Receipt" ? "Receipt" : match.kind === "Journal" || match.kind === "Transfer" ? "Journal" : "Payment voucher";
+          book.push({ id: `e-m${seq}${side}`, accountId: id, date, ref, kind, party, amount: value, daysOpen: daysAgo(date), note: opts.note ?? "Added by hand, not in bank yet" });
+        }
+      };
+      post(accountId, amount, match.party, "a");
+      if (opts.transferTo) post(opts.transferTo, -amount, nameOf(accountId), "b");
+      const settle = new Map((opts.settle ?? []).map((x) => [x.itemId, x.amount]));
+      return {
+        cashEntries: cash.length ? [...s.cashEntries, ...cash] : s.cashEntries,
+        bookEntries: book.length ? [...s.bookEntries, ...book] : s.bookEntries,
+        otherEntries: other.length ? [...s.otherEntries, ...other] : s.otherEntries,
+        parties: settle.size
+          ? s.parties.map((p) => ({ ...p, items: p.items.map((i) => (settle.has(i.id) ? { ...i, due: Math.round((i.due - settle.get(i.id)!) * 100) / 100 } : i)).filter((i) => i.due > 0) }))
+          : s.parties,
+      };
+    }),
 
   rememberKey: (partyId, key) => set((s) => ({ parties: s.parties.map((p) => (p.id === partyId && !p.keys.includes(key) ? { ...p, keys: [...p.keys, key] } : p)) })),
 

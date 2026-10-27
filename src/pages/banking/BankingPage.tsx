@@ -6,10 +6,12 @@ import { menuItemCls, popoverCls } from "../../components/ui/popover";
 import { Tabs } from "../../components/ui/tabs";
 import { cn } from "../../lib/cn";
 import { useBankingStore, usePayFromAccounts } from "../../store/useBankingStore";
-import { ALL_ACCOUNTS } from "./data";
+import { ALL_ACCOUNTS, type BankKey } from "./data";
 import { reconFor } from "./ledgerData";
 import { AccountsTab } from "./AccountsTab";
-import { AddBankAccountDrawer } from "./AddBankAccountDrawer";
+import { AddAccountDrawer } from "./AddAccountDrawer";
+import { CashBookTab } from "./CashBookTab";
+import { isCashId } from "./cash";
 import { BulkTransferDrawer, type BulkPreset } from "./BulkTransferDrawer";
 import { ConnectBankDialog } from "./ConnectBankDialog";
 import { OverviewTab } from "./OverviewTab";
@@ -23,7 +25,7 @@ export type BankingTab = "overview" | "transactions" | "payouts" | "accounts";
 type Flow =
   | { kind: "none" }
   | { kind: "connect" }
-  | { kind: "add" }
+  | { kind: "add"; type?: "bank" | "cash"; bank?: BankKey }
   | { kind: "register"; accountId: string }
   | { kind: "single"; preset?: SingleTransferPreset }
   | { kind: "bulk"; preset?: BulkPreset };
@@ -48,7 +50,10 @@ export function BankingPage() {
   const [flow, setFlow] = useState<Flow>({ kind: "none" });
   const [moreOpen, setMoreOpen] = useState(false);
   // One account, or All accounts (the default: the work queue across banks). With a single account there's nothing to combine.
-  const txnAccount = !accounts.length
+  // A cash account (or Cash in hand as a whole) shows its cash book instead.
+  const txnAccount = isCashId(txnAccountPicked)
+    ? txnAccountPicked
+    : !accounts.length
     ? undefined
     : accounts.length === 1
       ? accounts[0].id
@@ -76,7 +81,7 @@ export function BankingPage() {
     { icon: <Users />, label: "Bulk payment", run: bulk },
     { icon: <Receipt />, label: "Pay a purchase bill", run: payBill },
     { icon: <FileUp />, label: "Upload statement", run: () => setTab("accounts") },
-    { icon: <Plus />, label: "Add bank account", run: () => setFlow({ kind: "add" }) },
+    { icon: <Plus />, label: "Add account", run: () => setFlow({ kind: "add" }) },
   ];
   const openTransactions = (accountId: string) => {
     setTxnAccount(accountId);
@@ -130,31 +135,34 @@ export function BankingPage() {
             onGo={setTab}
             onOpenAccount={openTransactions}
             onConnect={(accountId) => setFlow({ kind: "register", accountId })}
-            onAddAccount={() => setFlow({ kind: "add" })}
+            onAddAccount={() => setFlow({ kind: "add", type: "bank" })}
             onOpenNewAccount={() => setFlow({ kind: "connect" })}
           />
         )}
         {tab === "transactions" &&
-          (txnAccount ? (
+          (txnAccount && isCashId(txnAccount) ? (
+            <CashBookTab accountId={txnAccount} onAccountChange={setTxnAccount} />
+          ) : txnAccount ? (
             <TransactionsTab accountId={txnAccount} onAccountChange={setTxnAccount} onConnect={(accountId) => setFlow({ kind: "register", accountId })} />
           ) : (
-            <NoAccounts onAdd={() => setFlow({ kind: "add" })}>Add a bank account to see its transactions next to your books.</NoAccounts>
+            <NoAccounts onAdd={() => setFlow({ kind: "add", type: "bank" })}>Add a bank account to see its transactions next to your books.</NoAccounts>
           ))}
         {tab === "payouts" &&
           (accounts.length ? (
             <PayoutsTab onSingle={single} />
           ) : (
-            <NoAccounts onAdd={() => setFlow({ kind: "add" })}>Add and connect an Axis, ICICI or IndusInd account to pay vendors and salaries from LEDGERS.</NoAccounts>
+            <NoAccounts onAdd={() => setFlow({ kind: "add", type: "bank" })}>Add and connect an Axis, ICICI or IndusInd account to pay vendors and salaries from LEDGERS.</NoAccounts>
           ))}
         {tab === "accounts" && (
-          <AccountsTab onConnect={(accountId) => setFlow({ kind: "register", accountId })} onOpenTransactions={openTransactions} onAdd={() => setFlow({ kind: "add" })} />
+          <AccountsTab onConnect={(accountId) => setFlow({ kind: "register", accountId })} onOpenTransactions={openTransactions} onAdd={() => setFlow({ kind: "add", type: "bank" })} onAddCash={() => setFlow({ kind: "add", type: "cash" })} />
         )}
       </div>
 
       {flow.kind === "connect" && (
         <ConnectBankDialog
           onClose={close}
-          onConnectExisting={() => setFlow({ kind: "add" })}
+          onConnectAccount={(accountId) => setFlow({ kind: "register", accountId })}
+          onAddAccount={(bank) => setFlow({ kind: "add", type: "bank", bank })}
         />
       )}
       {flow.kind === "register" && (
@@ -173,7 +181,7 @@ export function BankingPage() {
         />
       )}
       {flow.kind === "bulk" && <BulkTransferDrawer preset={flow.preset} onClose={close} />}
-      {flow.kind === "add" && <AddBankAccountDrawer onClose={close} onConnect={(accountId) => setFlow({ kind: "register", accountId })} />}
+      {flow.kind === "add" && <AddAccountDrawer type={flow.type} bank={flow.bank} onClose={close} onConnect={(accountId) => setFlow({ kind: "register", accountId })} />}
     </div>
   );
 }

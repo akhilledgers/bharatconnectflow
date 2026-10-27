@@ -1,6 +1,7 @@
 // Dev panel → Banking setup: whole-world presets that put Banking into one stage of a business's journey
 // (no bank yet, bank added, statement uploaded, connected…) so every empty and in-between state can be seen.
 import { initialAccounts, type CompanyAccount } from "./data";
+import { initialCash, type CashAccount, type CashEntry } from "./cash";
 import {
   initialBankLines,
   initialBookEntries,
@@ -14,7 +15,7 @@ import {
   type StatementImport,
 } from "./ledgerData";
 
-export type BankingSetup = "new" | "added" | "statement" | "live" | "review" | "expired" | "mixed";
+export type BankingSetup = "new" | "added" | "statement" | "live" | "review" | "expired" | "mixed" | "showcase";
 
 export const SETUP_OPTIONS: { value: BankingSetup; label: string }[] = [
   { value: "new", label: "New business · no bank" },
@@ -24,6 +25,7 @@ export const SETUP_OPTIONS: { value: BankingSetup; label: string }[] = [
   { value: "review", label: "Connected · items to review" },
   { value: "expired", label: "Connection expired" },
   { value: "mixed", label: "Several banks (sample data)" },
+  { value: "showcase", label: "Typical business · 4 accounts (default)" },
 ];
 
 /** Money in / out this month vs last, across all accounts. */
@@ -39,13 +41,20 @@ export interface SetupData {
   payouts: Payout[];
   imports: StatementImport[];
   moneyFlow: MoneyFlow;
+  cashAccounts: CashAccount[];
+  cashEntries: CashEntry[];
 }
 
 const SMALL_FLOW: MoneyFlow = { in: { now: 312400, prev: 268000 }, out: { now: 241900, prev: 255300 } };
 const MAIN_FLOW: MoneyFlow = { in: { now: 572300, prev: 498100 }, out: { now: 463900, prev: 489700 } };
 const ALL_FLOW: MoneyFlow = { in: { now: 842300, prev: 710500 }, out: { now: 695800, prev: 732100 } };
 
+/** Every stage has Cash in hand with its default Main cash; the sample with several banks adds branch petty cash. */
 export function setupData(setup: BankingSetup): SetupData {
+  return { ...bankSetup(setup), ...initialCash(setup === "new" ? "empty" : setup === "mixed" ? "full" : "basic") };
+}
+
+function bankSetup(setup: BankingSetup): Omit<SetupData, "cashAccounts" | "cashEntries"> {
   const all = initialAccounts();
   const axis = all.find((a) => a.id === "p1")!;
   const only = (id: string) => ({
@@ -101,6 +110,19 @@ export function setupData(setup: BankingSetup): SetupData {
         ...only("p1"),
         moneyFlow: MAIN_FLOW,
       };
+
+    // The default on load: two connected banks, an OD and a payment gateway. Small enough to take in at a glance.
+    case "showcase": {
+      const ids = ["p1", "p2", "p9", "p12"];
+      return {
+        accounts: all.filter((a) => ids.includes(a.id)),
+        bankLines: initialBankLines().filter((l) => ids.includes(l.accountId)),
+        bookEntries: initialBookEntries().filter((e) => ids.includes(e.accountId)),
+        payouts: initialPayouts().filter((p) => ids.includes(p.fromAccountId)),
+        imports: initialImports().filter((i) => ids.includes(i.accountId)),
+        moneyFlow: MAIN_FLOW,
+      };
+    }
 
     case "mixed":
       return {

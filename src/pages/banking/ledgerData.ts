@@ -14,6 +14,10 @@ export interface Match {
   reason?: string;
   /** Transfer between the company's own accounts: the bank line on the other side. */
   pairLineId?: string;
+  /** Transfer to or from cash (ATM withdrawal, cash deposit): the cash account on the other side. */
+  cashAccountId?: string;
+  /** Transfer to or from a person's account (a director's): that account, whose side is posted with the match. */
+  otherAccountId?: string;
 }
 
 export interface BankLine {
@@ -67,7 +71,11 @@ export function describeLine(l: BankLine): string {
   const n = l.narration.toUpperCase();
   const dir = l.amount > 0 ? "in" : "out";
   if (n.includes("CHARGES")) return "Bank charge";
-  if (n.startsWith("INT.PD") || n.includes("INTEREST")) return "Interest credit";
+  if (n.startsWith("ATM") || n.includes("CASH WDL") || n.includes("CASH WITHDRAWAL")) return "Cash withdrawal";
+  if (n.includes("CASH DEP")) return "Cash deposit";
+  if (n.startsWith("INT.PD") || n.includes("INTEREST") || n.startsWith("INT.")) return l.amount < 0 ? "Interest charge" : "Interest credit";
+  if (l.amount > 0 && /RAZORPAY|PAYU|CASHFREE|PHONEPE PG|PAYTM PG|CCAVENUE|STRIPE/.test(n)) return "Gateway payout";
+  if (l.amount < 0 && /CREDIT CARD|CC PAYMENT|CARD PAYMENT/.test(n)) return "Card bill payment";
   if (n.includes("GST CHALLAN") || n.includes("TDS")) return "Tax payment";
   if (n.startsWith("CHQ DEP")) return "Cheque deposit";
   if (n.startsWith("CHQ")) return "Cheque paid";
@@ -180,6 +188,11 @@ function sampleLines(): BankLine[] {
     L("l23", "p1", "30-09-2026", "NEFT BULK UPLOAD AXOMB BATCH 27590 - 6 TXNS", -184300, "suggested", { kind: "Bill payment", ref: "6 vouchers", party: "Vendor batch · Sept 2", confidence: 97, reason: "Bulk payout PO-1034 from LEDGERS · same total" }),
     // Transfer between own accounts: both sides are bank lines.
     L("l24", "p1", "03-10-2026", "IMPS-OWN A/C TRANSFER-ICICI 4456", -50000, "suggested", { kind: "Transfer", party: "ICICI ••4456", confidence: 96, reason: "₹50,000 credited to ICICI ••4456 the same day", pairLineId: "l42" }),
+    // Cash taken out at an ATM: matched by hand as a transfer into a cash account.
+    L("l25", "p1", "17-10-2026", "ATM WDL/CASH WITHDRAWAL/WORLI MUMBAI", -10000, "needs"),
+    L("l26", "p1", "18-10-2026", "NEFT-RAZORPAY SOFTWARE PVT LTD-SETTLEMENT 18OCT", 96820, "needs"),
+    L("l27", "p1", "16-10-2026", "IMPS-HDFC CREDIT CARD PAYMENT-XXXX4421", -38000, "needs"),
+    L("l90", "p9", "30-09-2026", "INT. DEBIT FOR SEP 2026 OD A/C", -3120, "needs"),
 
     // Axis ••5068 — Payroll
     L("l30", "p4", "02-10-2026", "NEFT-AXOMB27588-ARJUN NAIR-SALARY", -38500, "suggested", { kind: "Payment voucher", ref: "VOU 2026-31", party: "Arjun Nair", ledger: "Salaries", confidence: 93, reason: "Salary run · same amount" }),
@@ -228,6 +241,12 @@ const BATCHES: Record<string, [ref: string, party: string, amount: number][]> = 
 };
 
 /** The book entry a matched (or proposed) bank line points to. A bank charge or transfer the AI proposes has none until accepted. */
+/** The next free voucher number in a series, e.g. REC 2026-71. */
+export function nextRef(entries: { ref: string }[], prefix: "REC" | "VOU") {
+  const nums = entries.map((e) => new RegExp(`^${prefix} 2026-(\\d+)$`).exec(e.ref)?.[1]).filter(Boolean).map(Number);
+  return `${prefix} 2026-${Math.max(70, ...nums) + 1}`;
+}
+
 export function entryForLine(l: BankLine): BookEntry {
   const m = l.match!;
   const kind: BookEntry["kind"] = m.kind === "Receipt" ? "Receipt" : m.kind === "Journal" || m.kind === "Transfer" ? "Journal" : "Payment voucher";
@@ -256,6 +275,7 @@ export const LEDGERS = [
   "Office supplies",
   "Bank charges",
   "Interest income",
+  "Interest paid",
   "Insurance",
   "Transfer between accounts",
   "Owner drawings",
